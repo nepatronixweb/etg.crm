@@ -42,4 +42,9 @@ const ApplicationSchema = new Schema<IApplicationDocument>(
   { timestamps: true }
 );
 
+// Indexes for fast queries
+ApplicationSchema.index({ student: 1, status: 1 });
+ApplicationSchema.index({ status: 1 });
+ApplicationSchema.index({ createdAt: -1 });
+
 export default mongoose.models.Application || mongoose.model<IApplicationDocument>("Application", ApplicationSchema);

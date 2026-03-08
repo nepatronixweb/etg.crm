@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import connectDB from "@/lib/mongodb";
 import StudentDocument from "@/models/Document";
-import fs from "fs/promises";
-import path from "path";
+import { del } from "@vercel/blob";
 
 export async function PUT(
   req: NextRequest,
@@ -49,12 +48,13 @@ export async function DELETE(
   const doc = await StudentDocument.findById(id);
   if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // Delete file from disk
+  // Delete file from Vercel Blob
   try {
-    const fullPath = path.join(process.cwd(), "public", doc.filePath);
-    await fs.unlink(fullPath);
+    if (doc.filePath && doc.filePath.startsWith("https://")) {
+      await del(doc.filePath);
+    }
   } catch {
-    // File may not exist on disk, continue
+    // Blob may not exist, continue
   }
 
   await StudentDocument.findByIdAndDelete(id);

@@ -71,6 +71,7 @@ export interface ILead {
   remindersCount: number;
   lastReminderAt?: Date;
   convertedToStudent: boolean;
+  stage?: string;
   // Multiple interested countries & universities
   interestedCountries?: { country: string; universityName?: string }[];
   // Parent information
@@ -90,6 +91,19 @@ export interface ILead {
   examEndDate?: string;
   examPaymentMethod?: string;
   examEstimatedDate?: string;
+  // Personal details
+  gender?: string;
+  maritalStatus?: string;
+  nationality?: string;
+  passportNumber?: string;
+  visaExpiryDate?: string;
+  senderName?: string;
+  // Application details
+  academicYear?: string;
+  applyLevel?: string;
+  course?: string;
+  intakeYear?: string;
+  intakeQuarter?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -114,6 +128,7 @@ export interface IStudent {
   branch: string;
   counsellor: string;
   currentStage: StudentStage;
+  stage?: string;
   countries: IStudentCountry[];
   notes: INote[];
   createdAt: Date;

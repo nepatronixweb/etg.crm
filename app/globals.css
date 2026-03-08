@@ -61,3 +61,29 @@ body {
 .toast-leave {
   animation: toast-out 0.2s ease-in forwards;
 }
+
+/* ── Print / Export-as-PDF ── */
+.print-only { display: none; }
+
+@media print {
+  .no-print  { display: none !important; }
+  .print-only { display: block !important; }
+
+  /* Force accurate color rendering */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+  @page { margin: 1.4cm 1.2cm; size: A4 portrait; }
+
+  body { background: white !important; }
+
+  /* Flatten the flex shell so the page content fills full width */
+  .flex.h-screen { display: block !important; }
+  .flex-1.flex.flex-col { display: block !important; }
+  .overflow-y-auto, .overflow-hidden { overflow: visible !important; block-size: auto !important; }
+
+  /* Strip decorative shadows */
+  .shadow-sm, .shadow, .shadow-md, .shadow-lg, .shadow-xl, .shadow-2xl { box-shadow: none !important; }
+
+  /* Ensure card borders survive print */
+  .divide-y > * + * { border-block-start-width: 1px !important; border-color: #e5e7eb !important; }
+}

@@ -1,9 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
-import { formatDate, getStatusColor, COUNTRIES, SERVICES } from "@/lib/utils";
+import React, { useEffect, useState } from "react";
+import { formatDate, getStatusColor, COUNTRIES, SERVICES, LEAD_STAGES, LEAD_STAGE_GROUPS, getLeadStageColor, getLeadStageDotColor } from "@/lib/utils";
 import { IStudent } from "@/types";
 import Link from "next/link";
-import { Search, UserCheck, Plus, X } from "lucide-react";
+import { Search, UserCheck, Plus, X, ChevronDown, MessageSquare, MoreVertical, Phone, Mail, FileSpreadsheet } from "lucide-react";
 import { useSession } from "next-auth/react";
 
 const SOURCES = [
@@ -21,17 +21,16 @@ const LABEL = "block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracki
 
 const STAGES = ["counsellor", "application", "admission", "visa", "completed", "rejected"];
 
-const STAGE_OPTIONS = [
-  { value: "", label: "All Stages" },
-  ...STAGES.map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })),
-];
-
 export default function StudentsPage() {
   const { data: session } = useSession();
   const [students, setStudents] = useState<IStudent[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterStage, setFilterStage] = useState("");
+  const [filterSource, setFilterSource] = useState("");
+  const [filterService, setFilterService] = useState("");
+  const [filterCounsellor, setFilterCounsellor] = useState("");
+  const [filterLeadStage, setFilterLeadStage] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [branches, setBranches] = useState<{ _id: string; name: string }[]>([]);
   const [counsellors, setCounsellors] = useState<{ _id: string; name: string }[]>([]);
@@ -60,17 +59,55 @@ export default function StudentsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchStudents(); }, [filterStage]);
 
+  useEffect(() => {
+    fetch("/api/branches").then((r) => r.json()).then((br) => setBranches(Array.isArray(br) ? br : []));
+    fetch("/api/users").then((r) => r.json()).then((u) =>
+      setCounsellors(Array.isArray(u) ? u.filter((x: { role: string }) => x.role === "counsellor") : [])
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const [stageDropdownId, setStageDropdownId] = useState<string | null>(null);
+  const [crmStageDropdownId, setCrmStageDropdownId] = useState<string | null>(null);
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+
+  const quickUpdateCrmStage = async (studentId: string, newStage: string) => {
+    setCrmStageDropdownId(null);
+    setStudents((prev) => prev.map((s) => s._id === studentId ? { ...s, stage: newStage } : s));
+    await fetch(`/api/students/${studentId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stage: newStage }),
+    });
+  };
+
+  const quickUpdateStage = async (studentId: string, newStage: string) => {
+    setStageDropdownId(null);
+    setStudents((prev) => prev.map((s) => s._id === studentId ? { ...s, currentStage: newStage as IStudent["currentStage"] } : s));
+    await fetch(`/api/students/${studentId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentStage: newStage }),
+    });
+  };
+
+  const formatStudentDateTime = (d: Date | string) => {
+    const dt = new Date(d);
+    const dd = String(dt.getDate()).padStart(2, "0");
+    const mm = String(dt.getMonth() + 1).padStart(2, "0");
+    const yyyy = dt.getFullYear();
+    const hh = String(dt.getHours()).padStart(2, "0");
+    const min = String(dt.getMinutes()).padStart(2, "0");
+    return `${dd}-${mm}-${yyyy} ${hh}:${min}`;
+  };
+
   const openModal = async () => {
     setForm({ ...defaultForm, branch: session?.user?.branch || "" });
     setSubmitError("");
     setShowModal(true);
     if (branches.length === 0) {
-      const [br, us] = await Promise.all([
-        fetch("/api/branches").then((r) => r.json()),
-        fetch("/api/users").then((r) => r.json()),
-      ]);
+      const br = await fetch("/api/branches").then((r) => r.json());
       setBranches(Array.isArray(br) ? br : []);
-      setCounsellors(Array.isArray(us) ? us.filter((u: { role: string }) => u.role === "counsellor") : []);
     }
   };
 
@@ -102,12 +139,67 @@ export default function StudentsPage() {
   };
 
   const canCreate = ["super_admin", "counsellor", "front_desk"].includes(session?.user?.role || "");
+  const canUpdateStage = ["super_admin", "counsellor", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
 
-  const filtered = students.filter((s) =>
-    s.name.toLowerCase().includes(search.toLowerCase()) ||
-    s.email.toLowerCase().includes(search.toLowerCase()) ||
-    s.phone.includes(search)
-  );
+  const filtered = students.filter((s) => {
+    const q = search.toLowerCase();
+    const counsellorName = (s.counsellor as unknown as { name: string } | undefined)?.name ?? "";
+    const matchesSearch = !q ||
+      s.name.toLowerCase().includes(q) ||
+      s.email.toLowerCase().includes(q) ||
+      s.phone.includes(q) ||
+      counsellorName.toLowerCase().includes(q);
+    const matchesStage = !filterStage || s.currentStage === filterStage;
+    const matchesSource = !filterSource || s.source === filterSource;
+    const matchesService = !filterService || (s as unknown as { interestedService?: string }).interestedService === filterService;
+    const matchesCounsellor = !filterCounsellor || (s.counsellor as unknown as { _id: string } | undefined)?._id === filterCounsellor;
+    const matchesLeadStage = !filterLeadStage || (s as unknown as { stage?: string }).stage === filterLeadStage;
+    return matchesSearch && matchesStage && matchesSource && matchesService && matchesCounsellor && matchesLeadStage;
+  });
+
+  const activeFilterCount = [filterStage, filterSource, filterService, filterCounsellor, filterLeadStage].filter(Boolean).length;
+
+  // ── Export filtered students to Excel (CSV) ──
+  const exportToExcel = () => {
+    const headers = [
+      "ETG ID", "Name", "Phone", "Email", "Date of Birth",
+      "Stage", "CRM Stage", "Source",
+      "Interested Service", "Interested Country",
+      "Branch", "Counsellor", "Created Date",
+    ];
+    const escape = (v?: string | null) => {
+      const s = (v ?? "").toString().replace(/"/g, '""');
+      return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s}"` : s;
+    };
+    const rows = filtered.map((s) => {
+      const counsellor = (s.counsellor as unknown as { name?: string } | undefined)?.name ?? "";
+      const br = (s.branch as unknown as { name?: string } | undefined)?.name ?? "";
+      const ext = s as unknown as Record<string, string | undefined>;
+      const stageLabel = LEAD_STAGES.find((st) => st.value === ext.stage)?.label ?? ext.stage ?? "";
+      return [
+        `ETG-${s._id.slice(-4).toUpperCase()}`,
+        s.name, s.phone, s.email,
+        s.dateOfBirth ?? "",
+        s.currentStage ?? "",
+        stageLabel,
+        (s.source ?? "").replace(/_/g, " "),
+        ext.interestedService ?? "",
+        ext.interestedCountry ?? "",
+        br, counsellor,
+        s.createdAt ? new Date(s.createdAt).toLocaleDateString("en-GB") : "",
+      ].map(escape).join(",");
+    });
+    const csv = "\uFEFF" + [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    const suffix = activeFilterCount > 0 ? `_filtered_${filtered.length}` : `_all_${students.length}`;
+    a.download = `ETG_Students${suffix}_${dateStamp}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-5 max-w-7xl mx-auto">
@@ -120,15 +212,26 @@ export default function StudentsPage() {
             {loading ? "Loading…" : `${filtered.length} of ${students.length} students`}
           </p>
         </div>
-        {canCreate && (
+        <div className="flex items-center gap-2">
+          {canCreate && (
+            <button
+              onClick={openModal}
+              className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-700 text-white px-4 py-2.5 rounded-md text-sm font-medium transition-colors"
+            >
+              <Plus size={15} />
+              Add Student
+            </button>
+          )}
           <button
-            onClick={openModal}
-            className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-700 text-white px-4 py-2.5 rounded-md text-sm font-medium transition-colors"
+            onClick={exportToExcel}
+            disabled={loading || filtered.length === 0}
+            title={`Export ${filtered.length} student${filtered.length !== 1 ? "s" : ""} to Excel`}
+            className="inline-flex items-center gap-2 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed px-4 py-2.5 rounded-md text-sm font-medium transition-colors"
           >
-            <Plus size={15} />
-            Add Student
+            <FileSpreadsheet size={15} />
+            Export{activeFilterCount > 0 ? ` (${filtered.length})` : ""}
           </button>
-        )}
+        </div>
       </div>
 
       {/* Stage Pipeline */}
@@ -155,47 +258,100 @@ export default function StudentsPage() {
         })}
       </div>
 
-      {/* Filter Bar */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <div className="flex flex-col sm:flex-row gap-3">
-          {/* Search */}
-          <div className="relative flex-1">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name, email or phone…"
-              className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-md text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-colors"
-            />
+      {/* Filter + Search Bar */}
+      <div className="bg-white border border-gray-200 rounded-lg" onClick={() => { setStageDropdownId(null); setCrmStageDropdownId(null); setMenuOpenId(null); }}>
+        <div className="flex items-stretch gap-0 divide-x divide-gray-200 flex-wrap">
+
+          {/* Student Stage */}
+          <div className="flex-1 min-w-36 relative">
+            <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Student Stage</label>
+            <select value={filterStage} onChange={(e) => setFilterStage(e.target.value)}
+              className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8">
+              <option value="">View All Stage</option>
+              {STAGES.map((s) => <option key={s} value={s} className="capitalize">{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+            </select>
+            <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
 
-          {/* Stage filter pills */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {STAGE_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => setFilterStage(opt.value)}
-                className={`px-3 py-2 rounded-md text-xs font-semibold border transition-colors whitespace-nowrap ${
-                  filterStage === opt.value
-                    ? "bg-gray-900 text-white border-gray-900"
-                    : "bg-white text-gray-600 border-gray-300 hover:border-gray-500 hover:text-gray-800"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
+          {/* Source */}
+          <div className="flex-1 min-w-36 relative">
+            <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Source</label>
+            <select value={filterSource} onChange={(e) => setFilterSource(e.target.value)}
+              className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8">
+              <option value="">View All Source</option>
+              {SOURCES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+            <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+
+          {/* Service */}
+          <div className="flex-1 min-w-36 relative">
+            <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">All Services</label>
+            <select value={filterService} onChange={(e) => setFilterService(e.target.value)}
+              className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8">
+              <option value="">All Services</option>
+              {SERVICES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+
+          {/* Counsellor */}
+          <div className="flex-1 min-w-36 relative">
+            <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Counsellor</label>
+            <select value={filterCounsellor} onChange={(e) => setFilterCounsellor(e.target.value)}
+              className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8">
+              <option value="">All Counsellors</option>
+              {counsellors.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
+            </select>
+            <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+
+          {/* CRM Stage */}
+          <div className="flex-1 min-w-36 relative">
+            <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">CRM Stage</label>
+            <select value={filterLeadStage} onChange={(e) => setFilterLeadStage(e.target.value)}
+              className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8">
+              <option value="">All Stages</option>
+              {LEAD_STAGES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+            <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+
+          {/* Search */}
+          <div className="flex-2 min-w-52 relative">
+            <label className="absolute left-10 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Search</label>
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)}
+              placeholder="Name, phone, email, counsellor…"
+              className="w-full pt-7 pb-2 pl-9 pr-8 bg-transparent text-sm text-gray-800 focus:outline-none focus:bg-gray-50 placeholder-gray-400" />
+            {search && (
+              <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"><X size={14} /></button>
+            )}
           </div>
         </div>
+
+        {/* Active filter chips */}
+        {activeFilterCount > 0 && (
+          <div className="px-4 py-2 border-t border-gray-100 flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] text-gray-400 font-semibold uppercase tracking-widest">Filters:</span>
+            {filterStage && <span className="flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2.5 py-0.5 rounded-full font-medium capitalize">{filterStage}<button onClick={() => setFilterStage("")}><X size={10} /></button></span>}
+            {filterSource && <span className="flex items-center gap-1 text-xs bg-purple-50 text-purple-700 border border-purple-100 px-2.5 py-0.5 rounded-full font-medium capitalize">{filterSource.replace(/_/g, " ")}<button onClick={() => setFilterSource("")}><X size={10} /></button></span>}
+            {filterService && <span className="flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-0.5 rounded-full font-medium">{filterService}<button onClick={() => setFilterService("")}><X size={10} /></button></span>}
+            {filterCounsellor && <span className="flex items-center gap-1 text-xs bg-amber-50 text-amber-700 border border-amber-100 px-2.5 py-0.5 rounded-full font-medium">{counsellors.find((c) => c._id === filterCounsellor)?.name ?? "Counsellor"}<button onClick={() => setFilterCounsellor("")}><X size={10} /></button></span>}
+            {filterLeadStage && <span className={`flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-medium ${getLeadStageColor(filterLeadStage)}`}>{LEAD_STAGES.find((s) => s.value === filterLeadStage)?.label ?? filterLeadStage}<button onClick={() => setFilterLeadStage("")}><X size={10} /></button></span>}
+            <button onClick={() => { setFilterStage(""); setFilterSource(""); setFilterService(""); setFilterCounsellor(""); setFilterLeadStage(""); }} className="ml-auto text-xs text-red-500 hover:text-red-700 font-semibold flex items-center gap-1"><X size={11} /> Clear all</button>
+          </div>
+        )}
       </div>
 
       {/* Table */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden" onClick={() => { setStageDropdownId(null); setCrmStageDropdownId(null); setMenuOpenId(null); }}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                {["Name", "Phone", "Email", "Counsellor", "Stage", "Countries", "Branch", "Date", ""].map((h) => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
+                {["Student", "Client", "Services", "CRM Stage", "Pipeline", "Follow-Up"].map((h) => (
+                  <th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">
                     {h}
                   </th>
                 ))}
@@ -204,7 +360,7 @@ export default function StudentsPage() {
             <tbody className="divide-y divide-gray-100">
               {loading && (
                 <tr>
-                  <td colSpan={9} className="text-center py-14">
+                  <td colSpan={6} className="text-center py-14">
                     <div className="inline-flex flex-col items-center gap-2 text-gray-400">
                       <div className="w-5 h-5 border-2 border-gray-200 border-t-gray-500 rounded-full animate-spin" />
                       <span className="text-sm">Loading students…</span>
@@ -214,16 +370,14 @@ export default function StudentsPage() {
               )}
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="text-center py-14">
+                  <td colSpan={6} className="text-center py-14">
                     <div className="inline-flex flex-col items-center gap-2 text-gray-400">
                       <UserCheck size={28} className="text-gray-300" />
                       <span className="text-sm">No students found</span>
-                      {search && (
-                        <button
-                          onClick={() => setSearch("")}
-                          className="text-xs text-gray-500 underline underline-offset-2 hover:text-gray-800"
-                        >
-                          Clear search
+                      {(search || activeFilterCount > 0) && (
+                        <button onClick={() => { setSearch(""); setFilterStage(""); setFilterSource(""); setFilterService(""); setFilterCounsellor(""); }}
+                          className="text-xs text-gray-500 underline underline-offset-2 hover:text-gray-800">
+                          Clear search &amp; filters
                         </button>
                       )}
                     </div>
@@ -231,49 +385,236 @@ export default function StudentsPage() {
                 </tr>
               )}
               {!loading && filtered.map((student) => {
-                const counsellor = student.counsellor as unknown as { name: string };
-                const branch = student.branch as unknown as { name: string };
-                const countryList = student.countries?.map((c) => c.country).join(", ");
+                const counsellorUser = student.counsellor as unknown as { name: string; _id: string } | undefined;
+                const latestNote = student.notes?.[student.notes.length - 1];
+                const initials = counsellorUser?.name
+                  ? counsellorUser.name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()
+                  : null;
+                const studentTag = `ETG-${student._id.slice(-4).toUpperCase()}`;
+                const interestedService = (student as unknown as { interestedService?: string }).interestedService;
+                const countryPart = student.countries?.[0]?.country;
                 return (
-                  <tr key={student._id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3.5">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center shrink-0">
-                          <span className="text-xs font-semibold text-gray-600">
-                            {student.name.charAt(0).toUpperCase()}
-                          </span>
+                  <React.Fragment key={student._id}>
+                    <tr className="hover:bg-gray-50/60 transition-colors align-top">
+
+                      {/* STUDENT column */}
+                      <td className="px-4 py-3.5 min-w-40">
+                        <p className="font-bold text-gray-900 text-sm">{studentTag}</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5 tabular-nums">{formatStudentDateTime(student.createdAt)}</p>
+                        <p className="text-[11px] text-gray-500 mt-0.5 capitalize">{student.source?.replace(/_/g, " ")}</p>
+                      </td>
+
+                      {/* CLIENT column */}
+                      <td className="px-4 py-3.5 min-w-52">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="text-amber-400 text-sm">★</span>
+                          <span className="font-semibold text-gray-900 text-sm">{student.name}</span>
                         </div>
-                        <span className="font-medium text-gray-900">{student.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3.5 text-gray-600 tabular-nums">{student.phone}</td>
-                    <td className="px-4 py-3.5 text-gray-600">{student.email}</td>
-                    <td className="px-4 py-3.5 text-gray-600">
-                      {counsellor?.name || <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <span className={`inline-block px-2.5 py-0.5 rounded text-xs font-semibold ${getStatusColor(student.currentStage)}`}>
-                        {student.currentStage}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 text-gray-600 max-w-40 truncate">
-                      {countryList || <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-4 py-3.5 text-gray-600">
-                      {branch?.name || <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-4 py-3.5 text-gray-500 tabular-nums whitespace-nowrap">
-                      {formatDate(student.createdAt)}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <Link
-                        href={`/students/${student._id}`}
-                        className="text-xs font-medium text-gray-500 hover:text-gray-900 border border-gray-200 hover:border-gray-400 px-2.5 py-1 rounded transition-colors"
-                      >
-                        View
-                      </Link>
-                    </td>
-                  </tr>
+                        <div className="flex items-center gap-1 text-[12px] text-gray-500 mb-0.5">
+                          <Phone size={10} className="text-gray-400 shrink-0" />
+                          <span className="tabular-nums">{student.phone}</span>
+                          {student.phone && (
+                            <a
+                              href={`https://wa.me/${student.phone.replace(/[^\d]/g, "")}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              title="Open WhatsApp"
+                              className="ml-1 shrink-0 hover:opacity-80 transition-opacity"
+                            >
+                              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-[#25D366]" xmlns="http://www.w3.org/2000/svg"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/></svg>
+                            </a>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 text-[12px] text-gray-500">
+                          <Mail size={10} className="text-gray-400 shrink-0" />
+                          <span className="truncate max-w-44">{student.email}</span>
+                          {student.email && (
+                            <a
+                              href={`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(student.email)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              title="Send Gmail"
+                              className="ml-1 shrink-0 hover:opacity-80 transition-opacity"
+                            >
+                              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg"><path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.907 1.528-1.145C21.69 2.28 24 3.434 24 5.457z" fill="#EA4335"/></svg>
+                            </a>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* SERVICES column */}
+                      <td className="px-4 py-3.5 min-w-48">
+                        <p className="text-sm font-medium text-gray-800">
+                          {interestedService || <span className="text-gray-300">—</span>}
+                          {countryPart && <span className="text-gray-500 font-normal"> - ({countryPart})</span>}
+                        </p>
+                        {student.countries && student.countries.length > 1 && (
+                          <p className="text-[11px] text-gray-400 mt-0.5">
+                            +{student.countries.length - 1} more countr{student.countries.length - 1 > 1 ? "ies" : "y"}
+                          </p>
+                        )}
+                        <p className="text-[11px] text-gray-400 mt-1 tabular-nums">{formatDate(student.createdAt)}</p>
+                      </td>
+
+                      {/* CRM STAGE column */}
+                      <td className="px-4 py-3.5 min-w-44">
+                        {(() => {
+                          const crmStage = (student as unknown as { stage?: string }).stage;
+                          const stageInfo = LEAD_STAGES.find((s) => s.value === crmStage);
+                          const dotColor = crmStage ? getLeadStageDotColor(crmStage) : "";
+                          return (
+                            <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+                              {/* Trigger pill */}
+                              <button
+                                onClick={() => canUpdateStage && setCrmStageDropdownId(crmStageDropdownId === student._id ? null : student._id)}
+                                className={`inline-flex items-center gap-2 pl-2.5 pr-2 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 shadow-sm border ${
+                                  stageInfo
+                                    ? `${stageInfo.color} border-transparent hover:shadow-md`
+                                    : "bg-white border-dashed border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500"
+                                } ${canUpdateStage ? "cursor-pointer" : "cursor-default"}`}
+                              >
+                                {stageInfo
+                                  ? <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} opacity-70`} />
+                                  : <span className="text-[13px] leading-none opacity-50">+</span>
+                                }
+                                <span className="max-w-32 truncate">{stageInfo ? stageInfo.label : "Set Stage"}</span>
+                                {canUpdateStage && <ChevronDown size={10} className={`shrink-0 opacity-50 transition-transform duration-200 ${crmStageDropdownId === student._id ? "rotate-180" : ""}`} />}
+                              </button>
+
+                              {/* Dropdown panel */}
+                              {canUpdateStage && crmStageDropdownId === student._id && (
+                                <div className="absolute z-40 top-full left-0 mt-2 bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-gray-100 overflow-hidden w-64">
+                                  {/* Panel header */}
+                                  <div className="px-4 pt-3.5 pb-2.5 border-b border-gray-100 flex items-center justify-between">
+                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.12em]">Select CRM Stage</span>
+                                    {stageInfo && (
+                                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${stageInfo.color}`}>{stageInfo.label}</span>
+                                    )}
+                                  </div>
+
+                                  {/* Grouped options */}
+                                  <div className="overflow-y-auto max-h-72 py-1.5">
+                                    {LEAD_STAGE_GROUPS.map((group) => {
+                                      const groupStages = LEAD_STAGES.filter((s) => group.stages.includes(s.value));
+                                      return (
+                                        <div key={group.label}>
+                                          {/* Group header */}
+                                          <div className="px-3.5 pt-2.5 pb-1 flex items-center gap-2">
+                                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${group.dot}`} />
+                                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.15em]">{group.label}</span>
+                                          </div>
+                                          {groupStages.map((s) => {
+                                            const isActive = crmStage === s.value;
+                                            return (
+                                              <button
+                                                key={s.value}
+                                                onClick={() => quickUpdateCrmStage(student._id, s.value)}
+                                                className={`w-full text-left px-3.5 py-1 flex items-center justify-between gap-3 transition-colors duration-100 ${
+                                                  isActive ? "bg-gray-50" : "hover:bg-gray-50/80"
+                                                }`}
+                                              >
+                                                <span className={`inline-block px-2.5 py-0.5 rounded-md text-[11px] font-semibold ${s.color}`}>{s.label}</span>
+                                                {isActive && (
+                                                  <span className="w-4 h-4 rounded-full bg-gray-900 flex items-center justify-center shrink-0">
+                                                    <svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3L3 5L7 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                                  </span>
+                                                )}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+
+                                  {/* Clear option */}
+                                  {crmStage && (
+                                    <div className="border-t border-gray-100 px-3.5 py-2">
+                                      <button
+                                        onClick={() => quickUpdateCrmStage(student._id, "")}
+                                        className="text-[11px] text-gray-400 hover:text-red-500 font-medium transition-colors flex items-center gap-1.5"
+                                      >
+                                        <X size={10} /> Clear stage
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </td>
+
+                      {/* PIPELINE (currentStage) column */}
+                      <td className="px-4 py-3.5 min-w-36">
+                        <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => canUpdateStage && setStageDropdownId(stageDropdownId === student._id ? null : student._id)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${getStatusColor(student.currentStage)} ${canUpdateStage ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
+                          >
+                            <span className="capitalize max-w-24 truncate">{student.currentStage}</span>
+                            {canUpdateStage && <ChevronDown size={11} className={`shrink-0 transition-transform ${stageDropdownId === student._id ? "rotate-180" : ""}`} />}
+                          </button>
+                          {canUpdateStage && stageDropdownId === student._id && (
+                            <div className="absolute z-30 top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden min-w-36">
+                              {STAGES.map((s) => (
+                                <button key={s} onClick={() => quickUpdateStage(student._id, s)}
+                                  className={`w-full text-left px-3 py-2 text-xs font-medium capitalize transition-colors flex items-center justify-between ${
+                                    student.currentStage === s ? "bg-gray-100 text-gray-900 font-semibold" : "text-gray-600 hover:bg-gray-50"
+                                  }`}>
+                                  {s}{student.currentStage === s && <span className="text-gray-500">✓</span>}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* FOLLOW-UP column */}
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-2">
+                          <Link href={`/students/${student._id}#notes`}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-0.5 border border-blue-100 hover:border-blue-300 px-2 py-1 rounded-md transition-colors whitespace-nowrap">
+                            + Add
+                          </Link>
+                          {initials && (
+                            <span className="w-7 h-7 rounded-full bg-violet-100 text-violet-700 text-[10px] font-bold flex items-center justify-center shrink-0 border border-violet-200">
+                              {initials}
+                            </span>
+                          )}
+                          <div className="relative" onClick={(e) => e.stopPropagation()}>
+                            <button onClick={() => setMenuOpenId(menuOpenId === student._id ? null : student._id)}
+                              className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors">
+                              <MoreVertical size={14} />
+                            </button>
+                            {menuOpenId === student._id && (
+                              <div className="absolute z-30 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden min-w-28">
+                                <Link href={`/students/${student._id}`} className="block px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 font-medium">View Details</Link>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+
+                    {/* Notes sub-row */}
+                    {latestNote && (
+                      <tr key={`${student._id}-note`} className="bg-gray-50/50">
+                        <td colSpan={6} className="px-4 py-2 border-b border-gray-100">
+                          <div className="flex items-start gap-1.5 text-[11px] text-gray-500">
+                            <MessageSquare size={11} className="text-gray-400 mt-0.5 shrink-0" />
+                            <span className="font-semibold text-gray-600">Notes:</span>
+                            <span className="truncate max-w-2xl">{latestNote.content}</span>
+                            {student.notes.length > 1 && (
+                              <span className="ml-1 text-gray-400">+{student.notes.length - 1} more</span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })}
             </tbody>

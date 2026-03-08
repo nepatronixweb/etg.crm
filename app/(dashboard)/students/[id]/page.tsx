@@ -60,9 +60,21 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
 
   const addNote = async () => {
     if (!note.trim()) return;
-    await fetch(`/api/students/${id}/notes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: note }) });
+    const noteContent = note.trim();
+    await fetch(`/api/students/${id}/notes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: noteContent }) });
     setNote("");
     fetchData();
+    // Auto-send via WhatsApp and Gmail
+    if (student?.phone) {
+      const waPhone = student.phone.replace(/[^\d]/g, "");
+      const waMsg = encodeURIComponent(`Hi ${student.name},\n\n${noteContent}\n\n– ETG Team`);
+      window.open(`https://wa.me/${waPhone}?text=${waMsg}`, "_blank");
+    }
+    if (student?.email) {
+      const subject = encodeURIComponent(`Update from ETG – ${student.name}`);
+      const body = encodeURIComponent(`Hi ${student.name},\n\n${noteContent}\n\nBest regards,\nETG Team`);
+      window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(student.email)}&su=${subject}&body=${body}`, "_blank");
+    }
   };
 
   const updateStage = async (stage: string) => {

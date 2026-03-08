@@ -27,6 +27,7 @@ export interface ILeadDocument extends Document {
   remindersCount: number;
   lastReminderAt?: Date;
   convertedToStudent: boolean;
+  stage?: string;
   // Multiple interested countries & universities
   interestedCountries: { country: string; universityName?: string }[];
   // Parent information
@@ -46,6 +47,19 @@ export interface ILeadDocument extends Document {
   examEndDate?: string;
   examPaymentMethod?: string;
   examEstimatedDate?: string;
+  // Personal details
+  gender?: string;
+  maritalStatus?: string;
+  nationality?: string;
+  passportNumber?: string;
+  visaExpiryDate?: string;
+  senderName?: string;
+  // Application details
+  academicYear?: string;
+  applyLevel?: string;
+  course?: string;
+  intakeYear?: string;
+  intakeQuarter?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -75,6 +89,7 @@ const LeadSchema = new Schema<ILeadDocument>(
     remindersCount: { type: Number, default: 0 },
     lastReminderAt: { type: Date },
     convertedToStudent: { type: Boolean, default: false },
+    stage: { type: String, default: "" },
     // Multiple interested countries & universities
     interestedCountries: {
       type: [{ country: { type: String }, universityName: { type: String, default: "" } }],
@@ -97,8 +112,28 @@ const LeadSchema = new Schema<ILeadDocument>(
     examEndDate: { type: String },
     examPaymentMethod: { type: String, enum: ["online", "cash", ""], default: "" },
     examEstimatedDate: { type: String },
+    // Personal details
+    gender: { type: String, default: "" },
+    maritalStatus: { type: String, default: "" },
+    nationality: { type: String, trim: true },
+    passportNumber: { type: String, trim: true },
+    visaExpiryDate: { type: String },
+    senderName: { type: String, trim: true },
+    // Application details
+    academicYear: { type: String, trim: true },
+    applyLevel: { type: String, default: "" },
+    course: { type: String, trim: true },
+    intakeYear: { type: String, trim: true },
+    intakeQuarter: { type: String, default: "" },
   },
   { timestamps: true }
 );
+
+// Indexes for fast queries
+LeadSchema.index({ branch: 1, status: 1 });
+LeadSchema.index({ assignedTo: 1, status: 1 });
+LeadSchema.index({ convertedToStudent: 1 });
+LeadSchema.index({ updatedAt: 1 }); // for cron stale-lead queries
+LeadSchema.index({ createdAt: -1 });
 
 export default mongoose.models.Lead || mongoose.model<ILeadDocument>("Lead", LeadSchema);

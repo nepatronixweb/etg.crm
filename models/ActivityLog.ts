@@ -27,4 +27,9 @@ const ActivityLogSchema = new Schema<IActivityLogDocument>(
   { timestamps: true }
 );
 
+// Indexes for fast queries
+ActivityLogSchema.index({ user: 1, createdAt: -1 });
+ActivityLogSchema.index({ module: 1, createdAt: -1 });
+ActivityLogSchema.index({ createdAt: -1 });
+
 export default mongoose.models.ActivityLog || mongoose.model<IActivityLogDocument>("ActivityLog", ActivityLogSchema);

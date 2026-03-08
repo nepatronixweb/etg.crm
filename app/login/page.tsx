@@ -25,19 +25,6 @@ export default function LoginPage() {
     }
   };
 
-  const quickFill = (e: string, p: string) => {
-    setEmail(e);
-    setPassword(p);
-    setError("");
-  };
-
-  const QUICK_LOGINS = [
-    { label: "Super Admin", email: "admin@etg.com" },
-    { label: "Front Desk", email: "hari@etg.com" },
-    { label: "Counsellor", email: "ram@etg.com" },
-    { label: "Application", email: "priya@etg.com" },
-  ];
-
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       {/* Background pattern */}
@@ -138,24 +125,7 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Quick-fill for dev */}
-          <div className="mt-6 pt-5 border-t border-gray-100">
-            <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-3">Quick Login</p>
-            <div className="grid grid-cols-2 gap-2">
-              {QUICK_LOGINS.map((q) => (
-                <button
-                  key={q.email}
-                  type="button"
-                  onClick={() => quickFill(q.email, "Admin@123")}
-                  className="text-left px-3 py-2 border border-gray-200 rounded-md hover:border-gray-400 hover:bg-gray-50 transition-colors"
-                >
-                  <p className="text-xs font-semibold text-gray-700">{q.label}</p>
-                  <p className="text-xs text-gray-400 truncate">{q.email}</p>
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-gray-400 mt-2 text-center">Password: <span className="font-mono font-semibold text-gray-500">Admin@123</span></p>
-          </div>
+
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-5">

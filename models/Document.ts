@@ -32,4 +32,9 @@ const DocumentSchema = new Schema<IDocumentDocument>(
   { timestamps: true }
 );
 
+// Indexes for fast queries
+DocumentSchema.index({ student: 1 });
+DocumentSchema.index({ lead: 1 });
+DocumentSchema.index({ uploadedBy: 1 });
+
 export default mongoose.models.StudentDocument || mongoose.model<IDocumentDocument>("StudentDocument", DocumentSchema);

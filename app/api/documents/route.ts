@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
+import { put } from "@vercel/blob";
 import connectDB from "@/lib/mongodb";
 import StudentDocument from "@/models/Document";
 import ActivityLog from "@/models/ActivityLog";
@@ -49,17 +48,12 @@ export async function POST(req: NextRequest) {
     if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
     if (!studentId && !leadId) return NextResponse.json({ error: "studentId or leadId required" }, { status: 400 });
 
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-
     const ownerId = (studentId || leadId)!;
-    const uploadDir = path.join(process.cwd(), "public", "uploads", ownerId);
-    await mkdir(uploadDir, { recursive: true });
-
     const fileName = `${Date.now()}-${file.name.replace(/\s/g, "_")}`;
-    const filePath = path.join(uploadDir, fileName);
-    await writeFile(filePath, buffer);
-    const publicPath = `/uploads/${ownerId}/${fileName}`;
+    const blob = await put(`uploads/${ownerId}/${fileName}`, file, {
+      access: "public",
+    });
+    const publicPath = blob.url;
 
     const docData: Record<string, unknown> = {
       name: documentName || file.name,

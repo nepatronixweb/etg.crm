@@ -37,6 +37,7 @@ export interface IStudentDocument extends Document {
   branch: mongoose.Types.ObjectId;
   counsellor: mongoose.Types.ObjectId;
   currentStage: string;
+  stage?: string;
   countries: mongoose.Types.DocumentArray<mongoose.Document>;
   notes: INote[];
   createdAt: Date;
@@ -58,10 +59,17 @@ const StudentSchema = new Schema<IStudentDocument>(
       enum: ["counsellor", "application", "admission", "visa", "completed", "rejected"],
       default: "counsellor",
     },
+    stage: { type: String, default: "" },
     countries: [CountrySchema],
     notes: [NoteSchema],
   },
   { timestamps: true }
 );
+
+// Indexes for fast queries
+StudentSchema.index({ branch: 1, currentStage: 1 });
+StudentSchema.index({ counsellor: 1 });
+StudentSchema.index({ lead: 1 }, { unique: true });
+StudentSchema.index({ createdAt: -1 });
 
 export default mongoose.models.Student || mongoose.model<IStudentDocument>("Student", StudentSchema);

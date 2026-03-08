@@ -229,7 +229,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 transform transition-transform duration-200 ease-in-out
+      <aside className={`no-print fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 transform transition-transform duration-200 ease-in-out
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:relative lg:translate-x-0`}
       >
         <div className="flex items-center justify-between h-16 px-4 border-b border-gray-700">
@@ -297,11 +297,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* Overlay */}
       {sidebarOpen && (
-        <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSidebarOpen(false)} />
+        <div className="no-print fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Toast notifications (top-center) */}
-      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-100 flex flex-col gap-2 items-center pointer-events-none w-80">
+      <div className="no-print fixed top-4 left-1/2 -translate-x-1/2 z-100 flex flex-col gap-2 items-center pointer-events-none w-80">
         {toasts.map((t) => (
           <div
             key={t.id}
@@ -334,7 +334,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4">
+        <header className="no-print h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4">
           <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-gray-500 hover:text-gray-700">
             <Menu size={22} />
           </button>
