@@ -27,6 +27,7 @@ export default function LeadsPage() {
   const [leads, setLeads] = useState<ILead[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingLead, setEditingLead] = useState<ILead | null>(null);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterCountry, setFilterCountry] = useState("");
@@ -130,6 +131,63 @@ export default function LeadsPage() {
     });
     setAttachedFiles([]);
     setSubmitError("");
+    setEditingLead(null);
+  };
+
+  const openEditForm = (lead: ILead) => {
+    const toDate = (v: unknown) =>
+      v ? new Date(v as string).toISOString().slice(0, 10) : "";
+    const branchId =
+      typeof lead.branch === "object" && lead.branch !== null
+        ? (lead.branch as { _id: string })._id
+        : (lead.branch as string) || "";
+    const assignedId =
+      typeof lead.assignedTo === "object" && lead.assignedTo !== null
+        ? (lead.assignedTo as { _id: string })._id
+        : (lead.assignedTo as string) || "";
+    setForm({
+      name: lead.name || "",
+      phone: lead.phone || "",
+      email: lead.email || "",
+      dateOfBirth: toDate(lead.dateOfBirth),
+      source: (lead.source as LeadSource) || "walk_in",
+      interestedService: lead.interestedService || "",
+      interestedCountry: lead.interestedCountry || "",
+      branch: branchId,
+      status: (lead.status as LeadStatus) || "warm",
+      assignedTo: assignedId,
+      assignmentMethod: "manual",
+      comments: lead.comments || "",
+      parentName: lead.parentName || "",
+      parentPhone1: lead.parentPhone1 || "",
+      parentPhone2: lead.parentPhone2 || "",
+      academicScore: lead.academicScore || "",
+      academicInstitution: lead.academicInstitution || "",
+      temporaryAddress: lead.temporaryAddress || "",
+      permanentAddress: lead.permanentAddress || "",
+      examType: lead.examType || "",
+      examScore: lead.examScore || "",
+      examJoinDate: toDate(lead.examJoinDate),
+      examStartDate: toDate(lead.examStartDate),
+      examEndDate: toDate(lead.examEndDate),
+      examPaymentMethod: lead.examPaymentMethod || "",
+      examEstimatedDate: toDate(lead.examEstimatedDate),
+      gender: lead.gender || "",
+      maritalStatus: lead.maritalStatus || "",
+      nationality: lead.nationality || "",
+      passportNumber: lead.passportNumber || "",
+      visaExpiryDate: toDate(lead.visaExpiryDate),
+      senderName: lead.senderName || "",
+      academicYear: lead.academicYear || "",
+      applyLevel: lead.applyLevel || "",
+      course: lead.course || "",
+      intakeYear: lead.intakeYear || "",
+      intakeQuarter: lead.intakeQuarter || "",
+    });
+    setAttachedFiles([]);
+    setSubmitError("");
+    setEditingLead(lead);
+    setShowForm(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -143,14 +201,23 @@ export default function LeadsPage() {
     if (!payload.branch) delete payload.branch;
 
     try {
-      const res = await fetch("/api/leads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      let res: Response;
+      if (editingLead) {
+        res = await fetch(`/api/leads/${editingLead._id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        res = await fetch("/api/leads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      }
       const data = await res.json();
       if (res.ok) {
-        const leadId = data._id || data.lead?._id;
+        const leadId = editingLead ? editingLead._id : (data._id || data.lead?._id);
         // Upload attached files one by one
         if (leadId && attachedFiles.length > 0) {
           await Promise.all(
@@ -167,7 +234,7 @@ export default function LeadsPage() {
         fetchLeads();
         resetForm();
       } else {
-        setSubmitError(data?.error || "Failed to create lead. Please try again.");
+        setSubmitError(data?.error || (editingLead ? "Failed to update lead." : "Failed to create lead. Please try again."));
       }
     } catch {
       setSubmitError("Network error. Please try again.");
@@ -725,6 +792,12 @@ export default function LeadsPage() {
                             {menuOpenId === lead._id && (
                               <div className="absolute z-30 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden min-w-28">
                                 <Link href={`/leads/${lead._id}`} className="block px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 font-medium">View Details</Link>
+                                {canCreate && (
+                                  <button
+                                    onClick={() => { setMenuOpenId(null); openEditForm(lead); }}
+                                    className="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 font-medium"
+                                  >Edit Lead</button>
+                                )}
                               </div>
                             )}
                           </div>
@@ -773,8 +846,8 @@ export default function LeadsPage() {
             {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
               <div>
-                <h2 className="text-base font-semibold text-gray-900">Add New Lead</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Fill in the details to register a new lead</p>
+                <h2 className="text-base font-semibold text-gray-900">{editingLead ? "Edit Lead" : "Add New Lead"}</h2>
+                <p className="text-xs text-gray-500 mt-0.5">{editingLead ? "Update the lead details below" : "Fill in the details to register a new lead"}</p>
               </div>
               <button
                 onClick={() => setShowForm(false)}
@@ -1073,25 +1146,25 @@ export default function LeadsPage() {
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Parent Information</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="sm:col-span-2">
-                    <label className={LABEL_CLASS}>Parent&apos;s Full Name <span className="text-gray-400 normal-case font-normal tracking-normal">*</span></label>
+                    <label className={LABEL_CLASS}>Parent&apos;s Full Name {session?.user?.role !== "front_desk" && <span className="text-gray-400 normal-case font-normal tracking-normal">*</span>}</label>
                     <input
                       type="text"
                       value={form.parentName}
                       onChange={(e) => setForm({ ...form, parentName: e.target.value })}
                       placeholder="Parent or guardian name"
                       className={FIELD_CLASS}
-                      required
+                      required={session?.user?.role !== "front_desk"}
                     />
                   </div>
                   <div>
-                    <label className={LABEL_CLASS}>Parent Phone Number 1 <span className="text-gray-400 normal-case font-normal tracking-normal">*</span></label>
+                    <label className={LABEL_CLASS}>Parent Phone Number 1 {session?.user?.role !== "front_desk" && <span className="text-gray-400 normal-case font-normal tracking-normal">*</span>}</label>
                     <input
                       type="tel"
                       value={form.parentPhone1}
                       onChange={(e) => setForm({ ...form, parentPhone1: e.target.value })}
                       placeholder="Primary contact"
                       className={FIELD_CLASS}
-                      required
+                      required={session?.user?.role !== "front_desk"}
                     />
                   </div>
                   <div>
@@ -1124,36 +1197,36 @@ export default function LeadsPage() {
                     />
                   </div>
                   <div>
-                    <label className={LABEL_CLASS}>Academic School / College Name <span className="text-gray-400 normal-case font-normal tracking-normal">*</span></label>
+                    <label className={LABEL_CLASS}>Academic School / College Name {session?.user?.role !== "front_desk" && <span className="text-gray-400 normal-case font-normal tracking-normal">*</span>}</label>
                     <input
                       type="text"
                       value={form.academicInstitution}
                       onChange={(e) => setForm({ ...form, academicInstitution: e.target.value })}
                       placeholder="Institution name"
                       className={FIELD_CLASS}
-                      required
+                      required={session?.user?.role !== "front_desk"}
                     />
                   </div>
                   <div>
-                    <label className={LABEL_CLASS}>Temporary Address <span className="text-gray-400 normal-case font-normal tracking-normal">*</span></label>
+                    <label className={LABEL_CLASS}>Temporary Address {session?.user?.role !== "front_desk" && <span className="text-gray-400 normal-case font-normal tracking-normal">*</span>}</label>
                     <input
                       type="text"
                       value={form.temporaryAddress}
                       onChange={(e) => setForm({ ...form, temporaryAddress: e.target.value })}
                       placeholder="Current / temporary address"
                       className={FIELD_CLASS}
-                      required
+                      required={session?.user?.role !== "front_desk"}
                     />
                   </div>
                   <div>
-                    <label className={LABEL_CLASS}>Permanent Address <span className="text-gray-400 normal-case font-normal tracking-normal">*</span></label>
+                    <label className={LABEL_CLASS}>Permanent Address {session?.user?.role !== "front_desk" && <span className="text-gray-400 normal-case font-normal tracking-normal">*</span>}</label>
                     <input
                       type="text"
                       value={form.permanentAddress}
                       onChange={(e) => setForm({ ...form, permanentAddress: e.target.value })}
                       placeholder="Permanent home address"
                       className={FIELD_CLASS}
-                      required
+                      required={session?.user?.role !== "front_desk"}
                     />
                   </div>
                 </div>
@@ -1348,7 +1421,7 @@ export default function LeadsPage() {
                   className="px-5 py-2.5 bg-gray-900 hover:bg-gray-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-md text-sm font-medium transition-colors inline-flex items-center gap-2"
                 >
                   {submitting && <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
-                  {submitting ? "Creating…" : "Create Lead"}
+                  {submitting ? (editingLead ? "Saving…" : "Creating…") : (editingLead ? "Save Changes" : "Create Lead")}
                 </button>
               </div>
             </form>
