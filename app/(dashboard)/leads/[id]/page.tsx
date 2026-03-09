@@ -226,6 +226,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
 
   const canNote = ["super_admin", "counsellor", "telecaller"].includes(session?.user?.role || "");
   const canConvert = ["super_admin", "counsellor"].includes(session?.user?.role || "") && !lead.convertedToStudent;
+  const canPrint = ["super_admin", "counsellor", "telecaller"].includes(session?.user?.role || "");
   const canUpdateStatus = ["super_admin", "telecaller", "counsellor"].includes(session?.user?.role || "");
   const canEdit = ["super_admin", "counsellor", "telecaller", "front_desk"].includes(session?.user?.role || "");
 
@@ -261,18 +262,22 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
           <p className="text-gray-400 text-xs mt-0.5">Lead Details</p>
         </div>
         {/* Print + Export PDF buttons */}
-        <button
-          onClick={() => window.print()}
-          className="flex items-center gap-1.5 px-3.5 py-2 border border-gray-200 hover:border-gray-400 text-gray-600 hover:text-gray-800 rounded-lg text-sm font-medium transition-colors bg-white"
-        >
-          <Printer size={14} /> Print
-        </button>
-        <button
-          onClick={() => window.print()}
-          className="flex items-center gap-1.5 px-3.5 py-2 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors"
-        >
-          <Download size={14} /> Export PDF
-        </button>
+        {canPrint && (
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-1.5 px-3.5 py-2 border border-gray-200 hover:border-gray-400 text-gray-600 hover:text-gray-800 rounded-lg text-sm font-medium transition-colors bg-white"
+          >
+            <Printer size={14} /> Print
+          </button>
+        )}
+        {canPrint && (
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors"
+          >
+            <Download size={14} /> Export PDF
+          </button>
+        )}
         {canConvert && (
           <button onClick={() => setShowConvertModal(true)} className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-colors">
             <GraduationCap size={14} /> Convert to Student
@@ -574,7 +579,13 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
         <div className="px-6 py-5">
           <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Notes &amp; Comments</p>
           <div className="space-y-3 mb-4">
-            {lead.notes?.length === 0 && <p className="text-gray-300 text-sm">No notes yet.</p>}
+            {(lead as unknown as { comments?: string }).comments && (
+              <div className="border-l-2 border-blue-200 pl-4 py-0.5 bg-blue-50 rounded-r-lg pr-3">
+                <p className="text-xs font-semibold text-blue-500 mb-0.5">Creation Note</p>
+                <p className="text-sm text-gray-700 leading-relaxed">{(lead as unknown as { comments: string }).comments}</p>
+              </div>
+            )}
+            {lead.notes?.length === 0 && !(lead as unknown as { comments?: string }).comments && <p className="text-gray-300 text-sm">No notes yet.</p>}
             {lead.notes?.map((n) => (
               <div key={n._id} className="border-l-2 border-gray-200 pl-4 py-0.5">
                 <div className="flex items-center gap-2 mb-0.5">

@@ -60,6 +60,8 @@ export interface ILeadDocument extends Document {
   course?: string;
   intakeYear?: string;
   intakeQuarter?: string;
+  // General comments / notes at creation
+  comments?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -105,7 +107,7 @@ const LeadSchema = new Schema<ILeadDocument>(
     temporaryAddress: { type: String, trim: true },
     permanentAddress: { type: String, trim: true },
     // IELTS / PTE information
-    examType: { type: String, enum: ["IELTS", "PTE", ""], default: "" },
+    examType: { type: String, enum: ["IELTS", "PTE", "Duolingo", "Oxford IELTS", "TOEFL", ""], default: "" },
     examScore: { type: String },
     examJoinDate: { type: String },
     examStartDate: { type: String },
@@ -125,6 +127,8 @@ const LeadSchema = new Schema<ILeadDocument>(
     course: { type: String, trim: true },
     intakeYear: { type: String, trim: true },
     intakeQuarter: { type: String, default: "" },
+    // General comments / notes at creation
+    comments: { type: String, trim: true },
   },
   { timestamps: true }
 );

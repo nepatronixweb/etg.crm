@@ -5,13 +5,29 @@ import User from "@/models/User";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const session = await auth();
-    if (!session || session.user.role !== "super_admin") {
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    await connectDB();
+
+    const { searchParams } = new URL(req.url);
+    const roleFilter = searchParams.get("role");
+
+    // ?role=counsellor — any authenticated user can fetch counsellors (for assignment dropdowns)
+    if (roleFilter === "counsellor") {
+      const counsellors = await User.find({ role: "counsellor", isActive: true })
+        .populate("branch", "name")
+        .select("_id name email role branch")
+        .sort({ name: 1 });
+      return NextResponse.json(counsellors);
+    }
+
+    // Full user list — super admin only
+    if (session.user.role !== "super_admin") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    await connectDB();
     const users = await User.find({}).populate("branch", "name").select("-password").sort({ createdAt: -1 });
     return NextResponse.json(users);
   } catch {

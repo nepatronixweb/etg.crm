@@ -104,6 +104,8 @@ export interface ILead {
   course?: string;
   intakeYear?: string;
   intakeQuarter?: string;
+  // General comments / notes at creation
+  comments?: string;
   createdAt: Date;
   updatedAt: Date;
 }

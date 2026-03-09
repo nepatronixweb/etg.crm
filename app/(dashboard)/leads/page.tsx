@@ -73,8 +73,8 @@ export default function LeadsPage() {
   useEffect(() => {
     fetchLeads();
     fetch("/api/branches").then((r) => r.json()).then(setBranches);
-    fetch("/api/users").then((r) => r.json()).then((u) =>
-      setCounsellors(Array.isArray(u) ? u.filter((x: { role: string }) => x.role === "counsellor") : [])
+    fetch("/api/users?role=counsellor").then((r) => r.json()).then((u) =>
+      setCounsellors(Array.isArray(u) ? u : [])
     );
     fetch("/api/settings/app").then((r) => r.json()).then((d) => {
       if (d?.paymentQrPath) setPaymentQr(d.paymentQrPath);
@@ -211,6 +211,8 @@ export default function LeadsPage() {
 
   const [statusDropdownId, setStatusDropdownId] = useState<string | null>(null);
   const [crmStageDropdownId, setCrmStageDropdownId] = useState<string | null>(null);
+  const [crmStageDropdownPos, setCrmStageDropdownPos] = useState({ top: 0, left: 0 });
+  const stageDropdownRef = useRef<HTMLDivElement>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const datePickerRef = useRef<HTMLDivElement>(null);
@@ -229,6 +231,25 @@ export default function LeadsPage() {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (stageDropdownRef.current && !stageDropdownRef.current.contains(e.target as Node)) {
+        setCrmStageDropdownId(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const openStageDropdown = (e: React.MouseEvent, leadId: string) => {
+    if (crmStageDropdownId === leadId) { setCrmStageDropdownId(null); return; }
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const popoverWidth = 256; // w-64
+    const left = Math.min(rect.left, window.innerWidth - popoverWidth - 8);
+    setCrmStageDropdownPos({ top: rect.bottom + window.scrollY + 8, left });
+    setCrmStageDropdownId(leadId);
+  };
 
   const openDatePicker = () => {
     if (dateButtonRef.current) {
@@ -637,7 +658,7 @@ export default function LeadsPage() {
                             <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
                               {/* Trigger pill */}
                               <button
-                                onClick={() => canUpdateStatus && setCrmStageDropdownId(crmStageDropdownId === lead._id ? null : lead._id)}
+                                onClick={(e) => canUpdateStatus && openStageDropdown(e, lead._id)}
                                 className={`inline-flex items-center gap-2 pl-2.5 pr-2 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 shadow-sm border ${
                                   stageInfo
                                     ? `${stageInfo.color} border-transparent hover:shadow-md`
@@ -652,65 +673,7 @@ export default function LeadsPage() {
                                 {canUpdateStatus && <ChevronDown size={10} className={`shrink-0 opacity-50 transition-transform duration-200 ${crmStageDropdownId === lead._id ? "rotate-180" : ""}`} />}
                               </button>
 
-                              {/* Dropdown panel */}
-                              {canUpdateStatus && crmStageDropdownId === lead._id && (
-                                <div className="absolute z-40 top-full left-0 mt-2 bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-gray-100 overflow-hidden w-64">
-                                  {/* Panel header */}
-                                  <div className="px-4 pt-3.5 pb-2.5 border-b border-gray-100 flex items-center justify-between">
-                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.12em]">Select CRM Stage</span>
-                                    {stageInfo && (
-                                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${stageInfo.color}`}>{stageInfo.label}</span>
-                                    )}
-                                  </div>
-
-                                  {/* Grouped options */}
-                                  <div className="overflow-y-auto max-h-72 py-1.5">
-                                    {LEAD_STAGE_GROUPS.map((group) => {
-                                      const groupStages = LEAD_STAGES.filter((s) => group.stages.includes(s.value));
-                                      return (
-                                        <div key={group.label}>
-                                          {/* Group header */}
-                                          <div className="px-3.5 pt-2.5 pb-1 flex items-center gap-2">
-                                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${group.dot}`} />
-                                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.15em]">{group.label}</span>
-                                          </div>
-                                          {groupStages.map((s) => {
-                                            const isActive = leadStage === s.value;
-                                            return (
-                                              <button
-                                                key={s.value}
-                                                onClick={() => quickUpdateLeadStage(lead._id, s.value)}
-                                                className={`w-full text-left px-3.5 py-1 flex items-center justify-between gap-3 transition-colors duration-100 ${
-                                                  isActive ? "bg-gray-50" : "hover:bg-gray-50/80"
-                                                }`}
-                                              >
-                                                <span className={`inline-block px-2.5 py-0.5 rounded-md text-[11px] font-semibold ${s.color}`}>{s.label}</span>
-                                                {isActive && (
-                                                  <span className="w-4 h-4 rounded-full bg-gray-900 flex items-center justify-center shrink-0">
-                                                    <svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3L3 5L7 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                                                  </span>
-                                                )}
-                                              </button>
-                                            );
-                                          })}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-
-                                  {/* Clear option */}
-                                  {leadStage && (
-                                    <div className="border-t border-gray-100 px-3.5 py-2">
-                                      <button
-                                        onClick={() => quickUpdateLeadStage(lead._id, "")}
-                                        className="text-[11px] text-gray-400 hover:text-red-500 font-medium transition-colors flex items-center gap-1.5"
-                                      >
-                                        <X size={10} /> Clear stage
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
+                              {/* Dropdown rendered as fixed portal – see bottom of component */}
                             </div>
                           );
                         })()}
@@ -1392,6 +1355,69 @@ export default function LeadsPage() {
           </div>
         </div>
       )}
+
+      {/* CRM Stage dropdown portal – renders outside overflow:hidden table container */}
+      {crmStageDropdownId && typeof document !== "undefined" && (() => {
+        const dropLead = leads.find((l) => l._id === crmStageDropdownId);
+        if (!dropLead) return null;
+        const dropLeadStage = (dropLead as unknown as { stage?: string }).stage;
+        const dropStageInfo = LEAD_STAGES.find((s) => s.value === dropLeadStage);
+        return createPortal(
+          <div
+            ref={stageDropdownRef}
+            style={{ position: "fixed", top: crmStageDropdownPos.top, left: crmStageDropdownPos.left, zIndex: 9999 }}
+            className="bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-gray-100 w-64"
+          >
+            <div className="px-4 pt-3.5 pb-2.5 border-b border-gray-100 flex items-center justify-between">
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.12em]">Select CRM Stage</span>
+              {dropStageInfo && (
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${dropStageInfo.color}`}>{dropStageInfo.label}</span>
+              )}
+            </div>
+            <div className="overflow-y-auto max-h-72 py-1.5">
+              {LEAD_STAGE_GROUPS.map((group) => {
+                const groupStages = LEAD_STAGES.filter((s) => group.stages.includes(s.value));
+                return (
+                  <div key={group.label}>
+                    <div className="px-3.5 pt-2.5 pb-1 flex items-center gap-2">
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${group.dot}`} />
+                      <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.15em]">{group.label}</span>
+                    </div>
+                    {groupStages.map((s) => {
+                      const isActive = dropLeadStage === s.value;
+                      return (
+                        <button
+                          key={s.value}
+                          onClick={() => quickUpdateLeadStage(crmStageDropdownId, s.value)}
+                          className={`w-full text-left px-3.5 py-1 flex items-center justify-between gap-3 transition-colors duration-100 ${isActive ? "bg-gray-50" : "hover:bg-gray-50/80"}`}
+                        >
+                          <span className={`inline-block px-2.5 py-0.5 rounded-md text-[11px] font-semibold ${s.color}`}>{s.label}</span>
+                          {isActive && (
+                            <span className="w-4 h-4 rounded-full bg-gray-900 flex items-center justify-center shrink-0">
+                              <svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3L3 5L7 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+            {dropLeadStage && (
+              <div className="border-t border-gray-100 px-3.5 py-2">
+                <button
+                  onClick={() => quickUpdateLeadStage(crmStageDropdownId, "")}
+                  className="text-[11px] text-gray-400 hover:text-red-500 font-medium transition-colors flex items-center gap-1.5"
+                >
+                  <X size={10} /> Clear stage
+                </button>
+              </div>
+            )}
+          </div>,
+          document.body
+        );
+      })()}
 
       {/* Date picker portal – renders outside overflow:hidden containers */}
       {showDatePicker && typeof document !== "undefined" && createPortal(

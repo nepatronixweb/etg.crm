@@ -141,14 +141,15 @@ async function seed() {
 
   const userData = [
     { name: "Super Admin",      email: "admin@etg.com",     password,   role: "super_admin",      branch: (branches[0] as any)._id },
-    { name: "Ram Counsellor",   email: "ram@etg.com",       password,   role: "counsellor",       branch: (branches[0] as any)._id, target: 10 },
-    { name: "Sita Counsellor",  email: "sita@etg.com",      password,   role: "counsellor",       branch: (branches[1] as any)._id, target: 10 },
+    { name: "Soni Shah",        email: "soni@etg.com",      password,   role: "counsellor",       branch: (branches[0] as any)._id, target: 10 },
+    { name: "Mahesh Mainali",   email: "mahesh@etg.com",    password,   role: "counsellor",       branch: (branches[0] as any)._id, target: 10 },
+    { name: "Ayusha Shahi",     email: "ayusha@etg.com",    password,   role: "counsellor",       branch: (branches[0] as any)._id, target: 10 },
     { name: "Maya Telecaller",  email: "maya@etg.com",      password,   role: "telecaller",       branch: (branches[0] as any)._id },
-    { name: "Hari Front Desk",  email: "hari@etg.com",      fdPassword, role: "front_desk",       branch: (branches[0] as any)._id },
-    { name: "Priya Application",email: "priya@etg.com",     password,   role: "application_team", branch: (branches[0] as any)._id },
-    { name: "Ravi Admission",   email: "ravi@etg.com",      password,   role: "admission_team",   branch: (branches[0] as any)._id },
-    { name: "Sunil Visa",       email: "sunil@etg.com",     password,   role: "visa_team",        branch: (branches[0] as any)._id },
-    { name: "Front Desk 2",     email: "frontdesk2@etg.com",fdPassword, role: "front_desk",       branch: (branches[1] as any)._id },
+    { name: "Hari Front Desk",  email: "hari@etg.com",      password: fdPassword, role: "front_desk",       branch: (branches[0] as any)._id },
+    { name: "Priya Application",email: "priya@etg.com",     password,             role: "application_team", branch: (branches[0] as any)._id },
+    { name: "Ravi Admission",   email: "ravi@etg.com",      password,             role: "admission_team",   branch: (branches[0] as any)._id },
+    { name: "Sunil Visa",       email: "sunil@etg.com",     password,             role: "visa_team",        branch: (branches[0] as any)._id },
+    { name: "Front Desk 2",     email: "frontdesk2@etg.com",password: fdPassword, role: "front_desk",       branch: (branches[1] as any)._id },
   ];
 
   for (const u of userData) {
