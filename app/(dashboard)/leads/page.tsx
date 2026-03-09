@@ -207,7 +207,7 @@ export default function LeadsPage() {
   const canCreate = ["super_admin", "telecaller", "front_desk", "counsellor"].includes(session?.user?.role || "");
   const canAssign = ["super_admin", "telecaller", "front_desk"].includes(session?.user?.role || "");
   const canUpdateStatus = ["super_admin", "counsellor", "telecaller", "front_desk"].includes(session?.user?.role || "");
-  const canExport = ["super_admin", "telecaller", "counsellor"].includes(session?.user?.role || "");
+  const canExport = ["super_admin", "telecaller"].includes(session?.user?.role || "");
 
   const [statusDropdownId, setStatusDropdownId] = useState<string | null>(null);
   const [crmStageDropdownId, setCrmStageDropdownId] = useState<string | null>(null);

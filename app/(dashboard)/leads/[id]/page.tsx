@@ -226,7 +226,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
 
   const canNote = ["super_admin", "counsellor", "telecaller"].includes(session?.user?.role || "");
   const canConvert = ["super_admin", "counsellor"].includes(session?.user?.role || "") && !lead.convertedToStudent;
-  const canPrint = ["super_admin", "counsellor", "telecaller"].includes(session?.user?.role || "");
+  const canPrint = ["super_admin", "telecaller"].includes(session?.user?.role || "");
   const canUpdateStatus = ["super_admin", "telecaller", "counsellor"].includes(session?.user?.role || "");
   const canEdit = ["super_admin", "counsellor", "telecaller", "front_desk"].includes(session?.user?.role || "");
 

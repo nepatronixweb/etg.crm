@@ -139,7 +139,7 @@ export default function StudentsPage() {
   };
 
   const canCreate = ["super_admin", "counsellor", "front_desk"].includes(session?.user?.role || "");
-  const canExport = ["super_admin", "telecaller", "counsellor"].includes(session?.user?.role || "");
+  const canExport = ["super_admin", "telecaller"].includes(session?.user?.role || "");
   const canUpdateStage = ["super_admin", "counsellor", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
 
   const filtered = students.filter((s) => {
