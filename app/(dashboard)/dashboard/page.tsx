@@ -178,13 +178,13 @@ export default function DashboardPage() {
         .then((d) => setNotifs(d.notifications ?? []))
         .catch(() => {});
     } else if (isCounsellor) {
-      // Fetch my assigned leads
+      // Fetch my assigned leads (all, for stats)
       fetch("/api/leads")
         .then((r) => r.json())
-        .then((d) => setAssignedLeads(Array.isArray(d) ? d.slice(0, 8) : []))
+        .then((d) => setAssignedLeads(Array.isArray(d) ? d : []))
         .catch(() => {});
       // Fetch my notifications
-      fetch("/api/notifications?limit=5")
+      fetch("/api/notifications?limit=6")
         .then((r) => r.json())
         .then((d) => setNotifs(d.notifications ?? []))
         .catch(() => {});
@@ -665,103 +665,157 @@ export default function DashboardPage() {
       {/* Non-admin quick links */}
       {!isAdmin && (
         <>
-          {/* Counsellor: Notifications Banner */}
-          {isCounsellor && notifs.filter((n) => !n.read).length > 0 && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg px-5 py-4 flex items-start gap-3">
-              <Bell size={16} className="text-blue-500 mt-0.5 shrink-0" />
-              <div>
-                <p className="text-sm font-semibold text-blue-800">
-                  You have {notifs.filter((n) => !n.read).length} new notification{notifs.filter((n) => !n.read).length > 1 ? "s" : ""}
-                </p>
-                <p className="text-xs text-blue-600 mt-0.5">Check the bell icon in the top-right to view them.</p>
-              </div>
-            </div>
-          )}
+          {/* ── Counsellor Dashboard ── */}
+          {isCounsellor && (() => {
+            const total   = assignedLeads.length;
+            const heated  = assignedLeads.filter((l) => l.status === "heated").length;
+            const hot     = assignedLeads.filter((l) => l.status === "hot").length;
+            const warm    = assignedLeads.filter((l) => l.status === "warm").length;
+            const ooc     = assignedLeads.filter((l) => l.status === "out_of_contact").length;
+            const unread  = notifs.filter((n) => !n.read).length;
+            const recentLeads = assignedLeads.slice(0, 8);
+            return (
+              <div className="space-y-5">
 
-          {/* Counsellor: My Assigned Leads */}
-          {isCounsellor && (
-            <div className="bg-white border border-gray-200 rounded-lg">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-                <div className="flex items-center gap-2">
-                  <Users size={15} className="text-gray-500" />
-                  <h2 className="text-sm font-semibold text-gray-800">My Assigned Leads</h2>
-                </div>
-                <Link
-                  href="/leads"
-                  className="text-xs text-gray-500 hover:text-gray-800 flex items-center gap-1 transition-colors"
-                >
-                  View all <ChevronRight size={12} />
-                </Link>
-              </div>
-
-              {assignedLeads.length === 0 ? (
-                <div className="px-5 py-10 text-center">
-                  <Users size={28} className="text-gray-200 mx-auto mb-2" />
-                  <p className="text-sm text-gray-400">No leads assigned yet</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-50">
-                  {assignedLeads.map((lead) => (
-                    <Link
-                      key={lead._id}
-                      href={`/leads/${lead._id}`}
-                      className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors group"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-7 h-7 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center shrink-0">
-                          <span className="text-xs font-semibold text-gray-600">
-                            {lead.name.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">{lead.name}</p>
-                          <p className="text-xs text-gray-400 truncate">
-                            {lead.phone}
-                            {lead.interestedCountry ? ` · ${lead.interestedCountry}` : ""}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0 ml-3">
-                        <span className={`text-xs px-2 py-0.5 rounded font-medium ${getStatusColor(lead.status)}`}>
-                          {lead.status?.replace("_", " ")}
-                        </span>
-                        <ChevronRight size={13} className="text-gray-300 group-hover:text-gray-500 transition-colors" />
-                      </div>
+                {/* Stats Row */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  {[
+                    { label: "Total Leads",      value: total,  color: "bg-gray-900",    text: "text-white",        sub: "Assigned to you" },
+                    { label: "Heated",           value: heated, color: "bg-red-500",     text: "text-white",        sub: "Needs urgent follow-up" },
+                    { label: "Hot",              value: hot,    color: "bg-orange-400",  text: "text-white",        sub: "High interest" },
+                    { label: "Warm",             value: warm,   color: "bg-yellow-400",  text: "text-gray-900",     sub: "Active prospects" },
+                  ].map((s) => (
+                    <Link key={s.label} href="/leads"
+                      className={`${s.color} rounded-xl p-5 hover:opacity-90 transition-opacity`}>
+                      <p className={`text-3xl font-bold tracking-tight ${s.text}`}>{s.value}</p>
+                      <p className={`text-sm font-semibold mt-1 ${s.text}`}>{s.label}</p>
+                      <p className={`text-xs mt-0.5 opacity-70 ${s.text}`}>{s.sub}</p>
                     </Link>
                   ))}
                 </div>
-              )}
-            </div>
-          )}
 
-          {/* Counsellor: Recent Notifications */}
-          {isCounsellor && notifs.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-lg">
-              <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100">
-                <Bell size={15} className="text-gray-500" />
-                <h2 className="text-sm font-semibold text-gray-800">Recent Notifications</h2>
-              </div>
-              <div className="divide-y divide-gray-50">
-                {notifs.map((n) => (
-                  <div key={n._id} className={`px-5 py-3.5 flex items-start gap-3 ${n.read ? "" : "bg-blue-50"}`}>
-                    <div className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${n.read ? "bg-gray-200" : "bg-blue-500"}`} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-medium text-gray-800">{n.title}</p>
-                        <span className="text-xs text-gray-400 whitespace-nowrap shrink-0">{formatDateTime(n.createdAt)}</span>
-                      </div>
-                      <p className="text-xs text-gray-500 mt-0.5">{n.message}</p>
-                      {n.link && (
-                        <Link href={n.link} className="text-xs text-blue-600 hover:underline mt-0.5 inline-block">
-                          View lead →
-                        </Link>
-                      )}
-                    </div>
+                {/* Out of contact pill */}
+                {ooc > 0 && (
+                  <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                    <XCircle size={15} className="text-gray-400 shrink-0" />
+                    <p className="text-sm text-gray-600">
+                      <span className="font-semibold text-gray-900">{ooc} lead{ooc > 1 ? "s" : ""}</span> marked as <span className="font-medium">Out of Contact</span> — consider re-engaging.
+                    </p>
+                    <Link href="/leads" className="ml-auto text-xs text-blue-600 hover:underline whitespace-nowrap">View →</Link>
                   </div>
-                ))}
+                )}
+
+                {/* Main Content: Leads + Notifications */}
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+
+                  {/* Assigned Leads — wider */}
+                  <div className="lg:col-span-3 bg-white border border-gray-200 rounded-xl flex flex-col">
+                    <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-gray-100 rounded-md">
+                          <Users size={14} className="text-gray-600" />
+                        </div>
+                        <h2 className="text-sm font-semibold text-gray-900">My Assigned Leads</h2>
+                        {total > 0 && (
+                          <span className="text-[11px] font-bold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{total}</span>
+                        )}
+                      </div>
+                      <Link href="/leads" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                        View all <ChevronRight size={12} />
+                      </Link>
+                    </div>
+
+                    {recentLeads.length === 0 ? (
+                      <div className="flex-1 flex flex-col items-center justify-center py-16 text-center px-6">
+                        <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                          <Users size={20} className="text-gray-400" />
+                        </div>
+                        <p className="text-sm font-medium text-gray-600">No leads assigned yet</p>
+                        <p className="text-xs text-gray-400 mt-1">New leads assigned to you will appear here</p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-gray-50 flex-1">
+                        {recentLeads.map((lead) => (
+                          <Link
+                            key={lead._id}
+                            href={`/leads/${lead._id}`}
+                            className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50/80 transition-colors group"
+                          >
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center shrink-0">
+                              <span className="text-xs font-bold text-gray-700">{lead.name.charAt(0).toUpperCase()}</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-gray-900 truncate">{lead.name}</p>
+                              <p className="text-xs text-gray-400 truncate">
+                                {lead.phone}{lead.interestedCountry ? ` · ${lead.interestedCountry}` : ""}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${getStatusColor(lead.status)}`}>
+                                {STATUS_LABELS[lead.status] ?? lead.status}
+                              </span>
+                              <ChevronRight size={13} className="text-gray-300 group-hover:text-gray-500 transition-colors" />
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                    {total > 8 && (
+                      <div className="px-5 py-3 border-t border-gray-100">
+                        <Link href="/leads" className="text-xs text-blue-600 hover:underline">+ {total - 8} more leads</Link>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Notifications — narrower */}
+                  <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl flex flex-col">
+                    <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-gray-100 rounded-md">
+                          <Bell size={14} className="text-gray-600" />
+                        </div>
+                        <h2 className="text-sm font-semibold text-gray-900">Notifications</h2>
+                        {unread > 0 && (
+                          <span className="text-[10px] font-bold bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">
+                            {unread} new
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {notifs.length === 0 ? (
+                      <div className="flex-1 flex flex-col items-center justify-center py-12 text-center px-6">
+                        <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                          <Bell size={20} className="text-gray-400" />
+                        </div>
+                        <p className="text-sm font-medium text-gray-600">All caught up!</p>
+                        <p className="text-xs text-gray-400 mt-1">No new notifications</p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-gray-50 flex-1">
+                        {notifs.map((n) => (
+                          <div key={n._id} className={`px-4 py-3.5 flex items-start gap-3 ${!n.read ? "bg-blue-50/60" : ""}`}>
+                            <div className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${n.read ? "bg-gray-200" : "bg-blue-500"}`} />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-semibold text-gray-800 leading-snug">{n.title}</p>
+                              <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{n.message}</p>
+                              <div className="flex items-center justify-between mt-1.5">
+                                {n.link ? (
+                                  <Link href={n.link} className="text-[11px] text-blue-600 hover:underline font-medium">View lead →</Link>
+                                ) : <span />}
+                                <span className="text-[11px] text-gray-400">{formatDateTime(n.createdAt)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Generic quick links for non-counsellor, non-admin roles */}
           {!isCounsellor && (
