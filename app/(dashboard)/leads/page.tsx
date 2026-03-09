@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useSession } from "next-auth/react";
 import { Plus, Search, X, Users, Paperclip, FileText, Trash2, ChevronDown, MessageSquare, MoreVertical, Phone, Mail, Calendar, FileSpreadsheet } from "lucide-react";
 import { formatDate, formatDateTime, getStatusColor, COUNTRIES, SERVICES, LEAD_STAGES, LEAD_STAGE_GROUPS, getLeadStageColor, getLeadStageDotColor } from "@/lib/utils";
@@ -212,16 +213,36 @@ export default function LeadsPage() {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const datePickerRef = useRef<HTMLDivElement>(null);
+  const dateButtonRef = useRef<HTMLButtonElement>(null);
+  const [datePickerPos, setDatePickerPos] = useState({ top: 0, left: 0 });
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (datePickerRef.current && !datePickerRef.current.contains(e.target as Node)) {
+      if (
+        datePickerRef.current && !datePickerRef.current.contains(e.target as Node) &&
+        dateButtonRef.current && !dateButtonRef.current.contains(e.target as Node)
+      ) {
         setShowDatePicker(false);
       }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  const openDatePicker = () => {
+    if (dateButtonRef.current) {
+      const rect = dateButtonRef.current.getBoundingClientRect();
+      const popoverWidth = 288; // w-72
+      // Right-align to button, but clamp so it never goes left of the button's container
+      const idealLeft = rect.right - popoverWidth;
+      const clampedLeft = Math.max(rect.left, Math.min(idealLeft, window.innerWidth - popoverWidth - 8));
+      setDatePickerPos({
+        top: rect.bottom + window.scrollY + 8,
+        left: clampedLeft,
+      });
+    }
+    setShowDatePicker((p) => !p);
+  };
 
   const quickUpdateLeadStage = async (leadId: string, newStage: string) => {
     setCrmStageDropdownId(null);
@@ -330,10 +351,10 @@ export default function LeadsPage() {
       </div>
 
       {/* Filter + Search Bar */}
-      <div className="bg-white border border-gray-200 rounded-lg">
+      <div className="bg-white border border-gray-200 rounded-lg overflow-visible">
         <div className="flex items-stretch gap-0 divide-x divide-gray-200 flex-wrap">
           {/* Lead Stage */}
-          <div className="flex-1 min-w-36 relative">
+          <div className="flex-1 min-w-[120px] sm:min-w-[140px] relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Stage</label>
             <select
               value={filterLeadStage}
@@ -346,7 +367,7 @@ export default function LeadsPage() {
             <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
           {/* Lead Status */}
-          <div className="flex-1 min-w-36 relative">
+          <div className="flex-1 min-w-[120px] sm:min-w-[140px] relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Status</label>
             <select
               value={filterStatus}
@@ -363,7 +384,7 @@ export default function LeadsPage() {
           </div>
 
           {/* Lead Source */}
-          <div className="flex-1 min-w-36 relative">
+          <div className="flex-1 min-w-[120px] sm:min-w-[140px] relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Source</label>
             <select
               value={filterSource}
@@ -377,7 +398,7 @@ export default function LeadsPage() {
           </div>
 
           {/* All Services */}
-          <div className="flex-1 min-w-36 relative">
+          <div className="flex-1 min-w-[120px] sm:min-w-[140px] relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">All Services</label>
             <select
               value={filterService}
@@ -391,7 +412,7 @@ export default function LeadsPage() {
           </div>
 
           {/* Academic Year */}
-          <div className="flex-1 min-w-36 relative">
+          <div className="flex-1 min-w-[120px] sm:min-w-[140px] relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Acad. Year</label>
             <select
               value={filterAcademicYear}
@@ -407,7 +428,7 @@ export default function LeadsPage() {
           </div>
 
           {/* Apply Level */}
-          <div className="flex-1 min-w-36 relative">
+          <div className="flex-1 min-w-[120px] sm:min-w-[140px] relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Apply Level</label>
             <select
               value={filterApplyLevel}
@@ -423,7 +444,7 @@ export default function LeadsPage() {
           </div>
 
           {/* Follow Up (Assigned Counsellor) */}
-          <div className="flex-1 min-w-36 relative">
+          <div className="flex-1 min-w-[120px] sm:min-w-[140px] relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Follow Up</label>
             <select
               value={filterAssignedTo}
@@ -437,7 +458,7 @@ export default function LeadsPage() {
           </div>
 
           {/* Search */}
-          <div className="flex-2 min-w-52 relative">
+          <div className="flex-[2] min-w-[180px] sm:min-w-52 relative">
             <label className="absolute left-10 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Search</label>
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input
@@ -454,9 +475,10 @@ export default function LeadsPage() {
           </div>
 
           {/* Date Range Picker */}
-          <div className="relative flex items-center justify-center px-4" ref={datePickerRef}>
+          <div className="flex items-center justify-center px-3 sm:px-4 shrink-0">
             <button
-              onClick={() => setShowDatePicker((p) => !p)}
+              ref={dateButtonRef}
+              onClick={openDatePicker}
               title="Filter by date"
               className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-md border transition-colors ${
                 filterDateFrom || filterDateTo
@@ -467,47 +489,6 @@ export default function LeadsPage() {
               <Calendar size={14} />
               {filterDateFrom || filterDateTo ? "Date set" : "Date"}
             </button>
-            {showDatePicker && (
-              <div className="absolute right-0 top-full mt-2 w-68 bg-white border border-gray-200 rounded-2xl shadow-2xl z-50 p-5">
-                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-4">Filter by Date</p>
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">From</label>
-                    <input
-                      type="date"
-                      value={filterDateFrom}
-                      onChange={(e) => setFilterDateFrom(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">To</label>
-                    <input
-                      type="date"
-                      value={filterDateTo}
-                      onChange={(e) => setFilterDateTo(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-colors"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2 pt-1">
-                    <button
-                      onClick={() => setShowDatePicker(false)}
-                      className="flex-1 py-2 rounded-lg bg-gray-900 text-white text-xs font-semibold hover:bg-gray-700 transition-colors"
-                    >
-                      Apply
-                    </button>
-                    {(filterDateFrom || filterDateTo) && (
-                      <button
-                        onClick={() => { setFilterDateFrom(""); setFilterDateTo(""); setShowDatePicker(false); }}
-                        className="flex-1 py-2 rounded-lg border border-gray-200 text-gray-500 text-xs font-semibold hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors"
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
 
         </div>
@@ -1407,6 +1388,54 @@ export default function LeadsPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Date picker portal – renders outside overflow:hidden containers */}
+      {showDatePicker && typeof document !== "undefined" && createPortal(
+        <div
+          ref={datePickerRef}
+          style={{ position: "fixed", top: datePickerPos.top, left: datePickerPos.left, zIndex: 9999 }}
+          className="w-72 bg-white border border-gray-200 rounded-2xl shadow-2xl p-5"
+        >
+          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-4">Filter by Date</p>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">From</label>
+              <input
+                type="date"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">To</label>
+              <input
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-colors"
+              />
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                onClick={() => setShowDatePicker(false)}
+                className="flex-1 py-2 rounded-lg bg-gray-900 text-white text-xs font-semibold hover:bg-gray-700 transition-colors"
+              >
+                Apply
+              </button>
+              {(filterDateFrom || filterDateTo) && (
+                <button
+                  onClick={() => { setFilterDateFrom(""); setFilterDateTo(""); setShowDatePicker(false); }}
+                  className="flex-1 py-2 rounded-lg border border-gray-200 text-gray-500 text-xs font-semibold hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

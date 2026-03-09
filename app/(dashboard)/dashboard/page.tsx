@@ -765,11 +765,10 @@ export default function DashboardPage() {
 
           {/* Generic quick links for non-counsellor, non-admin roles */}
           {!isCounsellor && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {[
                 { label: "Leads", href: "/leads", icon: Users, desc: "View and manage your assigned leads" },
                 { label: "Students", href: "/students", icon: UserCheck, desc: "Track your student progress" },
-                { label: "Documents", href: "/documents", icon: FolderOpen, desc: "Manage student documents" },
               ].map((item) => {
                 const Icon = item.icon;
                 return (
