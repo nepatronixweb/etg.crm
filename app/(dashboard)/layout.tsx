@@ -284,6 +284,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div className="flex-1 min-w-0">
               <p className="text-white text-xs font-medium truncate">{session?.user?.name}</p>
               <p className="text-gray-400 text-xs truncate">{getRoleLabel(role)}</p>
+              <p className="text-gray-500 text-[10px] truncate">{session?.user?.email}</p>
             </div>
           </div>
           <button onClick={() => signOut({ callbackUrl: "/login" })}

@@ -207,6 +207,7 @@ export default function LeadsPage() {
   const canCreate = ["super_admin", "telecaller", "front_desk", "counsellor"].includes(session?.user?.role || "");
   const canAssign = ["super_admin", "telecaller", "front_desk"].includes(session?.user?.role || "");
   const canUpdateStatus = ["super_admin", "counsellor", "telecaller", "front_desk"].includes(session?.user?.role || "");
+  const canExport = ["super_admin", "telecaller", "counsellor"].includes(session?.user?.role || "");
 
   const [statusDropdownId, setStatusDropdownId] = useState<string | null>(null);
   const [crmStageDropdownId, setCrmStageDropdownId] = useState<string | null>(null);
@@ -338,6 +339,7 @@ export default function LeadsPage() {
               Add Lead
             </button>
           )}
+          {canExport && (
           <button
             onClick={exportToExcel}
             disabled={loading || filtered.length === 0}
@@ -347,6 +349,7 @@ export default function LeadsPage() {
             <FileSpreadsheet size={15} />
             Export{activeFilterCount > 0 ? ` (${filtered.length})` : ""}
           </button>
+          )}
         </div>
       </div>
 

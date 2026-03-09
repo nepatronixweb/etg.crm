@@ -139,6 +139,7 @@ export default function StudentsPage() {
   };
 
   const canCreate = ["super_admin", "counsellor", "front_desk"].includes(session?.user?.role || "");
+  const canExport = ["super_admin", "telecaller", "counsellor"].includes(session?.user?.role || "");
   const canUpdateStage = ["super_admin", "counsellor", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
 
   const filtered = students.filter((s) => {
@@ -222,6 +223,7 @@ export default function StudentsPage() {
               Add Student
             </button>
           )}
+          {canExport && (
           <button
             onClick={exportToExcel}
             disabled={loading || filtered.length === 0}
@@ -231,6 +233,7 @@ export default function StudentsPage() {
             <FileSpreadsheet size={15} />
             Export{activeFilterCount > 0 ? ` (${filtered.length})` : ""}
           </button>
+          )}
         </div>
       </div>
 
