@@ -28,6 +28,7 @@ export interface ILeadDocument extends Document {
   lastReminderAt?: Date;
   convertedToStudent: boolean;
   stage?: string;
+  stageDates?: Record<string, Date>;
   // Multiple interested countries & universities
   interestedCountries: { country: string; universityName?: string }[];
   // Parent information
@@ -92,6 +93,7 @@ const LeadSchema = new Schema<ILeadDocument>(
     lastReminderAt: { type: Date },
     convertedToStudent: { type: Boolean, default: false },
     stage: { type: String, default: "" },
+    stageDates: { type: Map, of: Date, default: {} },
     // Multiple interested countries & universities
     interestedCountries: {
       type: [{ country: { type: String }, universityName: { type: String, default: "" } }],

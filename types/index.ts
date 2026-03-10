@@ -72,6 +72,7 @@ export interface ILead {
   lastReminderAt?: Date;
   convertedToStudent: boolean;
   stage?: string;
+  stageDates?: Record<string, string>;
   // Multiple interested countries & universities
   interestedCountries?: { country: string; universityName?: string }[];
   // Parent information

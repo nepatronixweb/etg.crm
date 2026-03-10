@@ -76,7 +76,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const { id } = await params;
     await connectDB();
     const body = await req.json();
-    const lead = await Lead.findByIdAndUpdate(id, { $set: body }, { new: true });
+    // Auto-record date when a stage is set
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const update: Record<string, any> = { ...body };
+    if (body.stage) {
+      update[`stageDates.${body.stage}`] = new Date();
+    }
+    const lead = await Lead.findByIdAndUpdate(id, { $set: update }, { new: true });
     if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     return NextResponse.json(lead);
   } catch {

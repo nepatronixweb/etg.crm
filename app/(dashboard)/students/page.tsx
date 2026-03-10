@@ -1,5 +1,6 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { formatDate, getStatusColor, COUNTRIES, SERVICES, LEAD_STAGES, LEAD_STAGE_GROUPS, getLeadStageColor, getLeadStageDotColor } from "@/lib/utils";
 import { IStudent } from "@/types";
 import Link from "next/link";
@@ -70,6 +71,31 @@ export default function StudentsPage() {
   const [stageDropdownId, setStageDropdownId] = useState<string | null>(null);
   const [crmStageDropdownId, setCrmStageDropdownId] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [crmStagePanelPos, setCrmStagePanelPos] = useState({ top: 0, left: 0 });
+  const crmStagePanelRef = useRef<HTMLDivElement>(null);
+  const [crmStageSearch, setCrmStageSearch] = useState("");
+  const [pipelinePanelPos, setPipelinePanelPos] = useState({ top: 0, left: 0 });
+  const pipelinePanelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (crmStagePanelRef.current && !crmStagePanelRef.current.contains(e.target as Node)) {
+        setCrmStageDropdownId(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (pipelinePanelRef.current && !pipelinePanelRef.current.contains(e.target as Node)) {
+        setStageDropdownId(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const quickUpdateCrmStage = async (studentId: string, newStage: string) => {
     setCrmStageDropdownId(null);
@@ -89,6 +115,25 @@ export default function StudentsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ currentStage: newStage }),
     });
+  };
+
+  const openCrmStagePortal = (e: React.MouseEvent, studentId: string) => {
+    if (crmStageDropdownId === studentId) { setCrmStageDropdownId(null); return; }
+    setCrmStageSearch("");
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const popoverWidth = 320;
+    const left = Math.min(rect.left, window.innerWidth - popoverWidth - 8);
+    setCrmStagePanelPos({ top: rect.bottom + window.scrollY + 8, left });
+    setCrmStageDropdownId(studentId);
+  };
+
+  const openPipelinePortal = (e: React.MouseEvent, studentId: string) => {
+    if (stageDropdownId === studentId) { setStageDropdownId(null); return; }
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const popoverWidth = 192;
+    const left = Math.min(rect.left, window.innerWidth - popoverWidth - 8);
+    setPipelinePanelPos({ top: rect.bottom + window.scrollY + 8, left });
+    setStageDropdownId(studentId);
   };
 
   const formatStudentDateTime = (d: Date | string) => {
@@ -469,9 +514,8 @@ export default function StudentsPage() {
                           const dotColor = crmStage ? getLeadStageDotColor(crmStage) : "";
                           return (
                             <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
-                              {/* Trigger pill */}
                               <button
-                                onClick={() => canUpdateStage && setCrmStageDropdownId(crmStageDropdownId === student._id ? null : student._id)}
+                                onClick={(e) => canUpdateStage && openCrmStagePortal(e, student._id)}
                                 className={`inline-flex items-center gap-2 pl-2.5 pr-2 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 shadow-sm border ${
                                   stageInfo
                                     ? `${stageInfo.color} border-transparent hover:shadow-md`
@@ -485,66 +529,7 @@ export default function StudentsPage() {
                                 <span className="max-w-32 truncate">{stageInfo ? stageInfo.label : "Set Stage"}</span>
                                 {canUpdateStage && <ChevronDown size={10} className={`shrink-0 opacity-50 transition-transform duration-200 ${crmStageDropdownId === student._id ? "rotate-180" : ""}`} />}
                               </button>
-
-                              {/* Dropdown panel */}
-                              {canUpdateStage && crmStageDropdownId === student._id && (
-                                <div className="absolute z-40 top-full left-0 mt-2 bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-gray-100 overflow-hidden w-64">
-                                  {/* Panel header */}
-                                  <div className="px-4 pt-3.5 pb-2.5 border-b border-gray-100 flex items-center justify-between">
-                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.12em]">Select CRM Stage</span>
-                                    {stageInfo && (
-                                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${stageInfo.color}`}>{stageInfo.label}</span>
-                                    )}
-                                  </div>
-
-                                  {/* Grouped options */}
-                                  <div className="overflow-y-auto max-h-72 py-1.5">
-                                    {LEAD_STAGE_GROUPS.map((group) => {
-                                      const groupStages = LEAD_STAGES.filter((s) => group.stages.includes(s.value));
-                                      return (
-                                        <div key={group.label}>
-                                          {/* Group header */}
-                                          <div className="px-3.5 pt-2.5 pb-1 flex items-center gap-2">
-                                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${group.dot}`} />
-                                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.15em]">{group.label}</span>
-                                          </div>
-                                          {groupStages.map((s) => {
-                                            const isActive = crmStage === s.value;
-                                            return (
-                                              <button
-                                                key={s.value}
-                                                onClick={() => quickUpdateCrmStage(student._id, s.value)}
-                                                className={`w-full text-left px-3.5 py-1 flex items-center justify-between gap-3 transition-colors duration-100 ${
-                                                  isActive ? "bg-gray-50" : "hover:bg-gray-50/80"
-                                                }`}
-                                              >
-                                                <span className={`inline-block px-2.5 py-0.5 rounded-md text-[11px] font-semibold ${s.color}`}>{s.label}</span>
-                                                {isActive && (
-                                                  <span className="w-4 h-4 rounded-full bg-gray-900 flex items-center justify-center shrink-0">
-                                                    <svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3L3 5L7 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                                                  </span>
-                                                )}
-                                              </button>
-                                            );
-                                          })}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-
-                                  {/* Clear option */}
-                                  {crmStage && (
-                                    <div className="border-t border-gray-100 px-3.5 py-2">
-                                      <button
-                                        onClick={() => quickUpdateCrmStage(student._id, "")}
-                                        className="text-[11px] text-gray-400 hover:text-red-500 font-medium transition-colors flex items-center gap-1.5"
-                                      >
-                                        <X size={10} /> Clear stage
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
+                              {/* Dropdown rendered as fixed portal – see bottom of component */}
                             </div>
                           );
                         })()}
@@ -554,24 +539,13 @@ export default function StudentsPage() {
                       <td className="px-4 py-3.5 min-w-36">
                         <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
                           <button
-                            onClick={() => canUpdateStage && setStageDropdownId(stageDropdownId === student._id ? null : student._id)}
+                            onClick={(e) => canUpdateStage && openPipelinePortal(e, student._id)}
                             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${getStatusColor(student.currentStage)} ${canUpdateStage ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
                           >
                             <span className="capitalize max-w-24 truncate">{student.currentStage}</span>
                             {canUpdateStage && <ChevronDown size={11} className={`shrink-0 transition-transform ${stageDropdownId === student._id ? "rotate-180" : ""}`} />}
                           </button>
-                          {canUpdateStage && stageDropdownId === student._id && (
-                            <div className="absolute z-30 top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden min-w-36">
-                              {STAGES.map((s) => (
-                                <button key={s} onClick={() => quickUpdateStage(student._id, s)}
-                                  className={`w-full text-left px-3 py-2 text-xs font-medium capitalize transition-colors flex items-center justify-between ${
-                                    student.currentStage === s ? "bg-gray-100 text-gray-900 font-semibold" : "text-gray-600 hover:bg-gray-50"
-                                  }`}>
-                                  {s}{student.currentStage === s && <span className="text-gray-500">✓</span>}
-                                </button>
-                              ))}
-                            </div>
-                          )}
+                          {/* Dropdown rendered as fixed portal – see bottom of component */}
                         </div>
                       </td>
 
@@ -771,6 +745,126 @@ export default function StudentsPage() {
           </div>
         </div>
       )}
+
+      {/* CRM Stage dropdown portal */}
+      {crmStageDropdownId && typeof document !== "undefined" && (() => {
+        const dropStudent = students.find((s) => s._id === crmStageDropdownId);
+        if (!dropStudent) return null;
+        const dropCrmStage = (dropStudent as unknown as { stage?: string }).stage;
+        const dropStageInfo = LEAD_STAGES.find((s) => s.value === dropCrmStage);
+        const searched = crmStageSearch.trim().toLowerCase();
+        const filteredStages = searched ? LEAD_STAGES.filter((s) => s.label.toLowerCase().includes(searched)) : null;
+        return createPortal(
+          <div
+            ref={crmStagePanelRef}
+            style={{ position: "fixed", top: crmStagePanelPos.top, left: crmStagePanelPos.left, zIndex: 9999 }}
+            className="bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-gray-100 w-80"
+          >
+            <div className="px-4 pt-3.5 pb-2.5 border-b border-gray-100 flex items-center justify-between">
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.12em]">Select CRM Stage</span>
+              {dropStageInfo && (
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${dropStageInfo.color}`}>{dropStageInfo.label}</span>
+              )}
+            </div>
+            <div className="px-3 py-2 border-b border-gray-100">
+              <div className="relative">
+                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <input
+                  autoFocus
+                  value={crmStageSearch}
+                  onChange={(e) => setCrmStageSearch(e.target.value)}
+                  placeholder="Search stages…"
+                  className="w-full pl-7 pr-7 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400 text-gray-800 placeholder-gray-300"
+                />
+                {crmStageSearch && (
+                  <button onClick={() => setCrmStageSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={10} /></button>
+                )}
+              </div>
+            </div>
+            <div className="overflow-y-auto max-h-[50vh] py-1.5">
+              {filteredStages ? (
+                filteredStages.length === 0
+                  ? <p className="text-xs text-gray-400 text-center py-5">No stages match &ldquo;{crmStageSearch}&rdquo;</p>
+                  : filteredStages.map((s) => {
+                      const isActive = dropCrmStage === s.value;
+                      return (
+                        <button key={s.value} onClick={() => quickUpdateCrmStage(crmStageDropdownId, s.value)}
+                          className={`w-full text-left px-3.5 py-2 flex items-center justify-between gap-3 transition-colors duration-100 ${isActive ? "bg-gray-50" : "hover:bg-gray-50/80"}`}
+                        >
+                          <span className={`inline-block px-2.5 py-1 rounded-lg text-[11px] font-semibold ${s.color}`}>{s.label}</span>
+                          {isActive && <span className="w-4 h-4 rounded-full bg-gray-900 flex items-center justify-center shrink-0"><svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3L3 5L7 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span>}
+                        </button>
+                      );
+                    })
+              ) : (
+                LEAD_STAGE_GROUPS.map((group) => {
+                  const groupStages = LEAD_STAGES.filter((s) => group.stages.includes(s.value));
+                  return (
+                    <div key={group.label}>
+                      <div className="px-3.5 pt-3 pb-1 flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${group.dot}`} />
+                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.15em]">{group.label}</span>
+                      </div>
+                      {groupStages.map((s) => {
+                        const isActive = dropCrmStage === s.value;
+                        return (
+                          <button key={s.value} onClick={() => quickUpdateCrmStage(crmStageDropdownId, s.value)}
+                            className={`w-full text-left px-3.5 py-2 flex items-center justify-between gap-3 transition-colors duration-100 ${isActive ? "bg-gray-50" : "hover:bg-gray-50/80"}`}
+                          >
+                            <span className={`inline-block px-2.5 py-1 rounded-lg text-[11px] font-semibold ${s.color}`}>{s.label}</span>
+                            {isActive && <span className="w-4 h-4 rounded-full bg-gray-900 flex items-center justify-center shrink-0"><svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3L3 5L7 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            {dropCrmStage && (
+              <div className="border-t border-gray-100 px-3.5 py-2">
+                <button onClick={() => quickUpdateCrmStage(crmStageDropdownId, "")}
+                  className="text-[11px] text-gray-400 hover:text-red-500 font-medium transition-colors flex items-center gap-1.5">
+                  <X size={10} /> Clear stage
+                </button>
+              </div>
+            )}
+          </div>,
+          document.body
+        );
+      })()}
+
+      {/* Pipeline dropdown portal */}
+      {stageDropdownId && typeof document !== "undefined" && (() => {
+        const dropStudent = students.find((s) => s._id === stageDropdownId);
+        if (!dropStudent) return null;
+        return createPortal(
+          <div
+            ref={pipelinePanelRef}
+            style={{ position: "fixed", top: pipelinePanelPos.top, left: pipelinePanelPos.left, zIndex: 9999 }}
+            className="bg-white rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-gray-100 w-48 overflow-hidden"
+          >
+            <div className="px-4 pt-3 pb-2 border-b border-gray-100">
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.12em]">Select Pipeline</span>
+            </div>
+            <div className="py-1.5">
+              {STAGES.map((s) => {
+                const isActive = dropStudent.currentStage === s;
+                return (
+                  <button key={s} onClick={() => quickUpdateStage(stageDropdownId, s)}
+                    className={`w-full text-left px-4 py-2.5 text-xs font-medium capitalize transition-colors flex items-center justify-between ${
+                      isActive ? "bg-gray-50 text-gray-900 font-semibold" : "text-gray-600 hover:bg-gray-50"
+                    }`}>
+                    {s}
+                    {isActive && <svg width="8" height="6" viewBox="0 0 8 6" fill="none" className="shrink-0"><path d="M1 3L3 5L7 1" stroke="#111" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>,
+          document.body
+        );
+      })()}
     </div>
   );
 }

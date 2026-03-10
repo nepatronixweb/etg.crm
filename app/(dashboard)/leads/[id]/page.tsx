@@ -2,7 +2,7 @@
 import { use, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { ArrowLeft, UserPlus, MapPin, Phone, Mail, Calendar, Plus, X, GraduationCap, Globe, Trash2, ChevronDown, Users, BookOpen, Home, Award, CreditCard, ClipboardList, Printer, Download } from "lucide-react";
-import { formatDate, formatDateTime, getStatusColor, getRoleLabel, COUNTRIES, LEAD_STAGES, getLeadStageDotColor } from "@/lib/utils";
+import { formatDate, formatDateTime, getStatusColor, getRoleLabel, COUNTRIES, LEAD_STAGES, LEAD_STAGE_GROUPS, getLeadStageDotColor } from "@/lib/utils";
 import { ILead } from "@/types";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -238,7 +238,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const canNote = ["super_admin", "counsellor", "telecaller", "front_desk", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
   const canConvert = ["super_admin", "counsellor"].includes(session?.user?.role || "") && !lead.convertedToStudent;
   const canPrint = ["super_admin", "telecaller"].includes(session?.user?.role || "");
-  const canUpdateStatus = ["super_admin", "telecaller", "counsellor"].includes(session?.user?.role || "");
+  const canUpdateStatus = ["super_admin", "telecaller", "counsellor", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
   const canEdit = ["super_admin", "counsellor", "telecaller", "front_desk"].includes(session?.user?.role || "");
 
   const validEntries = countryEntries.filter((e) => e.country.trim());
@@ -377,8 +377,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
             <Field label="Interested Service" value={lead.interestedService} />
             <div>
               <p className="text-xs text-gray-400 mb-1">Lead Status</p>
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold capitalize ${getStatusColor(lead.status)}`}>
-                {lead.status?.replace("_", " ")}
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold capitalize ${getStatusColor(lead.standing)}`}>
+                {lead.standing?.replace("_", " ")}
               </span>
             </div>
             {(() => {
@@ -386,7 +386,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
               const stageInfo = LEAD_STAGES.find((s) => s.value === stageVal);
               return stageVal ? (
                 <div>
-                  <p className="text-xs text-gray-400 mb-1">CRM Stage</p>
+                  <p className="text-xs text-gray-400 mb-1">Stage</p>
                   <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${stageInfo ? stageInfo.color : "bg-gray-100 text-gray-500"}`}>
                     {stageInfo && <span className={`w-1.5 h-1.5 rounded-full ${getLeadStageDotColor(stageVal)} opacity-70`} />}
                     {stageInfo ? stageInfo.label : stageVal}
@@ -574,13 +574,60 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Change Status</p>
             <div className="flex items-center gap-2 flex-wrap">
               {["heated", "hot", "warm", "out_of_contact"].map((s) => (
-                <button key={s} onClick={() => updateStatus(s)} disabled={lead.status === s}
+                <button key={s} onClick={() => updateStatus(s)} disabled={lead.standing === s}
                   className={`px-4 py-1.5 rounded-full text-xs font-semibold capitalize transition-colors border ${
-                    lead.status === s ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-700"
+                    lead.standing === s ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-700"
                   }`}
                 >
                   {s.replace("_", " ")}
                 </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Application Stage Timeline */}
+        {["super_admin", "counsellor", "telecaller", "front_desk", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "") && (
+          <div className="no-print px-6 py-5 border-t border-gray-100">
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Application Stage</p>
+            <div className="space-y-0.5">
+              {LEAD_STAGE_GROUPS.map((group) => (
+                <div key={group.label} className="mb-3">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${group.dot}`} />
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em]">{group.label}</span>
+                  </div>
+                  {LEAD_STAGES.filter((s) => group.stages.includes(s.value)).map((s) => {
+                    const stageDates = (lead as unknown as { stageDates?: Record<string, string> }).stageDates;
+                    const dateStr = stageDates?.[s.value];
+                    const isSet = !!dateStr;
+                    const isCurrent = (lead as unknown as { stage?: string }).stage === s.value;
+                    return (
+                      <div key={s.value} className={`flex items-center justify-between px-3 py-1.5 rounded-lg transition-colors ${
+                        isCurrent ? "bg-gray-50 ring-1 ring-gray-200" : isSet ? "bg-gray-50/50" : ""
+                      }`}>
+                        <div className="flex items-center gap-2.5">
+                          <span className={`w-4 h-4 rounded-full flex items-center justify-center border shrink-0 ${
+                            isSet ? "bg-gray-900 border-gray-900" : "border-gray-200"
+                          }`}>
+                            {isSet && (
+                              <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
+                                <path d="M1 3L3 5L7 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            )}
+                          </span>
+                          <span className={`text-xs font-medium ${
+                            isCurrent ? "text-gray-900 font-semibold" : isSet ? "text-gray-700" : "text-gray-400"
+                          }`}>{s.label}</span>
+                          {isCurrent && <span className="text-[9px] font-bold bg-gray-900 text-white px-1.5 py-0.5 rounded uppercase tracking-wide">Current</span>}
+                        </div>
+                        {isSet && (
+                          <span className="text-[10px] text-gray-400 tabular-nums">{formatDate(new Date(dateStr))}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               ))}
             </div>
           </div>

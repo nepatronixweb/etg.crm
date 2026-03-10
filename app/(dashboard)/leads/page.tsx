@@ -273,13 +273,15 @@ export default function LeadsPage() {
 
   const canCreate = ["super_admin", "telecaller", "front_desk", "counsellor"].includes(session?.user?.role || "");
   const canAssign = ["super_admin", "telecaller", "front_desk"].includes(session?.user?.role || "");
-  const canUpdateStatus = ["super_admin", "counsellor", "telecaller", "front_desk"].includes(session?.user?.role || "");
+  const canUpdateStatus = ["super_admin", "counsellor", "telecaller", "front_desk", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
+  const canUpdateStage = ["super_admin", "counsellor", "telecaller", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
   const canExport = ["super_admin", "telecaller"].includes(session?.user?.role || "");
 
   const [statusDropdownId, setStatusDropdownId] = useState<string | null>(null);
   const [crmStageDropdownId, setCrmStageDropdownId] = useState<string | null>(null);
   const [crmStageDropdownPos, setCrmStageDropdownPos] = useState({ top: 0, left: 0 });
   const stageDropdownRef = useRef<HTMLDivElement>(null);
+  const [stageSearch, setStageSearch] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const datePickerRef = useRef<HTMLDivElement>(null);
@@ -311,8 +313,9 @@ export default function LeadsPage() {
 
   const openStageDropdown = (e: React.MouseEvent, leadId: string) => {
     if (crmStageDropdownId === leadId) { setCrmStageDropdownId(null); return; }
+    setStageSearch("");
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const popoverWidth = 256; // w-64
+    const popoverWidth = 320; // w-80
     const left = Math.min(rect.left, window.innerWidth - popoverWidth - 8);
     setCrmStageDropdownPos({ top: rect.bottom + window.scrollY + 8, left });
     setCrmStageDropdownId(leadId);
@@ -335,7 +338,12 @@ export default function LeadsPage() {
 
   const quickUpdateLeadStage = async (leadId: string, newStage: string) => {
     setCrmStageDropdownId(null);
-    setLeads((prev) => prev.map((l) => l._id === leadId ? { ...l, stage: newStage } : l));
+    const now = new Date().toISOString();
+    setLeads((prev) => prev.map((l) => {
+      if (l._id !== leadId) return l;
+      const ext = l as unknown as { stageDates?: Record<string, string> };
+      return { ...l, stage: newStage, stageDates: newStage ? { ...(ext.stageDates ?? {}), [newStage]: now } : ext.stageDates } as typeof l;
+    }));
     await fetch(`/api/leads/${leadId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -367,7 +375,7 @@ export default function LeadsPage() {
   const exportToExcel = () => {
     const headers = [
       "ETG ID", "Name", "Phone", "Email", "Date of Birth", "Gender", "Marital Status",
-      "Nationality", "Passport Number", "Standing", "CRM Status", "Source", "Referred By",
+      "Nationality", "Passport Number", "Standing", "Stage", "Source", "Referred By",
       "Interested Service", "Interested Country", "Branch", "Assigned To", "Created Date",
     ];
     const escape = (v?: string | null) => {
@@ -608,7 +616,7 @@ export default function LeadsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                {["Lead", "Client", "Services", "Status", "Standing", "Follow-Up"].map((h) => (
+                {["Lead", "Client", "Services", "Stage", "Standing", "Follow-Up"].map((h) => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">
                     {h}
                   </th>
@@ -724,31 +732,35 @@ export default function LeadsPage() {
                         <p className="text-[11px] text-gray-400 mt-1 tabular-nums whitespace-nowrap">{formatDate(lead.createdAt)}</p>
                       </td>
 
-                      {/* STATUS column */}
+                      {/* STAGE column */}
                       <td className="px-4 py-3.5 min-w-36">
                         {(() => {
-                          const leadStage = (lead as unknown as { stage?: string }).stage;
+                          const ext = lead as unknown as { stage?: string; stageDates?: Record<string, string> };
+                          const leadStage = ext.stage;
                           const stageInfo = LEAD_STAGES.find((s) => s.value === leadStage);
                           const dotColor = leadStage ? getLeadStageDotColor(leadStage) : "";
+                          const stageDate = leadStage && ext.stageDates?.[leadStage];
                           return (
                             <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
                               {/* Trigger pill */}
                               <button
-                                onClick={(e) => canUpdateStatus && openStageDropdown(e, lead._id)}
+                                onClick={(e) => canUpdateStage && openStageDropdown(e, lead._id)}
                                 className={`inline-flex items-center gap-2 pl-2.5 pr-2 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 shadow-sm border ${
                                   stageInfo
                                     ? `${stageInfo.color} border-transparent hover:shadow-md`
                                     : "bg-white border-dashed border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500"
-                                } ${canUpdateStatus ? "cursor-pointer" : "cursor-default"}`}
+                                } ${canUpdateStage ? "cursor-pointer" : "cursor-default"}`}
                               >
                                 {stageInfo
                                   ? <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} opacity-70`} />
                                   : <span className="text-[13px] leading-none opacity-50">+</span>
                                 }
                                 <span className="max-w-32 truncate">{stageInfo ? stageInfo.label : "Set Stage"}</span>
-                                {canUpdateStatus && <ChevronDown size={10} className={`shrink-0 opacity-50 transition-transform duration-200 ${crmStageDropdownId === lead._id ? "rotate-180" : ""}`} />}
+                                {canUpdateStage && <ChevronDown size={10} className={`shrink-0 opacity-50 transition-transform duration-200 ${crmStageDropdownId === lead._id ? "rotate-180" : ""}`} />}
                               </button>
-
+                              {stageDate && (
+                                <p className="text-[10px] text-gray-400 mt-0.5 tabular-nums">{formatDate(new Date(stageDate))}</p>
+                              )}
                               {/* Dropdown rendered as fixed portal – see bottom of component */}
                             </div>
                           );
@@ -1430,47 +1442,77 @@ export default function LeadsPage() {
         if (!dropLead) return null;
         const dropLeadStage = (dropLead as unknown as { stage?: string }).stage;
         const dropStageInfo = LEAD_STAGES.find((s) => s.value === dropLeadStage);
+        const searched = stageSearch.trim().toLowerCase();
+        const filteredStages = searched ? LEAD_STAGES.filter((s) => s.label.toLowerCase().includes(searched)) : null;
         return createPortal(
           <div
             ref={stageDropdownRef}
             style={{ position: "fixed", top: crmStageDropdownPos.top, left: crmStageDropdownPos.left, zIndex: 9999 }}
-            className="bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-gray-100 w-64"
+            className="bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-gray-100 w-80"
           >
+            {/* Header */}
             <div className="px-4 pt-3.5 pb-2.5 border-b border-gray-100 flex items-center justify-between">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.12em]">Select CRM Stage</span>
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.12em]">Select Stage</span>
               {dropStageInfo && (
                 <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${dropStageInfo.color}`}>{dropStageInfo.label}</span>
               )}
             </div>
-            <div className="overflow-y-auto max-h-72 py-1.5">
-              {LEAD_STAGE_GROUPS.map((group) => {
-                const groupStages = LEAD_STAGES.filter((s) => group.stages.includes(s.value));
-                return (
-                  <div key={group.label}>
-                    <div className="px-3.5 pt-2.5 pb-1 flex items-center gap-2">
-                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${group.dot}`} />
-                      <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.15em]">{group.label}</span>
-                    </div>
-                    {groupStages.map((s) => {
+            {/* Search */}
+            <div className="px-3 py-2 border-b border-gray-100">
+              <div className="relative">
+                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <input
+                  autoFocus
+                  value={stageSearch}
+                  onChange={(e) => setStageSearch(e.target.value)}
+                  placeholder="Search stages…"
+                  className="w-full pl-7 pr-7 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400 text-gray-800 placeholder-gray-300"
+                />
+                {stageSearch && (
+                  <button onClick={() => setStageSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={10} /></button>
+                )}
+              </div>
+            </div>
+            {/* Stages list */}
+            <div className="overflow-y-auto max-h-[50vh] py-1.5">
+              {filteredStages ? (
+                filteredStages.length === 0
+                  ? <p className="text-xs text-gray-400 text-center py-5">No stages match &ldquo;{stageSearch}&rdquo;</p>
+                  : filteredStages.map((s) => {
                       const isActive = dropLeadStage === s.value;
                       return (
-                        <button
-                          key={s.value}
-                          onClick={() => quickUpdateLeadStage(crmStageDropdownId, s.value)}
-                          className={`w-full text-left px-3.5 py-1 flex items-center justify-between gap-3 transition-colors duration-100 ${isActive ? "bg-gray-50" : "hover:bg-gray-50/80"}`}
+                        <button key={s.value} onClick={() => quickUpdateLeadStage(crmStageDropdownId, s.value)}
+                          className={`w-full text-left px-3.5 py-2 flex items-center justify-between gap-3 transition-colors duration-100 ${isActive ? "bg-gray-50" : "hover:bg-gray-50/80"}`}
                         >
-                          <span className={`inline-block px-2.5 py-0.5 rounded-md text-[11px] font-semibold ${s.color}`}>{s.label}</span>
-                          {isActive && (
-                            <span className="w-4 h-4 rounded-full bg-gray-900 flex items-center justify-center shrink-0">
-                              <svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3L3 5L7 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                            </span>
-                          )}
+                          <span className={`inline-block px-2.5 py-1 rounded-lg text-[11px] font-semibold ${s.color}`}>{s.label}</span>
+                          {isActive && <span className="w-4 h-4 rounded-full bg-gray-900 flex items-center justify-center shrink-0"><svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3L3 5L7 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span>}
                         </button>
                       );
-                    })}
-                  </div>
-                );
-              })}
+                    })
+              ) : (
+                LEAD_STAGE_GROUPS.map((group) => {
+                  const groupStages = LEAD_STAGES.filter((s) => group.stages.includes(s.value));
+                  return (
+                    <div key={group.label}>
+                      <div className="px-3.5 pt-3 pb-1 flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${group.dot}`} />
+                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.15em]">{group.label}</span>
+                      </div>
+                      {groupStages.map((s) => {
+                        const isActive = dropLeadStage === s.value;
+                        return (
+                          <button key={s.value} onClick={() => quickUpdateLeadStage(crmStageDropdownId, s.value)}
+                            className={`w-full text-left px-3.5 py-2 flex items-center justify-between gap-3 transition-colors duration-100 ${isActive ? "bg-gray-50" : "hover:bg-gray-50/80"}`}
+                          >
+                            <span className={`inline-block px-2.5 py-1 rounded-lg text-[11px] font-semibold ${s.color}`}>{s.label}</span>
+                            {isActive && <span className="w-4 h-4 rounded-full bg-gray-900 flex items-center justify-center shrink-0"><svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3L3 5L7 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })
+              )}
             </div>
             {dropLeadStage && (
               <div className="border-t border-gray-100 px-3.5 py-2">
