@@ -704,6 +704,15 @@ export default function LeadsPage() {
                             </a>
                           )}
                         </div>
+                        {/* Recent note / comment preview */}
+                        {(latestNote || lead.comments) && (
+                          <div className="mt-1.5 flex items-start gap-1 text-[11px] text-gray-500 bg-gray-50 rounded px-1.5 py-1 max-w-[210px]">
+                            <MessageSquare size={9} className="text-gray-400 mt-0.5 shrink-0" />
+                            <span className="line-clamp-2 leading-relaxed">
+                              {latestNote ? latestNote.content : lead.comments}
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       {/* SERVICES column */}
@@ -805,21 +814,7 @@ export default function LeadsPage() {
                       </td>
                     </tr>
 
-                    {/* Notes sub-row */}
-                    {latestNote && (
-                      <tr key={`${lead._id}-note`} className="bg-gray-50/50 border-t-0">
-                        <td colSpan={6} className="px-4 py-2 border-b border-gray-100">
-                          <div className="flex items-start gap-1.5 text-[11px] text-gray-500">
-                            <MessageSquare size={11} className="text-gray-400 mt-0.5 shrink-0" />
-                            <span className="font-semibold text-gray-600">Lead Notes:</span>
-                            <span className="truncate max-w-2xl">{latestNote.content}</span>
-                            {lead.notes.length > 1 && (
-                              <span className="ml-1 text-gray-400">+{lead.notes.length - 1} more</span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
+
                   </React.Fragment>
                 );
               })}

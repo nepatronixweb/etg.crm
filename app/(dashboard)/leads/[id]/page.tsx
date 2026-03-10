@@ -235,7 +235,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const assignedTo = lead.assignedTo as unknown as { name: string; email: string };
   const branch = lead.branch as unknown as { name: string; location: string };
 
-  const canNote = ["super_admin", "counsellor", "telecaller"].includes(session?.user?.role || "");
+  const canNote = ["super_admin", "counsellor", "telecaller", "front_desk", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
   const canConvert = ["super_admin", "counsellor"].includes(session?.user?.role || "") && !lead.convertedToStudent;
   const canPrint = ["super_admin", "telecaller"].includes(session?.user?.role || "");
   const canUpdateStatus = ["super_admin", "telecaller", "counsellor"].includes(session?.user?.role || "");
