@@ -38,6 +38,9 @@ export interface IStudentDocument extends Document {
   counsellor: mongoose.Types.ObjectId;
   currentStage: string;
   stage?: string;
+  standing?: string;
+  enrolled?: boolean;
+  enrolledAt?: Date;
   countries: mongoose.Types.DocumentArray<mongoose.Document>;
   notes: INote[];
   createdAt: Date;
@@ -60,6 +63,9 @@ const StudentSchema = new Schema<IStudentDocument>(
       default: "counsellor",
     },
     stage: { type: String, default: "" },
+    standing: { type: String, enum: ["heated", "hot", "warm", "out_of_contact", ""], default: "" },
+    enrolled: { type: Boolean, default: false },
+    enrolledAt: { type: Date },
     countries: [CountrySchema],
     notes: [NoteSchema],
   },

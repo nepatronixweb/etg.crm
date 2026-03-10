@@ -1,7 +1,7 @@
 "use client";
 import { use, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { ArrowLeft, Upload, FileText, CheckCircle, Plus } from "lucide-react";
+import { ArrowLeft, Upload, FileText, CheckCircle, Plus, UserCheck } from "lucide-react";
 import { formatDate, formatDateTime, getStatusColor, getRoleLabel, COUNTRIES } from "@/lib/utils";
 import Link from "next/link";
 
@@ -13,6 +13,9 @@ interface StudentDetail {
   dateOfBirth: string;
   source: string;
   currentStage: string;
+  standing?: string;
+  enrolled?: boolean;
+  enrolledAt?: string;
   counsellor: { name: string; email: string };
   branch: { name: string };
   countries: Array<{ country: string; status: string; universityName?: string; visaStatus?: string; visaApprovedAt?: string }>;
@@ -82,6 +85,33 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     fetchData();
   };
 
+  const enrollStudent = async () => {
+    await fetch(`/api/students/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enrolled: true, enrolledAt: new Date().toISOString(), standing: "hot", currentStage: "application" }),
+    });
+    fetchData();
+  };
+
+  const unenrollStudent = async () => {
+    await fetch(`/api/students/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enrolled: false, enrolledAt: null }),
+    });
+    fetchData();
+  };
+
+  const updateStanding = async (standing: string) => {
+    await fetch(`/api/students/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ standing }),
+    });
+    fetchData();
+  };
+
   const approveVisa = async (country: string) => {
     await fetch(`/api/students/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ visaApproved: true, country }) });
     fetchData();
@@ -119,6 +149,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   const canUpload = ["super_admin", "counsellor", "application_team"].includes(session?.user?.role || "");
   const canNote = ["super_admin", "counsellor", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
   const canStage = ["super_admin", "counsellor", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
+  const canEnroll = ["super_admin", "application_team", "counsellor"].includes(session?.user?.role || "");
   const canVisa = ["super_admin", "visa_team"].includes(session?.user?.role || "");
 
   const filteredDocs = docs.filter((d) => !selectedCountry || d.country === selectedCountry);
@@ -131,9 +162,26 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
           <h1 className="text-2xl font-bold text-gray-900">{student.name}</h1>
           <p className="text-gray-500 text-sm">Student Profile</p>
         </div>
-        <span className={`ml-auto px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(student.currentStage)}`}>
-          {student.currentStage}
-        </span>
+        <div className="ml-auto flex items-center gap-2">
+          {student.enrolled && (
+            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700 border border-green-200 flex items-center gap-1">
+              <CheckCircle size={11} /> Enrolled
+            </span>
+          )}
+          {student.standing && (
+            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${
+              student.standing === "hot" ? "bg-red-50 text-red-600 border-red-200" :
+              student.standing === "warm" ? "bg-amber-50 text-amber-600 border-amber-200" :
+              student.standing === "heated" ? "bg-orange-50 text-orange-600 border-orange-200" :
+              "bg-gray-50 text-gray-500 border-gray-200"
+            }`}>
+              {student.standing.replace("_", " ")}
+            </span>
+          )}
+          <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(student.currentStage)}`}>
+            {student.currentStage}
+          </span>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -267,6 +315,64 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
 
         {/* Stage Control */}
         <div className="space-y-4">
+
+          {/* Enrollment Card */}
+          {canEnroll && (
+            <div className="bg-white rounded-xl border border-gray-100 p-5">
+              <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <UserCheck size={16} /> Enrollment
+              </h2>
+              {!student.enrolled ? (
+                <>
+                  <p className="text-sm text-gray-500 mb-3">
+                    Enroll this student to move them into the application pipeline. Standing will be set to <span className="font-semibold text-red-600">Hot</span> automatically.
+                  </p>
+                  <button
+                    onClick={enrollStudent}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+                  >
+                    <UserCheck size={15} /> Enroll Student
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-100 px-3 py-2 rounded-lg mb-3">
+                    <CheckCircle size={14} />
+                    <span>Enrolled {student.enrolledAt ? `on ${formatDate(student.enrolledAt)}` : ""}</span>
+                  </div>
+                  <button
+                    onClick={unenrollStudent}
+                    className="text-[11px] text-gray-400 hover:text-red-500 font-medium transition-colors"
+                  >
+                    Undo enrollment
+                  </button>
+                </>
+              )}
+
+              {/* Standing — manual override */}
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2.5">Standing</p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {([
+                    { value: "hot",           label: "Hot",             active: "bg-red-500 text-white border-red-500",    idle: "border-red-200 text-red-600 hover:bg-red-50" },
+                    { value: "warm",          label: "Warm",            active: "bg-amber-500 text-white border-amber-500", idle: "border-amber-200 text-amber-600 hover:bg-amber-50" },
+                    { value: "heated",        label: "Heated",          active: "bg-orange-500 text-white border-orange-500", idle: "border-orange-200 text-orange-600 hover:bg-orange-50" },
+                    { value: "out_of_contact",label: "Out of Contact",   active: "bg-gray-500 text-white border-gray-500",  idle: "border-gray-200 text-gray-500 hover:bg-gray-50" },
+                  ] as const).map((s) => (
+                    <button
+                      key={s.value}
+                      onClick={() => updateStanding(student.standing === s.value ? "" : s.value)}
+                      className={`px-2 py-1.5 rounded-md text-xs font-semibold border transition-colors ${
+                        student.standing === s.value ? s.active : s.idle
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
           {canStage && (
             <div className="bg-white rounded-xl border border-gray-100 p-5">
               <h2 className="font-semibold text-gray-900 mb-4">Pipeline Stage</h2>
