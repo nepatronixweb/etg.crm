@@ -79,6 +79,9 @@ export const COUNTRIES = [
 ];
 
 export const LEAD_STAGES: { value: string; label: string; color: string }[] = [
+  // Application
+  { value: "document_pending",             label: "Document Pending",                color: "bg-amber-50 text-amber-700" },
+  { value: "document_submitted",           label: "Document Submitted",              color: "bg-amber-100 text-amber-800" },
   // Offer
   { value: "offer_applied",               label: "Offer Applied",                   color: "bg-blue-50 text-blue-700" },
   { value: "acknowledge",                  label: "Acknowledge",                     color: "bg-blue-100 text-blue-700" },
@@ -110,6 +113,7 @@ export function getLeadStageColor(value: string): string {
 }
 
 export const LEAD_STAGE_GROUPS: { label: string; dot: string; stages: string[] }[] = [
+  { label: "Application", dot: "bg-amber-400", stages: ["document_pending", "document_submitted"] },
   { label: "Offer",  dot: "bg-blue-400",    stages: ["offer_applied", "acknowledge", "document_requested", "document_sent", "conditional_offer_received", "unconditional_offer_received"] },
   { label: "GTE",    dot: "bg-purple-400",  stages: ["gte_applied", "gte_additional_doc_requested", "gte_additional_doc_sent", "gte_approved", "gte_rejected"] },
   { label: "COE",    dot: "bg-emerald-400", stages: ["coe_applied", "coe_additional_doc_requested", "coe_additional_doc_sent", "coe_received"] },
