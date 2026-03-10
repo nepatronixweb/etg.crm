@@ -22,6 +22,21 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   }
 }
 
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const session = await auth();
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const { id } = await params;
+    await connectDB();
+    const body = await req.json();
+    const student = await Student.findByIdAndUpdate(id, { $set: body }, { new: true });
+    if (!student) return NextResponse.json({ error: "Student not found" }, { status: 404 });
+    return NextResponse.json(student);
+  } catch {
+    return NextResponse.json({ error: "Failed to update student" }, { status: 500 });
+  }
+}
+
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth();

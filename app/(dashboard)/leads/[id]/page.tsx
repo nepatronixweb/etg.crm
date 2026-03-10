@@ -1,5 +1,5 @@
 "use client";
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { ArrowLeft, UserPlus, MapPin, Phone, Mail, Calendar, Plus, X, GraduationCap, Globe, Trash2, ChevronDown, Users, BookOpen, Home, Award, CreditCard, ClipboardList, Printer, Download } from "lucide-react";
 import { formatDate, formatDateTime, getStatusColor, getRoleLabel, COUNTRIES, LEAD_STAGES, getLeadStageDotColor } from "@/lib/utils";
@@ -72,6 +72,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const [lcUniOpen, setLcUniOpen] = useState<number | null>(null);
   const [savingCountries, setSavingCountries] = useState(false);
   const [countriesSaved, setCountriesSaved] = useState(false);
+  const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const fetchLead = async () => {
     const res = await fetch(`/api/leads/${id}`);
@@ -96,6 +97,16 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchLead(); }, [id]);
+
+  // Auto-scroll to notes and focus textarea when navigating with #notes hash
+  useEffect(() => {
+    if (loading) return;
+    if (window.location.hash === "#notes") {
+      const el = document.getElementById("notes");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      setTimeout(() => noteTextareaRef.current?.focus(), 300);
+    }
+  }, [loading]);
 
   // Pre-fill convert modal from lead's saved countries
   useEffect(() => {
@@ -576,7 +587,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
         )}
 
         {/* Notes */}
-        <div className="px-6 py-5">
+        <div id="notes" className="px-6 py-5 scroll-mt-20">
           <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Notes &amp; Comments</p>
           <div className="space-y-3 mb-4">
             {(lead as unknown as { comments?: string }).comments && (
@@ -600,7 +611,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
           </div>
           {canNote && (
             <div className="no-print flex gap-2 pt-3 border-t border-gray-100">
-              <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Write a note…" rows={2}
+              <textarea ref={noteTextareaRef} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Write a follow-up note…" rows={2}
                 className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-gray-800 placeholder-gray-300"
               />
               <button onClick={addNote} disabled={addingNote || !note.trim()} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-200 text-white rounded-lg text-sm font-semibold self-end transition-colors">

@@ -445,7 +445,7 @@ export default function LeadsPage() {
       <div className="bg-white border border-gray-200 rounded-lg overflow-visible">
         <div className="flex items-stretch gap-0 divide-x divide-gray-200 flex-wrap">
           {/* Lead Stage */}
-          <div className="flex-1 min-w-[120px] sm:min-w-[140px] relative">
+          <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Stage</label>
             <select
               value={filterLeadStage}
@@ -458,7 +458,7 @@ export default function LeadsPage() {
             <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
           {/* Lead Status */}
-          <div className="flex-1 min-w-[120px] sm:min-w-[140px] relative">
+          <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Status</label>
             <select
               value={filterStatus}
@@ -475,7 +475,7 @@ export default function LeadsPage() {
           </div>
 
           {/* Lead Source */}
-          <div className="flex-1 min-w-[120px] sm:min-w-[140px] relative">
+          <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Source</label>
             <select
               value={filterSource}
@@ -489,7 +489,7 @@ export default function LeadsPage() {
           </div>
 
           {/* All Services */}
-          <div className="flex-1 min-w-[120px] sm:min-w-[140px] relative">
+          <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">All Services</label>
             <select
               value={filterService}
@@ -503,7 +503,7 @@ export default function LeadsPage() {
           </div>
 
           {/* Academic Year */}
-          <div className="flex-1 min-w-[120px] sm:min-w-[140px] relative">
+          <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Acad. Year</label>
             <select
               value={filterAcademicYear}
@@ -519,7 +519,7 @@ export default function LeadsPage() {
           </div>
 
           {/* Apply Level */}
-          <div className="flex-1 min-w-[120px] sm:min-w-[140px] relative">
+          <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Apply Level</label>
             <select
               value={filterApplyLevel}
@@ -535,7 +535,7 @@ export default function LeadsPage() {
           </div>
 
           {/* Follow Up (Assigned Counsellor) */}
-          <div className="flex-1 min-w-[120px] sm:min-w-[140px] relative">
+          <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Follow Up</label>
             <select
               value={filterAssignedTo}
@@ -549,7 +549,7 @@ export default function LeadsPage() {
           </div>
 
           {/* Search */}
-          <div className="flex-[2] min-w-[180px] sm:min-w-52 relative">
+          <div className="flex-[2] min-w-[150px] xl:min-w-48 relative">
             <label className="absolute left-10 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Search</label>
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input
@@ -657,7 +657,7 @@ export default function LeadsPage() {
                     <tr key={lead._id} className="hover:bg-gray-50/60 transition-colors align-top">
 
                       {/* LEAD column */}
-                      <td className="px-4 py-3.5 min-w-40">
+                      <td className="px-4 py-3.5 min-w-32">
                         <p className="font-bold text-gray-900 text-sm">{leadTag}</p>
                         <p className="text-[11px] text-gray-400 mt-0.5 tabular-nums">{formatLeadDateTime(lead.createdAt)}</p>
                         <p className="text-[11px] text-gray-500 mt-0.5 capitalize">{lead.source?.replace(/_/g, " ")}</p>
@@ -667,10 +667,10 @@ export default function LeadsPage() {
                       </td>
 
                       {/* CLIENT column */}
-                      <td className="px-4 py-3.5 min-w-52">
+                      <td className="px-4 py-3.5 min-w-44">
                         <div className="flex items-center gap-1.5 mb-1">
                           <span className="text-amber-400 text-sm">★</span>
-                          <span className="font-semibold text-gray-900 text-sm">{lead.name}</span>
+                          <Link href={`/leads/${lead._id}`} className="font-semibold text-gray-900 text-sm hover:text-blue-600 hover:underline underline-offset-2 transition-colors">{lead.name}</Link>
                         </div>
                         <div className="flex items-center gap-1 text-[12px] text-gray-500 mb-0.5">
                           <Phone size={10} className="text-gray-400 shrink-0" />
@@ -690,7 +690,7 @@ export default function LeadsPage() {
                         </div>
                         <div className="flex items-center gap-1 text-[12px] text-gray-500">
                           <Mail size={10} className="text-gray-400 shrink-0" />
-                          <span className="truncate max-w-44">{lead.email}</span>
+                          <span className="truncate max-w-36">{lead.email}</span>
                           {lead.email && (
                             <a
                               href={`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(lead.email)}`}
@@ -707,16 +707,16 @@ export default function LeadsPage() {
                       </td>
 
                       {/* SERVICES column */}
-                      <td className="px-4 py-3.5 min-w-48">
+                      <td className="px-4 py-3.5 min-w-36">
                         <p className="text-sm font-medium text-gray-800">
                           {lead.interestedService || <span className="text-gray-300">—</span>}
                           {countryPart && <span className="text-gray-500 font-normal"> - ({countryPart})</span>}
                         </p>
-                        <p className="text-[11px] text-gray-400 mt-1 tabular-nums">{formatDate(lead.createdAt)}</p>
+                        <p className="text-[11px] text-gray-400 mt-1 tabular-nums whitespace-nowrap">{formatDate(lead.createdAt)}</p>
                       </td>
 
                       {/* STAGE column */}
-                      <td className="px-4 py-3.5 min-w-44">
+                      <td className="px-4 py-3.5 min-w-36">
                         {(() => {
                           const leadStage = (lead as unknown as { stage?: string }).stage;
                           const stageInfo = LEAD_STAGES.find((s) => s.value === leadStage);
@@ -747,7 +747,7 @@ export default function LeadsPage() {
                       </td>
 
                       {/* STATUS column */}
-                      <td className="px-4 py-3.5 min-w-36">
+                      <td className="px-4 py-3.5 min-w-28">
                         <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={() => canUpdateStatus && setStatusDropdownId(statusDropdownId === lead._id ? null : lead._id)}

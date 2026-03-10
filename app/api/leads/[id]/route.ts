@@ -69,6 +69,21 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 }
 
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const session = await auth();
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const { id } = await params;
+    await connectDB();
+    const body = await req.json();
+    const lead = await Lead.findByIdAndUpdate(id, { $set: body }, { new: true });
+    if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    return NextResponse.json(lead);
+  } catch {
+    return NextResponse.json({ error: "Failed to update lead" }, { status: 500 });
+  }
+}
+
 export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth();
