@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
       Application.countDocuments(dateFilter),
       Lead.countDocuments({ ...leadFilter, convertedToStudent: true }),
       Lead.aggregate([{ $match: leadFilter }, { $group: { _id: "$source", count: { $sum: 1 } } }]),
-      Lead.aggregate([{ $match: leadFilter }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
+      Lead.aggregate([{ $match: leadFilter }, { $group: { _id: "$standing", count: { $sum: 1 } } }]),
       Student.aggregate([{ $match: studentFilter }, { $group: { _id: "$currentStage", count: { $sum: 1 } } }]),
       Application.aggregate([{ $match: dateFilter }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
       Application.aggregate([{ $match: dateFilter }, { $group: { _id: "$country", count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 10 }]),

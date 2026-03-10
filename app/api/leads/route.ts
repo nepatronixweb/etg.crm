@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const branch = searchParams.get("branch");
-    const status = searchParams.get("status");
+    const standing = searchParams.get("standing");
     const source = searchParams.get("source");
     const assignedTo = searchParams.get("assignedTo");
     const country = searchParams.get("country");
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (branch) filter.branch = branch;
-    if (status) filter.status = status;
+    if (standing) filter.standing = standing;
     if (source) filter.source = source;
     if (assignedTo) filter.assignedTo = assignedTo;
     if (country) filter.interestedCountry = country;

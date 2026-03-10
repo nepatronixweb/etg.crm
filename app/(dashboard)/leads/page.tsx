@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { useSession } from "next-auth/react";
 import { Plus, Search, X, Users, Paperclip, FileText, Trash2, ChevronDown, MessageSquare, MoreVertical, Phone, Mail, Calendar, FileSpreadsheet } from "lucide-react";
 import { formatDate, formatDateTime, getStatusColor, COUNTRIES, SERVICES, LEAD_STAGES, LEAD_STAGE_GROUPS, getLeadStageColor, getLeadStageDotColor } from "@/lib/utils";
-import { ILead, LeadSource, LeadStatus } from "@/types";
+import { ILead, LeadSource, LeadStanding } from "@/types";
 import Link from "next/link";
 
 const SOURCES: { value: LeadSource; label: string }[] = [
@@ -47,7 +47,7 @@ export default function LeadsPage() {
     name: "", phone: "", email: "", dateOfBirth: "",
     source: "walk_in" as LeadSource, interestedService: "",
     interestedCountry: "", branch: session?.user?.branch || "",
-    status: "warm" as LeadStatus, assignedTo: "", assignmentMethod: "manual",
+    standing: "warm" as LeadStanding, assignedTo: "", assignmentMethod: "manual",
     comments: "",
     // Parent information
     parentName: "", parentPhone1: "", parentPhone2: "",
@@ -119,7 +119,7 @@ export default function LeadsPage() {
     setForm({
       name: "", phone: "", email: "", dateOfBirth: "",
       source: "walk_in", interestedService: "", interestedCountry: "",
-      branch: session?.user?.branch || "", status: "warm",
+      branch: session?.user?.branch || "", standing: "warm",
       assignedTo: "", assignmentMethod: "manual", comments: "",
       parentName: "", parentPhone1: "", parentPhone2: "",
       academicScore: "", academicInstitution: "", temporaryAddress: "", permanentAddress: "",
@@ -154,7 +154,7 @@ export default function LeadsPage() {
       interestedService: lead.interestedService || "",
       interestedCountry: lead.interestedCountry || "",
       branch: branchId,
-      status: (lead.status as LeadStatus) || "warm",
+      standing: (lead.standing as LeadStanding) || "warm",
       assignedTo: assignedId,
       assignmentMethod: "manual",
       comments: lead.comments || "",
@@ -253,10 +253,10 @@ export default function LeadsPage() {
       l.email.toLowerCase().includes(q) ||
       l.phone.includes(q) ||
       (l.interestedCountry || "").toLowerCase().includes(q) ||
-      (l.status || "").replace("_", " ").toLowerCase().includes(q) ||
+      (l.standing || "").replace("_", " ").toLowerCase().includes(q) ||
       assignedName.toLowerCase().includes(q) ||
       dateStr.includes(q);
-    const matchesStatus = !filterStatus || l.status === filterStatus;
+    const matchesStatus = !filterStatus || l.standing === filterStatus;
     const matchesCountry = !filterCountry || l.interestedCountry === filterCountry;
     const matchesAssigned = !filterAssignedTo ||
       (l.assignedTo as unknown as { _id: string } | undefined)?._id === filterAssignedTo;
@@ -345,11 +345,11 @@ export default function LeadsPage() {
 
   const quickUpdateStatus = async (leadId: string, newStatus: string) => {
     setStatusDropdownId(null);
-    setLeads((prev) => prev.map((l) => l._id === leadId ? { ...l, status: newStatus as ILead["status"] } : l));
+    setLeads((prev) => prev.map((l) => l._id === leadId ? { ...l, standing: newStatus as ILead["standing"] } : l));
     await fetch(`/api/leads/${leadId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
+      body: JSON.stringify({ standing: newStatus }),
     });
   };
 
@@ -367,7 +367,7 @@ export default function LeadsPage() {
   const exportToExcel = () => {
     const headers = [
       "ETG ID", "Name", "Phone", "Email", "Date of Birth", "Gender", "Marital Status",
-      "Nationality", "Passport Number", "Status", "CRM Stage", "Source", "Referred By",
+      "Nationality", "Passport Number", "Standing", "CRM Status", "Source", "Referred By",
       "Interested Service", "Interested Country", "Branch", "Assigned To", "Created Date",
     ];
     const escape = (v?: string | null) => {
@@ -384,7 +384,7 @@ export default function LeadsPage() {
         l.name, l.phone, l.email,
         l.dateOfBirth ?? "", ext.gender ?? "", ext.maritalStatus ?? "",
         ext.nationality ?? "", ext.passportNumber ?? "",
-        (l.status ?? "").replace(/_/g, " "),
+        (l.standing ?? "").replace(/_/g, " "),
         stageLabel,
         (l.source ?? "").replace(/_/g, " "),
         ext.senderName ?? "",
@@ -457,9 +457,9 @@ export default function LeadsPage() {
             </select>
             <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
-          {/* Lead Status */}
+          {/* Lead Standing */}
           <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
-            <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Status</label>
+            <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Standing</label>
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
@@ -608,7 +608,7 @@ export default function LeadsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                {["Lead", "Client", "Services", "Stage", "Status", "Follow-Up"].map((h) => (
+                {["Lead", "Client", "Services", "Status", "Standing", "Follow-Up"].map((h) => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">
                     {h}
                   </th>
@@ -724,7 +724,7 @@ export default function LeadsPage() {
                         <p className="text-[11px] text-gray-400 mt-1 tabular-nums whitespace-nowrap">{formatDate(lead.createdAt)}</p>
                       </td>
 
-                      {/* STAGE column */}
+                      {/* STATUS column */}
                       <td className="px-4 py-3.5 min-w-36">
                         {(() => {
                           const leadStage = (lead as unknown as { stage?: string }).stage;
@@ -755,14 +755,14 @@ export default function LeadsPage() {
                         })()}
                       </td>
 
-                      {/* STATUS column */}
+                      {/* STANDING column */}
                       <td className="px-4 py-3.5 min-w-28">
                         <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={() => canUpdateStatus && setStatusDropdownId(statusDropdownId === lead._id ? null : lead._id)}
-                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${getStatusColor(lead.status)} ${canUpdateStatus ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${getStatusColor(lead.standing)} ${canUpdateStatus ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
                           >
-                            <span className="capitalize max-w-24 truncate">{lead.status?.replace(/_/g, " ")}</span>
+                            <span className="capitalize max-w-24 truncate">{lead.standing?.replace(/_/g, " ")}</span>
                             {canUpdateStatus && <ChevronDown size={11} className={`shrink-0 transition-transform ${statusDropdownId === lead._id ? "rotate-180" : ""}`} />}
                           </button>
                           {canUpdateStatus && statusDropdownId === lead._id && (
@@ -770,10 +770,10 @@ export default function LeadsPage() {
                               {["heated", "hot", "warm", "out_of_contact"].map((s) => (
                                 <button key={s} onClick={() => quickUpdateStatus(lead._id, s)}
                                   className={`w-full text-left px-3 py-2 text-xs font-medium capitalize transition-colors flex items-center justify-between ${
-                                    lead.status === s ? "bg-gray-100 text-gray-900 font-semibold" : "text-gray-600 hover:bg-gray-50"
+                                    lead.standing === s ? "bg-gray-100 text-gray-900 font-semibold" : "text-gray-600 hover:bg-gray-50"
                                   }`}>
                                   {s.replace(/_/g, " ")}
-                                  {lead.status === s && <span className="text-gray-500">✓</span>}
+                                  {lead.standing === s && <span className="text-gray-500">✓</span>}
                                 </button>
                               ))}
                             </div>
@@ -971,11 +971,11 @@ export default function LeadsPage() {
                   </div>
 
                   <div>
-                    <label className={LABEL_CLASS}>Status <span className="text-gray-400 normal-case font-normal tracking-normal">*</span></label>
+                    <label className={LABEL_CLASS}>Standing <span className="text-gray-400 normal-case font-normal tracking-normal">*</span></label>
                     <select
                       required
-                      value={form.status}
-                      onChange={(e) => setForm({ ...form, status: e.target.value as LeadStatus })}
+                      value={form.standing}
+                      onChange={(e) => setForm({ ...form, standing: e.target.value as LeadStanding })}
                       className={FIELD_CLASS}
                     >
                       <option value="warm">Warm</option>

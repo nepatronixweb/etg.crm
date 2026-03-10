@@ -145,7 +145,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   };
 
   const updateStatus = async (status: string) => {
-    await fetch(`/api/leads/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+    await fetch(`/api/leads/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ standing: status }) });
     fetchLead();
   };
 

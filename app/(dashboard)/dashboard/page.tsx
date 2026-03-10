@@ -502,9 +502,9 @@ export default function DashboardPage() {
                         </div>
                       </div>
                       <span
-                        className={`text-xs px-2 py-0.5 rounded font-medium shrink-0 ${getStatusColor(lead.status)}`}
+                        className={`text-xs px-2 py-0.5 rounded font-medium shrink-0 ${getStatusColor(lead.standing)}`}
                       >
-                        {STATUS_LABELS[lead.status] ?? lead.status}
+                        {STATUS_LABELS[lead.standing] ?? lead.standing}
                       </span>
                     </Link>
                   ))}
@@ -751,8 +751,8 @@ export default function DashboardPage() {
                               </p>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
-                              <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${getStatusColor(lead.status)}`}>
-                                {STATUS_LABELS[lead.status] ?? lead.status}
+                              <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${getStatusColor(lead.standing)}`}>
+                                {STATUS_LABELS[lead.standing] ?? lead.standing}
                               </span>
                               <ChevronRight size={13} className="text-gray-300 group-hover:text-gray-500 transition-colors" />
                             </div>

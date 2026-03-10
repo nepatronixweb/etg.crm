@@ -1,5 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
-import { LeadSource, LeadStatus, INote } from "@/types";
+import { LeadSource, LeadStanding, INote } from "@/types";
 
 const NoteSchema = new Schema<INote>(
   {
@@ -20,7 +20,7 @@ export interface ILeadDocument extends Document {
   interestedService: string;
   interestedCountry: string;
   branch: mongoose.Types.ObjectId;
-  status: LeadStatus;
+  standing: LeadStanding;
   assignedTo?: mongoose.Types.ObjectId;
   assignedBy?: mongoose.Types.ObjectId;
   notes: INote[];
@@ -80,7 +80,7 @@ const LeadSchema = new Schema<ILeadDocument>(
     interestedService: { type: String, required: true },
     interestedCountry: { type: String, required: true },
     branch: { type: Schema.Types.ObjectId, ref: "Branch", required: true },
-    status: {
+    standing: {
       type: String,
       enum: ["heated", "hot", "warm", "out_of_contact"],
       default: "warm",
@@ -134,8 +134,8 @@ const LeadSchema = new Schema<ILeadDocument>(
 );
 
 // Indexes for fast queries
-LeadSchema.index({ branch: 1, status: 1 });
-LeadSchema.index({ assignedTo: 1, status: 1 });
+LeadSchema.index({ branch: 1, standing: 1 });
+LeadSchema.index({ assignedTo: 1, standing: 1 });
 LeadSchema.index({ convertedToStudent: 1 });
 LeadSchema.index({ updatedAt: 1 }); // for cron stale-lead queries
 LeadSchema.index({ createdAt: -1 });

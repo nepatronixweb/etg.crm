@@ -7,7 +7,7 @@ export type UserRole =
   | "visa_team"
   | "front_desk";
 
-export type LeadStatus = "heated" | "hot" | "warm" | "out_of_contact";
+export type LeadStanding = "heated" | "hot" | "warm" | "out_of_contact";
 
 export type StudentStage =
   | "counsellor"
@@ -64,7 +64,7 @@ export interface ILead {
   interestedService: string;
   interestedCountry: string;
   branch: string;
-  status: LeadStatus;
+  standing: LeadStanding;
   assignedTo?: string;
   assignedBy?: string;
   notes: INote[];
