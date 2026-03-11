@@ -8,7 +8,8 @@ import {
   Clock, CheckCircle2, PlaneTakeoff, Award, XCircle, BadgeCheck, FilePlus2,
   SlidersHorizontal, Check, Calendar,
 } from "lucide-react";
-import { formatDateTime, getStatusColor } from "@/lib/utils";
+import { formatDateTime, getStatusColor, canAccessModule } from "@/lib/utils";
+import { UserRole } from "@/types";
 import Link from "next/link";
 
 interface AnalyticsData {
@@ -31,6 +32,7 @@ interface AnalyticsData {
     name: string;
     source: string;
     status: string;
+    standing: string;
     interestedCountry: string;
     createdAt: string;
     branch: { name: string };
@@ -68,6 +70,7 @@ interface IAssignedLead {
   phone: string;
   interestedCountry: string;
   status: string;
+  standing: string;
   source: string;
   createdAt: string;
 }
@@ -136,6 +139,7 @@ export default function DashboardPage() {
   const dateRef = useRef<HTMLDivElement>(null);
   const isAdmin = session?.user?.role === "super_admin";
   const isCounsellor = session?.user?.role === "counsellor";
+  const role = (session?.user?.role ?? "") as UserRole;
 
   // Counsellor: assigned leads
   const [assignedLeads, setAssignedLeads] = useState<IAssignedLead[]>([]);
@@ -821,9 +825,9 @@ export default function DashboardPage() {
           {!isCounsellor && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {[
-                { label: "Leads", href: "/leads", icon: Users, desc: "View and manage your assigned leads" },
-                { label: "Students", href: "/students", icon: UserCheck, desc: "Track your student progress" },
-              ].map((item) => {
+                { label: "Leads", href: "/leads", module: "leads", icon: Users, desc: "View and manage your assigned leads" },
+                { label: "Students", href: "/students", module: "students", icon: UserCheck, desc: "Track your student progress" },
+              ].filter((item) => canAccessModule(role, item.module)).map((item) => {
                 const Icon = item.icon;
                 return (
                   <Link

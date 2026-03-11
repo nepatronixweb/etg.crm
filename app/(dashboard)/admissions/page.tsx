@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState } from "react";
-import { getStatusColor } from "@/lib/utils";
 import { GraduationCap, Search } from "lucide-react";
 import Link from "next/link";
 
@@ -8,9 +7,12 @@ interface Student {
   _id: string;
   name: string;
   email: string;
+  enrolled: boolean;
+  standing: string;
   currentStage: string;
   countries: Array<{ country: string; status: string; universityName?: string; admissionStatus?: string }>;
   counsellor: { name: string };
+  enrolledAt?: string;
 }
 
 export default function AdmissionsPage() {
@@ -19,7 +21,7 @@ export default function AdmissionsPage() {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    fetch("/api/students?stage=admission")
+    fetch("/api/students?enrolled=true")
       .then((r) => r.json())
       .then((d) => { setStudents(Array.isArray(d) ? d : []); setLoading(false); });
   }, []);
@@ -42,7 +44,7 @@ export default function AdmissionsPage() {
           <div>
             <h1 className="text-xl font-semibold text-gray-900">Admissions</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              {loading ? "Loading…" : `${filtered.length} of ${students.length} students in admission stage`}
+              {loading ? "Loading…" : `${filtered.length} of ${students.length} enrolled students`}
             </p>
           </div>
         </div>
@@ -67,7 +69,7 @@ export default function AdmissionsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                {["Student", "Counsellor", "Countries & Universities", "Stage", ""].map((h) => (
+                {["Student", "Counsellor", "Countries & Universities", "Enrolled", ""].map((h) => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
                     {h}
                   </th>
@@ -91,7 +93,7 @@ export default function AdmissionsPage() {
                     <div className="inline-flex flex-col items-center gap-2 text-gray-400">
                       <GraduationCap size={28} className="text-gray-300" />
                       <span className="text-sm">
-                        {search ? "No matching students found" : "No students in admission stage"}
+                        {search ? "No matching students found" : "No enrolled students yet"}
                       </span>
                       {search && (
                         <button
@@ -138,9 +140,16 @@ export default function AdmissionsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3.5">
-                    <span className={`inline-block px-2.5 py-0.5 rounded text-xs font-semibold ${getStatusColor(s.currentStage)}`}>
-                      {s.currentStage}
-                    </span>
+                    <div className="flex flex-col gap-1">
+                      <span className="inline-block px-2.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200 w-fit">
+                        Heated
+                      </span>
+                      {s.enrolledAt && (
+                        <span className="text-xs text-gray-400">
+                          {new Date(s.enrolledAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3.5">
                     <Link

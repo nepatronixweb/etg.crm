@@ -17,6 +17,9 @@ export async function GET(req: NextRequest) {
     const stage = searchParams.get("stage");
     const counsellor = searchParams.get("counsellor");
     const country = searchParams.get("country");
+    const leadId = searchParams.get("leadId");
+    const standing = searchParams.get("standing");
+    const enrolled = searchParams.get("enrolled");
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const filter: Record<string, any> = {};
@@ -27,6 +30,9 @@ export async function GET(req: NextRequest) {
     if (stage) filter.currentStage = stage;
     if (counsellor) filter.counsellor = counsellor;
     if (country) filter["countries.country"] = country;
+    if (leadId) { filter.lead = leadId; delete filter.branch; delete filter.counsellor; }
+    if (standing) filter.standing = standing;
+    if (enrolled === "true") filter.enrolled = true;
 
     const students = await Student.find(filter)
       .populate("branch", "name")

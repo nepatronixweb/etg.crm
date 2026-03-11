@@ -29,10 +29,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const { id } = await params;
     await connectDB();
     const body = await req.json();
-    const student = await Student.findByIdAndUpdate(id, { $set: body }, { new: true });
+    // Support raw MongoDB operators ($push, $pull, etc.) passed directly in the body
+    const hasOperators = Object.keys(body).some((k) => k.startsWith("$"));
+    const update = hasOperators ? body : { $set: body };
+    const student = await Student.findByIdAndUpdate(id, update, { new: true, runValidators: false })
+      .populate("branch", "name location")
+      .populate("counsellor", "name email");
     if (!student) return NextResponse.json({ error: "Student not found" }, { status: 404 });
     return NextResponse.json(student);
-  } catch {
+  } catch (err) {
+    console.error("PATCH /api/students/[id] error:", err);
     return NextResponse.json({ error: "Failed to update student" }, { status: 500 });
   }
 }

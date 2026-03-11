@@ -1,7 +1,7 @@
 "use client";
 import { use, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
-import { ArrowLeft, UserPlus, MapPin, Phone, Mail, Calendar, Plus, X, GraduationCap, Globe, Trash2, ChevronDown, Users, BookOpen, Home, Award, CreditCard, ClipboardList, Printer, Download } from "lucide-react";
+import { ArrowLeft, UserPlus, MapPin, Phone, Mail, Calendar, Plus, X, GraduationCap, Globe, Trash2, ChevronDown, Users, BookOpen, Home, Award, CreditCard, ClipboardList, Printer, Download, UserCheck } from "lucide-react";
 import { formatDate, formatDateTime, getStatusColor, getRoleLabel, COUNTRIES, LEAD_STAGES, LEAD_STAGE_GROUPS, getLeadStageDotColor } from "@/lib/utils";
 import { ILead } from "@/types";
 import Link from "next/link";
@@ -53,6 +53,9 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const [note, setNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
   const [converting, setConverting] = useState(false);
+  const [studentId, setStudentId] = useState<string | null>(null);
+  const [enrolling, setEnrolling] = useState(false);
+  const [enrolled, setEnrolled] = useState(false);
 
   // ── Convert modal state ──
   const [showConvertModal, setShowConvertModal] = useState(false);
@@ -78,6 +81,16 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     const res = await fetch(`/api/leads/${id}`);
     const data = await res.json();
     setLead(data);
+    if (data.convertedToStudent) {
+      const sRes = await fetch(`/api/students?leadId=${id}`);
+      if (sRes.ok) {
+        const sData = await sRes.json();
+        if (Array.isArray(sData) && sData.length > 0) {
+          setStudentId(sData[0]._id);
+          setEnrolled(!!sData[0].enrolled);
+        }
+      }
+    }
     // Populate lead countries from saved data
     if (Array.isArray(data.interestedCountries) && data.interestedCountries.length > 0) {
       setLeadCountries(data.interestedCountries.map((e: CountryEntry) => ({ country: e.country, universityName: e.universityName || "" })));
@@ -199,6 +212,18 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     setConverting(false);
   };
 
+  const enrollStudent = async () => {
+    if (!studentId) return;
+    setEnrolling(true);
+    await fetch(`/api/students/${studentId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enrolled: true, enrolledAt: new Date().toISOString(), standing: "heated" }),
+    });
+    setEnrolled(true);
+    setEnrolling(false);
+  };
+
   // ── Country entry helpers ──
   const addCountryEntry = () => {
     setCountryEntries((prev) => [...prev, { country: "", universityName: "" }]);
@@ -237,6 +262,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
 
   const canNote = ["super_admin", "counsellor", "telecaller", "front_desk", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
   const canConvert = ["super_admin", "counsellor"].includes(session?.user?.role || "") && !lead.convertedToStudent;
+  const canEnroll = ["super_admin", "application_team", "admission_team", "visa_team", "counsellor"].includes(session?.user?.role || "") && !!lead.convertedToStudent && !!studentId;
   const canPrint = ["super_admin", "telecaller"].includes(session?.user?.role || "");
   const canUpdateStatus = ["super_admin", "telecaller", "counsellor", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
   const canEdit = ["super_admin", "counsellor", "telecaller", "front_desk"].includes(session?.user?.role || "");
@@ -263,8 +289,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2.5 flex-wrap">
             <h1 className="text-xl font-bold text-gray-900">{lead.name}</h1>
-            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold capitalize ${getStatusColor(lead.status)}`}>
-              {lead.status?.replace("_", " ")}
+            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold capitalize ${getStatusColor(lead.standing)}`}>
+              {lead.standing?.replace("_", " ")}
             </span>
             {lead.convertedToStudent && (
               <span className="bg-emerald-100 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full text-xs font-semibold">✓ Converted to Student</span>
@@ -294,6 +320,20 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
             <GraduationCap size={14} /> Convert to Student
           </button>
         )}
+        {canEnroll && (
+          <button
+            onClick={enrollStudent}
+            disabled={enrolling || enrolled}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+              enrolled
+                ? "bg-green-100 text-green-700 border border-green-200 cursor-default"
+                : "bg-amber-600 hover:bg-amber-700 text-white"
+            }`}
+          >
+            <UserCheck size={14} />
+            {enrolled ? "✓ Enrolled" : enrolling ? "Enrolling…" : "Enroll Student"}
+          </button>
+        )}
       </div>
 
       {/* ── Print-Only Letterhead ── */}
@@ -317,8 +357,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold border border-gray-400 text-gray-600">
               ETG-{lead._id.slice(-4).toUpperCase()}
             </span>
-            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold capitalize ${getStatusColor(lead.status)}`}>
-              {lead.status?.replace("_", " ")}
+            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold capitalize ${getStatusColor(lead.standing)}`}>
+              {lead.standing?.replace("_", " ")}
             </span>
           </div>
           <p className="text-sm text-gray-500 mt-1">

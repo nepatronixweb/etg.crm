@@ -11,6 +11,16 @@ const NoteSchema = new Schema<INote>(
   { timestamps: true }
 );
 
+const AdmissionDetailSchema = new Schema(
+  {
+    country: { type: String, required: true },
+    universityName: { type: String, default: "" },
+    courseName: { type: String, default: "" },
+    annualTuitionFee: { type: String, default: "" },
+  },
+  { timestamps: true }
+);
+
 const CountrySchema = new Schema({
   country: { type: String, required: true },
   status: {
@@ -42,6 +52,7 @@ export interface IStudentDocument extends Document {
   enrolled?: boolean;
   enrolledAt?: Date;
   countries: mongoose.Types.DocumentArray<mongoose.Document>;
+  admissionDetails: mongoose.Types.DocumentArray<mongoose.Document>;
   notes: INote[];
   createdAt: Date;
   updatedAt: Date;
@@ -67,6 +78,7 @@ const StudentSchema = new Schema<IStudentDocument>(
     enrolled: { type: Boolean, default: false },
     enrolledAt: { type: Date },
     countries: [CountrySchema],
+    admissionDetails: [AdmissionDetailSchema],
     notes: [NoteSchema],
   },
   { timestamps: true }

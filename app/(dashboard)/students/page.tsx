@@ -51,6 +51,8 @@ export default function StudentsPage() {
     setLoading(true);
     const params = new URLSearchParams();
     if (filterStage) params.set("stage", filterStage);
+    const role = session?.user?.role ?? "";
+    if (role === "admission_team" || role === "visa_team") params.set("enrolled", "true");
     const res = await fetch(`/api/students?${params}`);
     const data = await res.json();
     setStudents(Array.isArray(data) ? data : []);
@@ -58,7 +60,7 @@ export default function StudentsPage() {
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { fetchStudents(); }, [filterStage]);
+  useEffect(() => { fetchStudents(); }, [filterStage, session?.user?.role]);
 
   useEffect(() => {
     fetch("/api/branches").then((r) => r.json()).then((br) => setBranches(Array.isArray(br) ? br : []));

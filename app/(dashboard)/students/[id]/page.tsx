@@ -1,7 +1,7 @@
 "use client";
 import { use, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { ArrowLeft, Upload, FileText, CheckCircle, Plus, UserCheck } from "lucide-react";
+import { ArrowLeft, Upload, FileText, CheckCircle, Plus, UserCheck, Trash2, GraduationCap, Pencil } from "lucide-react";
 import { formatDate, formatDateTime, getStatusColor, getRoleLabel, COUNTRIES } from "@/lib/utils";
 import Link from "next/link";
 
@@ -19,6 +19,7 @@ interface StudentDetail {
   counsellor: { name: string; email: string };
   branch: { name: string };
   countries: Array<{ country: string; status: string; universityName?: string; visaStatus?: string; visaApprovedAt?: string }>;
+  admissionDetails: Array<{ _id: string; country: string; universityName: string; courseName: string; annualTuitionFee: string; createdAt: string }>;
   notes: Array<{ _id: string; content: string; addedByName: string; addedByRole: string; createdAt: string }>;
 }
 
@@ -45,6 +46,12 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   const [docName, setDocName] = useState("");
   const [addingCountry, setAddingCountry] = useState(false);
   const [newCountry, setNewCountry] = useState("");
+  const [enrolling, setEnrolling] = useState(false);
+  const [showAdmissionForm, setShowAdmissionForm] = useState(false);
+  const [admissionForm, setAdmissionForm] = useState({ country: "", universityName: "", courseName: "", annualTuitionFee: "" });
+  const [savingAdmission, setSavingAdmission] = useState(false);
+  const [editingAdmission, setEditingAdmission] = useState<number | null>(null);
+  const [editAdmissionForm, setEditAdmissionForm] = useState({ country: "", universityName: "", courseName: "", annualTuitionFee: "" });
 
   const fetchData = async () => {
     const [sRes, dRes] = await Promise.all([
@@ -86,21 +93,43 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   };
 
   const enrollStudent = async () => {
-    await fetch(`/api/students/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enrolled: true, enrolledAt: new Date().toISOString(), standing: "hot", currentStage: "application" }),
-    });
-    fetchData();
+    setEnrolling(true);
+    const enrolledAt = new Date().toISOString();
+    try {
+      const res = await fetch(`/api/students/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enrolled: true, enrolledAt, standing: "heated", currentStage: "application" }),
+      });
+      if (res.ok) {
+        setStudent((prev) => prev ? {
+          ...prev,
+          enrolled: true,
+          enrolledAt,
+          standing: "heated",
+          currentStage: "application",
+        } : prev);
+      } else {
+        const data = await res.json();
+        alert(`Enroll failed: ${data.error || "Unknown error"}`);
+      }
+    } catch (e) {
+      alert(`Network error: ${e}`);
+    }
+    setEnrolling(false);
   };
 
   const unenrollStudent = async () => {
-    await fetch(`/api/students/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enrolled: false, enrolledAt: null }),
-    });
-    fetchData();
+    try {
+      const res = await fetch(`/api/students/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enrolled: false, enrolledAt: null }),
+      });
+      if (res.ok) {
+        setStudent((prev) => prev ? { ...prev, enrolled: false, enrolledAt: undefined } : prev);
+      }
+    } catch {}
   };
 
   const updateStanding = async (standing: string) => {
@@ -143,6 +172,47 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     fetchData();
   };
 
+  const saveAdmissionDetail = async () => {
+    if (!admissionForm.country) return;
+    setSavingAdmission(true);
+    await fetch(`/api/students/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ $push: { admissionDetails: { ...admissionForm } } }),
+    });
+    setSavingAdmission(false);
+    setShowAdmissionForm(false);
+    setAdmissionForm({ country: "", universityName: "", courseName: "", annualTuitionFee: "" });
+    fetchData();
+  };
+
+  const deleteAdmissionDetail = async (index: number) => {
+    const entry = student?.admissionDetails?.[index];
+    if (!entry) return;
+    await fetch(`/api/students/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ $pull: { admissionDetails: { _id: entry._id } } }),
+    });
+    fetchData();
+  };
+
+  const updateAdmissionDetail = async (index: number) => {
+    const entry = student?.admissionDetails?.[index];
+    if (!entry) return;
+    setSavingAdmission(true);
+    const existing = student?.admissionDetails || [];
+    const updated = existing.map((e, i) => i === index ? { ...editAdmissionForm, _id: e._id } : e);
+    await fetch(`/api/students/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ admissionDetails: updated }),
+    });
+    setSavingAdmission(false);
+    setEditingAdmission(null);
+    fetchData();
+  };
+
   if (!student) return <div className="flex items-center justify-center h-64 text-gray-400">Loading...</div>;
 
   const STAGES = ["counsellor", "application", "admission", "visa", "completed"];
@@ -150,6 +220,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   const canNote = ["super_admin", "counsellor", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
   const canStage = ["super_admin", "counsellor", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
   const canEnroll = ["super_admin", "application_team", "counsellor"].includes(session?.user?.role || "");
+  const canAdmission = ["super_admin", "admission_team"].includes(session?.user?.role || "");
   const canVisa = ["super_admin", "visa_team"].includes(session?.user?.role || "");
 
   const filteredDocs = docs.filter((d) => !selectedCountry || d.country === selectedCountry);
@@ -239,6 +310,191 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
             )}
           </div>
 
+          {/* Admission Details */}
+          {canAdmission && (
+            <div className="bg-white rounded-xl border border-gray-100 p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                  <GraduationCap size={16} /> Admission Details
+                </h2>
+                {!showAdmissionForm && (
+                  <button onClick={() => setShowAdmissionForm(true)} className="text-blue-600 text-xs flex items-center gap-1 hover:underline">
+                    <Plus size={12} /> Add Entry
+                  </button>
+                )}
+              </div>
+
+              {showAdmissionForm && (
+                <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 mb-4 space-y-3">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">New Admission Entry</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Country</label>
+                      <select
+                        value={admissionForm.country}
+                        onChange={(e) => setAdmissionForm((f) => ({ ...f, country: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Select country</option>
+                        {student.countries?.map((c) => (
+                          <option key={c.country} value={c.country}>{c.country}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">University Name</label>
+                      <input
+                        value={admissionForm.universityName}
+                        onChange={(e) => setAdmissionForm((f) => ({ ...f, universityName: e.target.value }))}
+                        placeholder="e.g. University of Melbourne"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Course Name</label>
+                      <input
+                        value={admissionForm.courseName}
+                        onChange={(e) => setAdmissionForm((f) => ({ ...f, courseName: e.target.value }))}
+                        placeholder="e.g. Bachelor of Engineering"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Annual Tuition Fee</label>
+                      <input
+                        value={admissionForm.annualTuitionFee}
+                        onChange={(e) => setAdmissionForm((f) => ({ ...f, annualTuitionFee: e.target.value }))}
+                        placeholder="e.g. AUD 32,000"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={saveAdmissionDetail}
+                      disabled={!admissionForm.country || savingAdmission}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg text-sm font-medium"
+                    >
+                      {savingAdmission ? "Saving" : "Save"}
+                    </button>
+                    <button
+                      onClick={() => { setShowAdmissionForm(false); setAdmissionForm({ country: "", universityName: "", courseName: "", annualTuitionFee: "" }); }}
+                      className="px-4 py-2 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg text-sm"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {(!student.admissionDetails || student.admissionDetails.length === 0) && !showAdmissionForm && (
+                <p className="text-sm text-gray-400 text-center py-4">No admission details added yet</p>
+              )}
+
+              <div className="space-y-3">
+                {student.admissionDetails?.map((entry, i) => (
+                  <div key={entry._id ?? i} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                    {editingAdmission === i ? (
+                      <div className="space-y-3">
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Edit Entry</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Country</label>
+                            <select
+                              value={editAdmissionForm.country}
+                              onChange={(e) => setEditAdmissionForm((f) => ({ ...f, country: e.target.value }))}
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              <option value="">Select country</option>
+                              {student.countries?.map((c) => (
+                                <option key={c.country} value={c.country}>{c.country}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">University Name</label>
+                            <input
+                              value={editAdmissionForm.universityName}
+                              onChange={(e) => setEditAdmissionForm((f) => ({ ...f, universityName: e.target.value }))}
+                              placeholder="e.g. University of Melbourne"
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Course Name</label>
+                            <input
+                              value={editAdmissionForm.courseName}
+                              onChange={(e) => setEditAdmissionForm((f) => ({ ...f, courseName: e.target.value }))}
+                              placeholder="e.g. Bachelor of Engineering"
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Annual Tuition Fee</label>
+                            <input
+                              value={editAdmissionForm.annualTuitionFee}
+                              onChange={(e) => setEditAdmissionForm((f) => ({ ...f, annualTuitionFee: e.target.value }))}
+                              placeholder="e.g. AUD 32,000"
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          <button
+                            onClick={() => updateAdmissionDetail(i)}
+                            disabled={!editAdmissionForm.country || savingAdmission}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg text-sm font-medium"
+                          >
+                            {savingAdmission ? "Saving…" : "Update"}
+                          </button>
+                          <button
+                            onClick={() => setEditingAdmission(null)}
+                            className="px-4 py-2 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg text-sm"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1 min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="px-2.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full">{entry.country}</span>
+                            {entry.universityName && <span className="text-sm font-semibold text-gray-800">{entry.universityName}</span>}
+                          </div>
+                          <div className="flex items-center gap-4 flex-wrap mt-1">
+                            {entry.courseName && (
+                              <span className="text-sm text-gray-600"><span className="text-xs text-gray-400 font-medium">Course: </span>{entry.courseName}</span>
+                            )}
+                            {entry.annualTuitionFee && (
+                              <span className="text-sm text-gray-600"><span className="text-xs text-gray-400 font-medium">Fee: </span>{entry.annualTuitionFee} / yr</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 ml-3 shrink-0">
+                          <button
+                            onClick={() => { setEditingAdmission(i); setEditAdmissionForm({ country: entry.country, universityName: entry.universityName || "", courseName: entry.courseName || "", annualTuitionFee: entry.annualTuitionFee || "" }); }}
+                            className="p-1.5 text-gray-300 hover:text-blue-500 transition-colors"
+                            title="Edit entry"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            onClick={() => deleteAdmissionDetail(i)}
+                            className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
+                            title="Remove entry"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Documents */}
           <div className="bg-white rounded-xl border border-gray-100 p-5">
             <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -325,21 +581,30 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
               {!student.enrolled ? (
                 <>
                   <p className="text-sm text-gray-500 mb-3">
-                    Enroll this student to move them into the application pipeline. Standing will be set to <span className="font-semibold text-red-600">Hot</span> automatically.
+                    Enroll this student to move them into the application pipeline. Standing will be set to <span className="font-semibold text-orange-600">Heated</span> automatically and visible to the Admission department.
                   </p>
                   <button
                     onClick={enrollStudent}
-                    className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+                    disabled={enrolling}
+                    className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2"
                   >
-                    <UserCheck size={15} /> Enroll Student
+                    <UserCheck size={15} /> {enrolling ? "Enrolling…" : "Enroll Student"}
                   </button>
                 </>
               ) : (
                 <>
-                  <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-100 px-3 py-2 rounded-lg mb-3">
-                    <CheckCircle size={14} />
-                    <span>Enrolled {student.enrolledAt ? `on ${formatDate(student.enrolledAt)}` : ""}</span>
+                  <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-xl mb-3">
+                    <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center shrink-0">
+                      <CheckCircle size={16} className="text-white" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-green-800">Student Enrolled</p>
+                      {student.enrolledAt && (
+                        <p className="text-xs text-green-600">Enrolled on {formatDate(student.enrolledAt)}</p>
+                      )}
+                    </div>
                   </div>
+                  <p className="text-xs text-gray-400 mb-2">This student is now visible in the Admission department.</p>
                   <button
                     onClick={unenrollStudent}
                     className="text-[11px] text-gray-400 hover:text-red-500 font-medium transition-colors"
