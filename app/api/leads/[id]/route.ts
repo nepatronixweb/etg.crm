@@ -30,6 +30,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     await connectDB();
     const body = await req.json();
 
+    // Enforce role-based field restrictions
+    if (session.user.role === "front_desk" && body.stage) {
+      return NextResponse.json({ error: "Front desk users cannot update stage" }, { status: 403 });
+    }
+    if (session.user.role !== "front_desk" && body.status) {
+      return NextResponse.json({ error: "Only front desk users can update status" }, { status: 403 });
+    }
+
     // Snapshot old assignedTo before updating
     const oldLead = await Lead.findById(id).select("assignedTo name").lean();
     const oldAssignedTo = oldLead?.assignedTo?.toString();
@@ -76,12 +84,39 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const { id } = await params;
     await connectDB();
     const body = await req.json();
-    // Auto-record date when a stage is set
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const update: Record<string, any> = { ...body };
-    if (body.stage) {
-      update[`stageDates.${body.stage}`] = new Date();
+    const update: Record<string, any> = {};
+
+    // Front desk users: only update status, not stage
+    if (session.user.role === "front_desk") {
+      if (body.status) {
+        update.status = body.status;
+        update[`statusDates.${body.status}`] = new Date();
+      }
+      // Remove stage if accidentally provided
+      if (body.stage) {
+        return NextResponse.json({ error: "Front desk users cannot update stage" }, { status: 403 });
+      }
+    } else {
+      // Other users: only update stage, not status
+      if (body.stage) {
+        update.stage = body.stage;
+        update[`stageDates.${body.stage}`] = new Date();
+      }
+      // Remove status if accidentally provided
+      if (body.status) {
+        return NextResponse.json({ error: "Only front desk users can update status" }, { status: 403 });
+      }
     }
+
+    // Allow other fields like assignedTo, notes, etc for all users
+    const allowedFields = ["assignedTo", "assignedBy", "standing", "interestedCountry", "interestedService", "comments", "notes"];
+    for (const field of allowedFields) {
+      if (field in body) {
+        update[field] = body[field];
+      }
+    }
+
     const lead = await Lead.findByIdAndUpdate(id, { $set: update }, { new: true });
     if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     return NextResponse.json(lead);

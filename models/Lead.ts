@@ -1,5 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
-import { LeadSource, LeadStanding, INote } from "@/types";
+import { LeadSource, LeadStanding, LeadStatus, INote } from "@/types";
 
 const NoteSchema = new Schema<INote>(
   {
@@ -27,8 +27,10 @@ export interface ILeadDocument extends Document {
   remindersCount: number;
   lastReminderAt?: Date;
   convertedToStudent: boolean;
-  stage?: string;
+  stage?: string; // For non-FD departments
+  status?: LeadStatus; // Status field for FD department
   stageDates?: Record<string, Date>;
+  statusDates?: Record<string, Date>;
   // Multiple interested countries & universities
   interestedCountries: { country: string; universityName?: string }[];
   // Parent information
@@ -93,7 +95,43 @@ const LeadSchema = new Schema<ILeadDocument>(
     lastReminderAt: { type: Date },
     convertedToStudent: { type: Boolean, default: false },
     stage: { type: String, default: "" },
+    status: {
+      type: String,
+      enum: [
+        "FD-Junk",
+        "AP-Call Not Received",
+        "AP-Call Back Later",
+        "AP-Not Interested",
+        "Wrong Number",
+        "Not Qualified",
+        "Not Interested",
+        "AP-Pending",
+        "Interested 2027",
+        "FD-Future Prospective",
+        "On Hold",
+        "Plan Dropped",
+        "Counselling",
+        "Counselled",
+        "AP-Interested",
+        "Negotiation",
+        "Open/Unassigned",
+        "Future Prospect",
+        "FD-Interested",
+        "Dead/Junk Lead",
+        "Not Answering",
+        "Assigned",
+        "In-Progress",
+        "Not Genuine",
+        "Phone Counselling",
+        "Qualified Lead",
+        "Registered/Completed",
+        "Interested",
+        "Closed Lost",
+      ],
+      default: "Open/Unassigned",
+    },
     stageDates: { type: Map, of: Date, default: {} },
+    statusDates: { type: Map, of: Date, default: {} },
     // Multiple interested countries & universities
     interestedCountries: {
       type: [{ country: { type: String }, universityName: { type: String, default: "" } }],
@@ -138,6 +176,7 @@ const LeadSchema = new Schema<ILeadDocument>(
 // Indexes for fast queries
 LeadSchema.index({ branch: 1, standing: 1 });
 LeadSchema.index({ assignedTo: 1, standing: 1 });
+LeadSchema.index({ status: 1 });
 LeadSchema.index({ convertedToStudent: 1 });
 LeadSchema.index({ updatedAt: 1 }); // for cron stale-lead queries
 LeadSchema.index({ createdAt: -1 });

@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
     const source = searchParams.get("source");
     const assignedTo = searchParams.get("assignedTo");
     const country = searchParams.get("country");
+    const status = searchParams.get("status");
     const from = searchParams.get("from");
     const to = searchParams.get("to");
 
@@ -39,6 +40,7 @@ export async function GET(req: NextRequest) {
     if (source) filter.source = source;
     if (assignedTo) filter.assignedTo = assignedTo;
     if (country) filter.interestedCountry = country;
+    if (status) filter.status = status;
     if (from || to) {
       filter.createdAt = {};
       if (from) filter.createdAt.$gte = new Date(from);
@@ -65,6 +67,19 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { assignmentMethod, ...leadData } = body;
+
+    // Enforce role-based field restrictions
+    if (session.user.role === "front_desk" && leadData.stage) {
+      return NextResponse.json({ error: "Front desk users cannot set stage" }, { status: 403 });
+    }
+    if (session.user.role !== "front_desk" && leadData.status) {
+      return NextResponse.json({ error: "Only front desk users can set status" }, { status: 403 });
+    }
+
+    // Set initial status for FD leads (only if not already provided)
+    if (session.user.role === "front_desk" && !leadData.status) {
+      leadData.status = "Open/Unassigned";
+    }
 
     // Round Robin assignment
     if (assignmentMethod === "round_robin" && leadData.branch) {

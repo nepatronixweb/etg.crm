@@ -9,6 +9,37 @@ export type UserRole =
 
 export type LeadStanding = "heated" | "hot" | "warm" | "out_of_contact";
 
+export type LeadStatus =
+  | "FD-Junk"
+  | "AP-Call Not Received"
+  | "AP-Call Back Later"
+  | "AP-Not Interested"
+  | "Wrong Number"
+  | "Not Qualified"
+  | "Not Interested"
+  | "AP-Pending"
+  | "Interested 2027"
+  | "FD-Future Prospective"
+  | "On Hold"
+  | "Plan Dropped"
+  | "Counselling"
+  | "Counselled"
+  | "AP-Interested"
+  | "Negotiation"
+  | "Open/Unassigned"
+  | "Future Prospect"
+  | "FD-Interested"
+  | "Dead/Junk Lead"
+  | "Not Answering"
+  | "Assigned"
+  | "In-Progress"
+  | "Not Genuine"
+  | "Phone Counselling"
+  | "Qualified Lead"
+  | "Registered/Completed"
+  | "Interested"
+  | "Closed Lost";
+
 export type StudentStage =
   | "counsellor"
   | "application"
@@ -72,7 +103,9 @@ export interface ILead {
   lastReminderAt?: Date;
   convertedToStudent: boolean;
   stage?: string;
+  status?: LeadStatus;
   stageDates?: Record<string, string>;
+  statusDates?: Record<string, string>;
   // Multiple interested countries & universities
   interestedCountries?: { country: string; universityName?: string }[];
   // Parent information

@@ -2,7 +2,7 @@
 import { use, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { ArrowLeft, UserPlus, MapPin, Phone, Mail, Calendar, Plus, X, GraduationCap, Globe, Trash2, ChevronDown, Users, BookOpen, Home, Award, CreditCard, ClipboardList, Printer, Download, UserCheck } from "lucide-react";
-import { formatDate, formatDateTime, getStatusColor, getRoleLabel, COUNTRIES, LEAD_STAGES, LEAD_STAGE_GROUPS, getLeadStageDotColor } from "@/lib/utils";
+import { formatDate, formatDateTime, getStatusColor, getRoleLabel, COUNTRIES, LEAD_STAGES, LEAD_STAGE_GROUPS, FD_STATUSES, getLeadStageDotColor } from "@/lib/utils";
 import { ILead } from "@/types";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -75,6 +75,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const [lcUniOpen, setLcUniOpen] = useState<number | null>(null);
   const [savingCountries, setSavingCountries] = useState(false);
   const [countriesSaved, setCountriesSaved] = useState(false);
+  const [showFdStatusDropdown, setShowFdStatusDropdown] = useState(false);
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const fetchLead = async () => {
@@ -121,6 +122,20 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     }
   }, [loading]);
 
+  // Close FD status dropdown when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const dropdown = document.getElementById("fd-status-dropdown");
+      if (dropdown && !dropdown.contains(e.target as Node)) {
+        setShowFdStatusDropdown(false);
+      }
+    };
+    if (showFdStatusDropdown) {
+      document.addEventListener("mousedown", handler);
+      return () => document.removeEventListener("mousedown", handler);
+    }
+  }, [showFdStatusDropdown]);
+
   // Pre-fill convert modal from lead's saved countries
   useEffect(() => {
     if (showConvertModal) {
@@ -159,6 +174,16 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
 
   const updateStatus = async (status: string) => {
     await fetch(`/api/leads/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ standing: status }) });
+    fetchLead();
+  };
+
+  const updateLeadStatus = async (status: string) => {
+    await fetch(`/api/leads/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+    fetchLead();
+  };
+
+  const updateLeadStage = async (stage: string) => {
+    await fetch(`/api/leads/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage }) });
     fetchLead();
   };
 
@@ -422,17 +447,30 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
               </span>
             </div>
             {(() => {
-              const stageVal = (lead as unknown as { stage?: string }).stage;
-              const stageInfo = LEAD_STAGES.find((s) => s.value === stageVal);
-              return stageVal ? (
-                <div>
-                  <p className="text-xs text-gray-400 mb-1">Stage</p>
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${stageInfo ? stageInfo.color : "bg-gray-100 text-gray-500"}`}>
-                    {stageInfo && <span className={`w-1.5 h-1.5 rounded-full ${getLeadStageDotColor(stageVal)} opacity-70`} />}
-                    {stageInfo ? stageInfo.label : stageVal}
-                  </span>
-                </div>
-              ) : null;
+              if (session?.user?.role === "front_desk") {
+                const statusVal = (lead as unknown as { status?: string }).status;
+                const statusInfo = FD_STATUSES.find((s) => s.value === statusVal);
+                return statusVal ? (
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1">Status</p>
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${statusInfo ? statusInfo.color : "bg-gray-100 text-gray-500"}`}>
+                      {statusInfo ? statusInfo.label : statusVal}
+                    </span>
+                  </div>
+                ) : null;
+              } else {
+                const stageVal = (lead as unknown as { stage?: string }).stage;
+                const stageInfo = LEAD_STAGES.find((s) => s.value === stageVal);
+                return stageVal ? (
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1">Stage</p>
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${stageInfo ? stageInfo.color : "bg-gray-100 text-gray-500"}`}>
+                      {stageInfo && <span className={`w-1.5 h-1.5 rounded-full ${getLeadStageDotColor(stageVal)} opacity-70`} />}
+                      {stageInfo ? stageInfo.label : stageVal}
+                    </span>
+                  </div>
+                ) : null;
+              }
             })()}
             <Field label="Created" value={formatDate(lead.createdAt)} />
             <Field label="Reminders Sent" value={`${lead.remindersCount}/2`} />
@@ -626,8 +664,61 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
           </div>
         )}
 
-        {/* Application Stage Timeline */}
-        {["super_admin", "counsellor", "telecaller", "front_desk", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "") && (
+        {/* Front Desk Status Section */}
+        {session?.user?.role === "front_desk" && (
+          <div id="fd-status-dropdown" className="no-print px-6 py-5 border-t border-gray-100">
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Status</p>
+            <div className="relative inline-block w-full">
+              <button
+                onClick={() => setShowFdStatusDropdown(!showFdStatusDropdown)}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-left text-sm font-medium text-gray-900 bg-white hover:border-gray-400 transition-colors flex items-center justify-between"
+              >
+                {(() => {
+                  const currentStatus = (lead as unknown as { status?: string }).status;
+                  const statusInfo = FD_STATUSES.find((s) => s.value === currentStatus);
+                  return (
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${statusInfo ? statusInfo.color : "text-gray-400"}`}>
+                      {statusInfo ? statusInfo.label : "Select Status"}
+                    </span>
+                  );
+                })()}
+                <svg className={`w-5 h-5 text-gray-400 transition-transform ${showFdStatusDropdown ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                </svg>
+              </button>
+
+              {showFdStatusDropdown && (
+                <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                  <div className="max-h-96 overflow-y-auto p-2">
+                    <div className="grid grid-cols-1 gap-2">
+                      {FD_STATUSES.map((status) => {
+                        const currentStatus = (lead as unknown as { status?: string }).status;
+                        const isActive = currentStatus === status.value;
+                        return (
+                          <button
+                            key={status.value}
+                            onClick={() => {
+                              updateLeadStatus(status.value);
+                              setShowFdStatusDropdown(false);
+                            }}
+                            className={`w-full px-3 py-2.5 rounded-lg text-sm font-semibold text-center transition-all ${status.color} ${
+                              isActive ? "ring-2 ring-offset-2 ring-gray-400" : "hover:opacity-90"
+                            }`}
+                          >
+                            {status.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Application Stage Timeline (For non-FD users) */}
+        {session?.user?.role !== "front_desk" && ["super_admin", "counsellor", "telecaller", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "") && (
           <div className="no-print px-6 py-5 border-t border-gray-100">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Application Stage</p>
             <div className="space-y-0.5">
@@ -643,9 +734,13 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                     const isSet = !!dateStr;
                     const isCurrent = (lead as unknown as { stage?: string }).stage === s.value;
                     return (
-                      <div key={s.value} className={`flex items-center justify-between px-3 py-1.5 rounded-lg transition-colors ${
-                        isCurrent ? "bg-gray-50 ring-1 ring-gray-200" : isSet ? "bg-gray-50/50" : ""
-                      }`}>
+                      <button
+                        key={s.value}
+                        onClick={() => updateLeadStage(s.value)}
+                        className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg transition-colors text-left ${
+                          isCurrent ? "bg-gray-50 ring-1 ring-gray-200" : isSet ? "bg-gray-50/50 hover:bg-gray-50" : "hover:bg-gray-50/30"
+                        }`}
+                      >
                         <div className="flex items-center gap-2.5">
                           <span className={`w-4 h-4 rounded-full flex items-center justify-center border shrink-0 ${
                             isSet ? "bg-gray-900 border-gray-900" : "border-gray-200"
@@ -664,7 +759,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                         {isSet && (
                           <span className="text-[10px] text-gray-400 tabular-nums">{formatDate(new Date(dateStr))}</span>
                         )}
-                      </div>
+                      </button>
                     );
                   })}
                 </div>

@@ -108,6 +108,38 @@ export const LEAD_STAGES: { value: string; label: string; color: string }[] = [
   { value: "visa_withdrawn",               label: "Visa Withdrawn",                  color: "bg-gray-100 text-gray-600" },
 ];
 
+export const FD_STATUSES: { value: string; label: string; color: string }[] = [
+  { value: "FD-Junk",                      label: "FD-Junk",                         color: "bg-black text-white" },
+  { value: "AP-Call Not Received",         label: "AP-Call Not Received",            color: "bg-blue-200 text-blue-900" },
+  { value: "AP-Call Back Later",           label: "AP-Call Back Later",              color: "bg-blue-400 text-white" },
+  { value: "AP-Not Interested",            label: "AP-Not Interested",               color: "bg-purple-500 text-white" },
+  { value: "Wrong Number",                 label: "Wrong Number",                    color: "bg-pink-400 text-white" },
+  { value: "Not Qualified",                label: "Not Qualified",                   color: "bg-cyan-400 text-white" },
+  { value: "Not Interested",               label: "Not Interested",                  color: "bg-teal-400 text-white" },
+  { value: "AP-Pending",                   label: "AP-Pending",                      color: "bg-black text-white" },
+  { value: "Interested 2027",              label: "Interested 2027",                 color: "bg-teal-600 text-white" },
+  { value: "FD-Future Prospective",        label: "FD-Future Prospective",           color: "bg-teal-500 text-white" },
+  { value: "On Hold",                      label: "On Hold",                         color: "bg-teal-500 text-white" },
+  { value: "Plan Dropped",                 label: "Plan Dropped",                    color: "bg-teal-500 text-white" },
+  { value: "Counselling",                  label: "Counselling",                     color: "bg-black text-white" },
+  { value: "Counselled",                   label: "Counselled",                      color: "bg-black text-white" },
+  { value: "AP-Interested",                label: "AP-Interested",                   color: "bg-black text-white" },
+  { value: "Negotiation",                  label: "Negotiation",                     color: "bg-green-500 text-white" },
+  { value: "Open/Unassigned",              label: "Open/Unassigned",                 color: "bg-pink-400 text-white" },
+  { value: "Future Prospect",              label: "Future Prospect",                 color: "bg-green-300 text-white" },
+  { value: "FD-Interested",                label: "FD-Interested",                   color: "bg-teal-700 text-white" },
+  { value: "Dead/Junk Lead",               label: "Dead/Junk Lead",                  color: "bg-blue-300 text-white" },
+  { value: "Not Answering",                label: "Not Answering",                   color: "bg-purple-400 text-white" },
+  { value: "Assigned",                     label: "Assigned",                        color: "bg-purple-500 text-white" },
+  { value: "In-Progress",                  label: "In-Progress",                     color: "bg-green-400 text-white" },
+  { value: "Not Genuine",                  label: "Not Genuine",                     color: "bg-black text-white" },
+  { value: "Phone Counselling",            label: "Phone Counselling",               color: "bg-indigo-400 text-white" },
+  { value: "Qualified Lead",               label: "Qualified Lead",                  color: "bg-blue-600 text-white" },
+  { value: "Registered/Completed",         label: "Registered/Completed",            color: "bg-gray-500 text-white" },
+  { value: "Interested",                   label: "Interested",                      color: "bg-teal-300 text-white" },
+  { value: "Closed Lost",                  label: "Closed Lost",                     color: "bg-red-500 text-white" },
+];
+
 export function getLeadStageColor(value: string): string {
   return LEAD_STAGES.find((s) => s.value === value)?.color ?? "bg-gray-100 text-gray-600";
 }

@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSession } from "next-auth/react";
 import { Plus, Search, X, Users, Paperclip, FileText, Trash2, ChevronDown, MessageSquare, MoreVertical, Phone, Mail, Calendar, FileSpreadsheet } from "lucide-react";
-import { formatDate, formatDateTime, getStatusColor, COUNTRIES, SERVICES, LEAD_STAGES, LEAD_STAGE_GROUPS, getLeadStageColor, getLeadStageDotColor } from "@/lib/utils";
+import { formatDate, formatDateTime, getStatusColor, COUNTRIES, SERVICES, LEAD_STAGES, LEAD_STAGE_GROUPS, FD_STATUSES, getLeadStageColor, getLeadStageDotColor } from "@/lib/utils";
 import { ILead, LeadSource, LeadStanding } from "@/types";
 import Link from "next/link";
 
@@ -278,6 +278,7 @@ export default function LeadsPage() {
   const canExport = ["super_admin", "telecaller"].includes(session?.user?.role || "");
 
   const [statusDropdownId, setStatusDropdownId] = useState<string | null>(null);
+  const [fdStatusDropdownId, setFdStatusDropdownId] = useState<string | null>(null);
   const [crmStageDropdownId, setCrmStageDropdownId] = useState<string | null>(null);
   const [crmStageDropdownPos, setCrmStageDropdownPos] = useState({ top: 0, left: 0 });
   const stageDropdownRef = useRef<HTMLDivElement>(null);
@@ -358,6 +359,21 @@ export default function LeadsPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ standing: newStatus }),
+    });
+  };
+
+  const quickUpdateFdStatus = async (leadId: string, newStatus: string) => {
+    setFdStatusDropdownId(null);
+    const now = new Date().toISOString();
+    setLeads((prev) => prev.map((l) => {
+      if (l._id !== leadId) return l;
+      const ext = l as unknown as { statusDates?: Record<string, string> };
+      return { ...l, status: newStatus, statusDates: newStatus ? { ...(ext.statusDates ?? {}), [newStatus]: now } : ext.statusDates } as typeof l;
+    }));
+    await fetch(`/api/leads/${leadId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: newStatus }),
     });
   };
 
@@ -452,19 +468,21 @@ export default function LeadsPage() {
       {/* Filter + Search Bar */}
       <div className="bg-white border border-gray-200 rounded-lg overflow-visible">
         <div className="flex items-stretch gap-0 divide-x divide-gray-200 flex-wrap">
-          {/* Lead Stage */}
-          <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
-            <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Stage</label>
-            <select
-              value={filterLeadStage}
-              onChange={(e) => setFilterLeadStage(e.target.value)}
-              className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
-            >
-              <option value="">All Stages</option>
-              {LEAD_STAGES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
-            <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          </div>
+          {/* Lead Stage - Hidden for FD */}
+          {session?.user?.role !== "front_desk" && (
+            <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
+              <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Stage</label>
+              <select
+                value={filterLeadStage}
+                onChange={(e) => setFilterLeadStage(e.target.value)}
+                className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
+              >
+                <option value="">All Stages</option>
+                {LEAD_STAGES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </select>
+              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            </div>
+          )}
           {/* Lead Standing */}
           <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Standing</label>
@@ -611,12 +629,19 @@ export default function LeadsPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden" onClick={() => { setStatusDropdownId(null); setCrmStageDropdownId(null); setMenuOpenId(null); }}>
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden" onClick={() => { setStatusDropdownId(null); setFdStatusDropdownId(null); setCrmStageDropdownId(null); setMenuOpenId(null); }}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                {["Lead", "Client", "Services", "Stage", "Standing", "Follow-Up"].map((h) => (
+                {[
+                  "Lead",
+                  "Client",
+                  "Services",
+                  session?.user?.role === "front_desk" ? "Status" : "Stage",
+                  "Standing",
+                  "Follow-Up",
+                ].map((h) => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">
                     {h}
                   </th>
@@ -732,39 +757,105 @@ export default function LeadsPage() {
                         <p className="text-[11px] text-gray-400 mt-1 tabular-nums whitespace-nowrap">{formatDate(lead.createdAt)}</p>
                       </td>
 
-                      {/* STAGE column */}
+                      {/* STAGE/STATUS column */}
                       <td className="px-4 py-3.5 min-w-36">
-                        {(() => {
-                          const ext = lead as unknown as { stage?: string; stageDates?: Record<string, string> };
-                          const leadStage = ext.stage;
-                          const stageInfo = LEAD_STAGES.find((s) => s.value === leadStage);
-                          const dotColor = leadStage ? getLeadStageDotColor(leadStage) : "";
-                          const stageDate = leadStage && ext.stageDates?.[leadStage];
-                          return (
-                            <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
-                              {/* Trigger pill */}
-                              <button
-                                onClick={(e) => canUpdateStage && openStageDropdown(e, lead._id)}
-                                className={`inline-flex items-center gap-2 pl-2.5 pr-2 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 shadow-sm border ${
-                                  stageInfo
-                                    ? `${stageInfo.color} border-transparent hover:shadow-md`
-                                    : "bg-white border-dashed border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500"
-                                } ${canUpdateStage ? "cursor-pointer" : "cursor-default"}`}
-                              >
-                                {stageInfo
-                                  ? <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} opacity-70`} />
-                                  : <span className="text-[13px] leading-none opacity-50">+</span>
-                                }
-                                <span className="max-w-32 truncate">{stageInfo ? stageInfo.label : "Set Stage"}</span>
-                                {canUpdateStage && <ChevronDown size={10} className={`shrink-0 opacity-50 transition-transform duration-200 ${crmStageDropdownId === lead._id ? "rotate-180" : ""}`} />}
-                              </button>
-                              {stageDate && (
-                                <p className="text-[10px] text-gray-400 mt-0.5 tabular-nums">{formatDate(new Date(stageDate))}</p>
-                              )}
-                              {/* Dropdown rendered as fixed portal – see bottom of component */}
-                            </div>
-                          );
-                        })()}
+                        {session?.user?.role === "front_desk" ? (
+                          // FD Status column - INTERACTIVE
+                          (() => {
+                            const ext = lead as unknown as { status?: string; statusDates?: Record<string, string> };
+                            const leadStatus = ext.status;
+                            const statusInfo = FD_STATUSES.find((s) => s.value === leadStatus);
+                            const statusDate = leadStatus && ext.statusDates?.[leadStatus];
+                            return (
+                              <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  onClick={() => setFdStatusDropdownId(fdStatusDropdownId === lead._id ? null : lead._id)}
+                                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-150 group
+                                    ${
+                                      statusInfo
+                                        ? `${statusInfo.color} cursor-pointer hover:shadow-md hover:scale-105`
+                                        : "bg-white border border-dashed border-gray-300 text-gray-400 cursor-pointer hover:border-gray-400"
+                                    }`}
+                                >
+                                  <span className="w-2 h-2 rounded-full bg-white/60"></span>
+                                  {statusInfo ? statusInfo.label : "Set Status"}
+                                  <ChevronDown size={12} className={`shrink-0 opacity-60 transition-transform duration-200 ${fdStatusDropdownId === lead._id ? "rotate-180" : ""}`} />
+                                </button>
+                                {fdStatusDropdownId === lead._id && (
+                                  <div className="absolute z-30 top-full left-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden min-w-64 max-h-96 overflow-y-auto">
+                                    {/* Dropdown Header */}
+                                    <div className="sticky top-0 bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b border-gray-200">
+                                      <p className="text-xs font-bold text-gray-700 uppercase tracking-widest">Change Status</p>
+                                    </div>
+                                    
+                                    {/* Status Grid */}
+                                    <div className="p-3 space-y-1.5">
+                                      {FD_STATUSES.map((s) => {
+                                        const isSelected = leadStatus === s.value;
+                                        const bgColor = s.color;
+                                        return (
+                                          <button
+                                            key={s.value}
+                                            onClick={() => quickUpdateFdStatus(lead._id, s.value)}
+                                            className={`w-full px-3.5 py-3 rounded-lg text-xs font-semibold transition-all duration-150 flex items-center justify-between group
+                                              ${isSelected 
+                                                ? `${bgColor} shadow-md scale-100 ring-2 ring-offset-1` 
+                                                : `${bgColor} opacity-70 hover:opacity-100 hover:shadow-md hover:scale-105`
+                                              }`}
+                                          >
+                                            <span className="flex items-center gap-2">
+                                              <span className="w-2 h-2 rounded-full bg-white/60 group-hover:bg-white"></span>
+                                              {s.label}
+                                            </span>
+                                            {isSelected && (
+                                              <span className="text-white font-bold animate-pulse">✓</span>
+                                            )}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                                {statusDate && (
+                                  <p className="text-[10px] text-gray-400 mt-0.5 tabular-nums">{formatDate(new Date(statusDate))}</p>
+                                )}
+                              </div>
+                            );
+                          })()
+                        ) : (
+                          // Non-FD Stage column
+                          (() => {
+                            const ext = lead as unknown as { stage?: string; stageDates?: Record<string, string> };
+                            const leadStage = ext.stage;
+                            const stageInfo = LEAD_STAGES.find((s) => s.value === leadStage);
+                            const dotColor = leadStage ? getLeadStageDotColor(leadStage) : "";
+                            const stageDate = leadStage && ext.stageDates?.[leadStage];
+                            return (
+                              <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+                                {/* Trigger pill */}
+                                <button
+                                  onClick={(e) => canUpdateStage && openStageDropdown(e, lead._id)}
+                                  className={`inline-flex items-center gap-2 pl-2.5 pr-2 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 shadow-sm border ${
+                                    stageInfo
+                                      ? `${stageInfo.color} border-transparent hover:shadow-md`
+                                      : "bg-white border-dashed border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500"
+                                  } ${canUpdateStage ? "cursor-pointer" : "cursor-default"}`}
+                                >
+                                  {stageInfo
+                                    ? <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} opacity-70`} />
+                                    : <span className="text-[13px] leading-none opacity-50">+</span>
+                                  }
+                                  <span className="max-w-32 truncate">{stageInfo ? stageInfo.label : "Set Stage"}</span>
+                                  {canUpdateStage && <ChevronDown size={10} className={`shrink-0 opacity-50 transition-transform duration-200 ${crmStageDropdownId === lead._id ? "rotate-180" : ""}`} />}
+                                </button>
+                                {stageDate && (
+                                  <p className="text-[10px] text-gray-400 mt-0.5 tabular-nums">{formatDate(new Date(stageDate))}</p>
+                                )}
+                                {/* Dropdown rendered as fixed portal – see bottom of component */}
+                              </div>
+                            );
+                          })()
+                        )}
                       </td>
 
                       {/* STANDING column */}
