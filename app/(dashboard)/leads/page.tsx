@@ -25,8 +25,6 @@ const LABEL_CLASS = "block text-xs font-semibold text-gray-700 mb-1.5 uppercase 
 export default function LeadsPage() {
   const { data: session } = useSession();
   const [leads, setLeads] = useState<ILead[]>([]);
-  const [students, setStudents] = useState<Record<string, any>>({});
-  const [studentLoading, setStudentLoading] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingLead, setEditingLead] = useState<ILead | null>(null);
@@ -71,24 +69,6 @@ export default function LeadsPage() {
     const data = await res.json();
     setLeads(Array.isArray(data) ? data : []);
     setLoading(false);
-  };
-
-  const fetchStudentData = async (leadId: string) => {
-    if (students[leadId]) return; // Already loaded
-    setStudentLoading((prev) => new Set(prev).add(leadId));
-    try {
-      const res = await fetch(`/api/students/lead/${leadId}`);
-      const data = await res.json();
-      setStudents((prev) => ({ ...prev, [leadId]: data }));
-    } catch {
-      setStudents((prev) => ({ ...prev, [leadId]: null }));
-    } finally {
-      setStudentLoading((prev) => {
-        const updated = new Set(prev);
-        updated.delete(leadId);
-        return updated;
-      });
-    }
   };
 
   useEffect(() => {
@@ -724,11 +704,6 @@ export default function LeadsPage() {
                         <div className="flex items-center gap-1.5 mb-1">
                           <span className="text-amber-400 text-sm">★</span>
                           <Link href={`/leads/${lead._id}`} className="font-semibold text-gray-900 text-sm hover:text-blue-600 hover:underline underline-offset-2 transition-colors">{lead.name}</Link>
-                          {lead.convertedToStudent && (
-                            <span className="inline-block px-2 py-0.5 bg-green-100 text-green-700 text-[9px] font-bold rounded-full uppercase tracking-widest">
-                              Student
-                            </span>
-                          )}
                         </div>
                         <div className="flex items-center gap-1 text-[12px] text-gray-500 mb-0.5">
                           <Phone size={10} className="text-gray-400 shrink-0" />
@@ -762,42 +737,6 @@ export default function LeadsPage() {
                             </a>
                           )}
                         </div>
-                        {/* Student Information Card */}
-                        {lead.convertedToStudent && (
-                          <div className="mt-2 bg-green-50 border border-green-200 rounded-lg p-2">
-                            {!students[lead._id] && !studentLoading.has(lead._id) && (
-                              <button
-                                onClick={() => fetchStudentData(lead._id)}
-                                className="text-xs text-green-700 hover:text-green-800 font-semibold underline"
-                              >
-                                View Student Info
-                              </button>
-                            )}
-                            {studentLoading.has(lead._id) && (
-                              <div className="text-[10px] text-green-600 flex items-center gap-1">
-                                <div className="w-2 h-2 border border-green-600 border-t-transparent rounded-full animate-spin"></div>
-                                Loading...
-                              </div>
-                            )}
-                            {students[lead._id] && (
-                              <div className="space-y-1">
-                                <p className="text-[10px] text-green-700 font-semibold">
-                                  Stage: <span className="font-bold capitalize">{students[lead._id]?.currentStage || "N/A"}</span>
-                                </p>
-                                {students[lead._id]?.enrolled && (
-                                  <p className="text-[10px] text-green-700 font-semibold">
-                                    ✓ Enrolled on {formatDate(students[lead._id]?.enrolledAt)}
-                                  </p>
-                                )}
-                                {students[lead._id]?.countries?.length > 0 && (
-                                  <p className="text-[10px] text-green-700">
-                                    Countries: {students[lead._id]?.countries.map((c: any) => c.country).join(", ")}
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
                         {/* Recent note / comment preview */}
                         {(latestNote || lead.comments) && (
                           <div className="mt-1.5 flex items-start gap-1 text-[11px] text-gray-500 bg-gray-50 rounded px-1.5 py-1 max-w-[210px]">
