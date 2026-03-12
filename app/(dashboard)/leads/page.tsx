@@ -198,7 +198,7 @@ export default function LeadsPage() {
     // Strip empty string ObjectId fields so MongoDB doesn't reject them
     const payload: Record<string, unknown> = { ...form };
     if (!payload.assignedTo) delete payload.assignedTo;
-    if (!payload.branch) delete payload.branch;
+    // Don't delete branch - let backend set it from session if needed
 
     console.log("📤 Sending payload:", payload);
 

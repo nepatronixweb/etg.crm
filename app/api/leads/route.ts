@@ -68,6 +68,11 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { assignmentMethod, ...leadData } = body;
 
+    // Auto-set branch from user's session if not provided or empty
+    if (!leadData.branch && session.user.branch) {
+      leadData.branch = session.user.branch;
+    }
+
     // Enforce role-based field restrictions
     if (session.user.role === "front_desk" && leadData.stage) {
       return NextResponse.json({ error: "Front desk users cannot set stage" }, { status: 403 });
