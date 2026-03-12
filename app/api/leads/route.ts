@@ -127,7 +127,9 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ message: "Lead created", lead }, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Failed to create lead" }, { status: 500 });
+  } catch (error) {
+    console.error("Create lead error:", error);
+    const message = error instanceof Error ? error.message : "Failed to create lead";
+    return NextResponse.json({ error: `Failed to create lead: ${message}` }, { status: 500 });
   }
 }

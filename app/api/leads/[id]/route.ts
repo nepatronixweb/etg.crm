@@ -72,8 +72,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     return NextResponse.json(lead);
-  } catch {
-    return NextResponse.json({ error: "Failed to update lead" }, { status: 500 });
+  } catch (error) {
+    console.error("Update lead error:", error);
+    const message = error instanceof Error ? error.message : "Failed to update lead";
+    return NextResponse.json({ error: `Failed to update lead: ${message}` }, { status: 500 });
   }
 }
 
@@ -120,8 +122,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const lead = await Lead.findByIdAndUpdate(id, { $set: update }, { new: true });
     if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     return NextResponse.json(lead);
-  } catch {
-    return NextResponse.json({ error: "Failed to update lead" }, { status: 500 });
+  } catch (error) {
+    console.error("Patch lead error:", error);
+    const message = error instanceof Error ? error.message : "Failed to update lead";
+    return NextResponse.json({ error: `Failed to update lead: ${message}` }, { status: 500 });
   }
 }
 

@@ -200,6 +200,8 @@ export default function LeadsPage() {
     if (!payload.assignedTo) delete payload.assignedTo;
     if (!payload.branch) delete payload.branch;
 
+    console.log("📤 Sending payload:", payload);
+
     try {
       let res: Response;
       if (editingLead) {
@@ -216,6 +218,7 @@ export default function LeadsPage() {
         });
       }
       const data = await res.json();
+      console.log("📥 Response data:", data, "Status:", res.status);
       if (res.ok) {
         const leadId = editingLead ? editingLead._id : (data._id || data.lead?._id);
         // Upload attached files one by one
@@ -236,8 +239,9 @@ export default function LeadsPage() {
       } else {
         setSubmitError(data?.error || (editingLead ? "Failed to update lead." : "Failed to create lead. Please try again."));
       }
-    } catch {
-      setSubmitError("Network error. Please try again.");
+    } catch (error) {
+      console.error("Form submission error:", error);
+      setSubmitError(error instanceof Error ? error.message : "Network error. Please try again.");
     } finally {
       setSubmitting(false);
     }
