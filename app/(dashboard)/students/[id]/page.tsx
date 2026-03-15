@@ -3,6 +3,7 @@ import { use, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { ArrowLeft, Upload, FileText, CheckCircle, Plus, UserCheck, Trash2, GraduationCap, Pencil } from "lucide-react";
 import { formatDate, formatDateTime, getStatusColor, getRoleLabel, COUNTRIES } from "@/lib/utils";
+import { upload } from "@vercel/blob/client";
 import Link from "next/link";
 
 interface StudentDetail {
@@ -82,7 +83,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     const sData = await sRes.json();
     const dData = await dRes.json();
     setStudent(sData);
-    setDocs(Array.isArray(dData) ? dData : []);
+    setDocs(dData.documents || []);
     if (sData.countries?.length > 0) setSelectedCountry(sData.countries[0].country);
   };
 
@@ -171,12 +172,25 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     const file = e.target.files?.[0];
     if (!file || !selectedCountry || !docName) return;
     setUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("studentId", id);
-    formData.append("country", selectedCountry);
-    formData.append("name", docName);
-    await fetch("/api/documents", { method: "POST", body: formData });
+    try {
+      const blob = await upload(file.name, file, {
+        access: "public",
+        handleUploadUrl: "/api/documents/upload",
+      });
+      await fetch("/api/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          studentId: id,
+          country: selectedCountry,
+          name: docName,
+          blobUrl: blob.url,
+          originalName: file.name,
+          fileSize: file.size,
+          fileType: file.type,
+        }),
+      });
+    } catch { /* silent */ }
     setUploading(false);
     setDocName("");
     e.target.value = "";

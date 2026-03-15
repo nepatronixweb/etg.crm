@@ -6,6 +6,7 @@ import {
   FileText, Download, Trash2, Search,
   CheckCircle, Eye, Upload, Plus, X, CloudUpload,
 } from "lucide-react";
+import { upload } from "@vercel/blob/client";
 import { formatDate, COUNTRIES } from "@/lib/utils";
 
 interface Document {
@@ -125,13 +126,26 @@ export default function DocumentsPage() {
     if (!uploadForm.studentId) { setUploadError("Please select a student."); return; }
     setUploading(true);
     setUploadError("");
-    const fd = new FormData();
-    fd.append("file", uploadForm.file);
-    fd.append("studentId", uploadForm.studentId);
-    fd.append("country", uploadForm.country);
-    fd.append("name", uploadForm.name || uploadForm.file.name);
     try {
-      const res = await fetch("/api/documents", { method: "POST", body: fd });
+      // Direct client upload to Vercel Blob (no body size limit)
+      const blob = await upload(uploadForm.file.name, uploadForm.file, {
+        access: "public",
+        handleUploadUrl: "/api/documents/upload",
+      });
+      // Save document metadata
+      const res = await fetch("/api/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          studentId: uploadForm.studentId,
+          country: uploadForm.country,
+          name: uploadForm.name || uploadForm.file.name,
+          blobUrl: blob.url,
+          originalName: uploadForm.file.name,
+          fileSize: uploadForm.file.size,
+          fileType: uploadForm.file.type,
+        }),
+      });
       const data = await res.json();
       if (res.ok) {
         setShowModal(false);
