@@ -234,15 +234,24 @@ export default function LeadsPage() {
       console.log("📥 Response data:", data, "Status:", res.status);
       if (res.ok) {
         const leadId = editingLead ? editingLead._id : (data._id || data.lead?._id);
-        // Upload attached files one by one
+        // Upload attached files one by one via chunked GridFS upload
         if (leadId && attachedFiles.length > 0) {
+          const { uploadFile } = await import("@/lib/upload");
           await Promise.all(
-            attachedFiles.map((file) => {
-              const fd = new FormData();
-              fd.append("file", file);
-              fd.append("leadId", leadId);
-              fd.append("name", file.name);
-              return fetch("/api/documents", { method: "POST", body: fd });
+            attachedFiles.map(async (file) => {
+              const uploadData = await uploadFile(file);
+              await fetch("/api/documents", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  leadId,
+                  name: file.name,
+                  fileUrl: uploadData.url,
+                  originalName: uploadData.originalName,
+                  fileSize: uploadData.fileSize,
+                  fileType: uploadData.fileType,
+                }),
+              });
             })
           );
         }

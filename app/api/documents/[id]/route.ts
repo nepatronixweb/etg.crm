@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import connectDB from "@/lib/mongodb";
 import StudentDocument from "@/models/Document";
-import { del } from "@vercel/blob";
+import mongoose from "mongoose";
 
 export async function PUT(
   req: NextRequest,
@@ -48,13 +48,18 @@ export async function DELETE(
   const doc = await StudentDocument.findById(id);
   if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // Delete file from Vercel Blob
+  // Delete file from MongoDB GridFS
   try {
-    if (doc.filePath && doc.filePath.startsWith("https://")) {
-      await del(doc.filePath);
+    const match = doc.filePath?.match(/\/api\/documents\/file\/([a-f0-9]{24})/);
+    if (match) {
+      const db = mongoose.connection.db;
+      if (db) {
+        const bucket = new mongoose.mongo.GridFSBucket(db, { bucketName: "documents" });
+        await bucket.delete(new mongoose.Types.ObjectId(match[1]));
+      }
     }
   } catch {
-    // Blob may not exist, continue
+    // GridFS file may not exist, continue
   }
 
   await StudentDocument.findByIdAndDelete(id);

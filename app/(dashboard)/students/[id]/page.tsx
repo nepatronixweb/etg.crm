@@ -172,13 +172,9 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     if (!file || !selectedCountry || !docName) return;
     setUploading(true);
     try {
-      // Upload file as raw body
-      const blobRes = await fetch(`/api/documents/upload?filename=${encodeURIComponent(file.name)}`, {
-        method: "PUT",
-        body: file,
-      });
-      if (!blobRes.ok) throw new Error("Upload failed");
-      const blob = await blobRes.json();
+      // Upload file to MongoDB GridFS
+      const { uploadFile } = await import("@/lib/upload");
+      const uploadData = await uploadFile(file);
       await fetch("/api/documents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -186,10 +182,10 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
           studentId: id,
           country: selectedCountry,
           name: docName,
-          blobUrl: blob.url,
-          originalName: file.name,
-          fileSize: file.size,
-          fileType: file.type,
+          fileUrl: uploadData.url,
+          originalName: uploadData.originalName,
+          fileSize: uploadData.fileSize,
+          fileType: uploadData.fileType,
         }),
       });
     } catch { /* silent */ }

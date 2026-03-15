@@ -126,18 +126,9 @@ export default function DocumentsPage() {
     setUploading(true);
     setUploadError("");
     try {
-      // Upload file as raw body to bypass serverless body limit
-      const blobRes = await fetch(`/api/documents/upload?filename=${encodeURIComponent(uploadForm.file.name)}`, {
-        method: "PUT",
-        body: uploadForm.file,
-      });
-      if (!blobRes.ok) {
-        const err = await blobRes.json();
-        setUploadError(err?.error || "File upload failed.");
-        setUploading(false);
-        return;
-      }
-      const blob = await blobRes.json();
+      // Upload file to MongoDB GridFS (chunked for large files)
+      const { uploadFile } = await import("@/lib/upload");
+      const uploadData = await uploadFile(uploadForm.file);
       // Save document metadata
       const res = await fetch("/api/documents", {
         method: "POST",
@@ -146,10 +137,10 @@ export default function DocumentsPage() {
           studentId: uploadForm.studentId,
           country: uploadForm.country,
           name: uploadForm.name || uploadForm.file.name,
-          blobUrl: blob.url,
-          originalName: uploadForm.file.name,
-          fileSize: uploadForm.file.size,
-          fileType: uploadForm.file.type,
+          fileUrl: uploadData.url,
+          originalName: uploadData.originalName,
+          fileSize: uploadData.fileSize,
+          fileType: uploadData.fileType,
         }),
       });
       const data = await res.json();

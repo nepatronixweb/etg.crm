@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { put } from "@vercel/blob";
 import connectDB from "@/lib/mongodb";
+import mongoose from "mongoose";
 import StudentDocument from "@/models/Document";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
@@ -50,19 +50,19 @@ export async function POST(req: NextRequest) {
     let fileType = "";
 
     if (contentType.includes("application/json")) {
-      // Client-side upload: blob URL already exists
+      // Client-side upload: file already stored in GridFS via /api/documents/upload
       const body = await req.json();
       studentId = body.studentId || null;
       leadId = body.leadId || null;
       country = body.country || "";
       documentName = body.name || "";
-      filePath = body.blobUrl;
+      filePath = body.fileUrl || body.blobUrl; // support both keys
       originalName = body.originalName || documentName;
       fileSize = body.fileSize || 0;
       fileType = body.fileType || "";
-      if (!filePath) return NextResponse.json({ error: "blobUrl is required" }, { status: 400 });
+      if (!filePath) return NextResponse.json({ error: "fileUrl is required" }, { status: 400 });
     } else {
-      // Legacy FormData upload (small files / leads page)
+      // FormData upload (leads page) – store directly in GridFS
       const formData = await req.formData();
       const file = formData.get("file") as File;
       studentId = formData.get("studentId") as string | null;
@@ -70,10 +70,23 @@ export async function POST(req: NextRequest) {
       country = (formData.get("country") as string) || "";
       documentName = formData.get("name") as string;
       if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
-      const ownerId = (studentId || leadId)!;
-      const fileName = `${Date.now()}-${file.name.replace(/\s/g, "_")}`;
-      const blob = await put(`uploads/${ownerId}/${fileName}`, file, { access: "public" });
-      filePath = blob.url;
+
+      const db = mongoose.connection.db;
+      if (!db) return NextResponse.json({ error: "DB not connected" }, { status: 500 });
+
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const bucket = new mongoose.mongo.GridFSBucket(db, { bucketName: "documents" });
+      const uploadStream = bucket.openUploadStream(file.name, {
+        metadata: { contentType: file.type, uploadedBy: session.user.id, originalName: file.name },
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        uploadStream.on("finish", resolve);
+        uploadStream.on("error", reject);
+        uploadStream.end(buffer);
+      });
+
+      filePath = `/api/documents/file/${uploadStream.id.toString()}`;
       originalName = file.name;
       fileSize = file.size;
       fileType = file.type;
