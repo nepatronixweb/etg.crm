@@ -6,7 +6,7 @@ import { canAccessModule, getRoleLabel, formatDateTime } from "@/lib/utils";
 import {
   LayoutDashboard, Users, UserCheck, FileText, FolderOpen,
   GraduationCap, Plane, BarChart3, Settings, Building2,
-  ScrollText, LogOut, Menu, X, Bell,
+  ScrollText, LogOut, Menu, X, Bell, MessageCircle,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { UserRole } from "@/types";
@@ -39,6 +39,7 @@ const navItems = [
   { href: "/applications", label: "Applications", icon: FileText, module: "applications" },
   { href: "/admissions", label: "Admissions", icon: GraduationCap, module: "admissions" },
   { href: "/visa", label: "Visa", icon: Plane, module: "visa" },
+  { href: "/chat", label: "Chat", icon: MessageCircle, module: "chat" },
   { href: "/reports", label: "Analytics", icon: BarChart3, module: "analytics" },
   { href: "/branches", label: "Branches", icon: Building2, module: "branches" },
   { href: "/users", label: "Users", icon: Users, module: "users" },
@@ -85,6 +86,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const bellRef = useRef<HTMLDivElement>(null);
   const prevUnreadRef = useRef(0);
   const esRef = useRef<EventSource | null>(null);
+
+  // Chat unread badge
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
+  const chatEsRef = useRef<EventSource | null>(null);
+  const chatAudioRef = useRef<HTMLAudioElement | null>(null);
+  const prevChatUnreadRef = useRef(0);
 
   // Request browser notification permission once
   useEffect(() => {
@@ -197,6 +204,45 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
+
+  // Chat SSE connection
+  useEffect(() => {
+    if (!session) return;
+    // Lazy-init audio element
+    if (!chatAudioRef.current) {
+      chatAudioRef.current = new Audio("/sounds/message-tone.mp3");
+      chatAudioRef.current.volume = 0.5;
+    }
+    let retryTimeout: ReturnType<typeof setTimeout>;
+    const connectChat = () => {
+      const es = new EventSource("/api/chat/stream");
+      chatEsRef.current = es;
+      es.onmessage = (e) => {
+        try {
+          const payload = JSON.parse(e.data);
+          const incoming = payload.unreadCount ?? 0;
+          if (payload.type === "chat_init") {
+            setChatUnreadCount(incoming);
+            prevChatUnreadRef.current = incoming;
+          } else if (payload.type === "chat_new" || payload.type === "chat_heartbeat") {
+            if (incoming > prevChatUnreadRef.current && !pathname.startsWith("/chat")) {
+              chatAudioRef.current?.play().catch(() => {});
+            }
+            setChatUnreadCount(incoming);
+            prevChatUnreadRef.current = incoming;
+          }
+        } catch { /* ignore */ }
+      };
+      es.onerror = () => {
+        es.close();
+        chatEsRef.current = null;
+        retryTimeout = setTimeout(connectChat, 5000);
+      };
+    };
+    connectChat();
+    return () => { chatEsRef.current?.close(); clearTimeout(retryTimeout); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, pathname]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -344,6 +390,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <span>{session?.user?.branchName || "All Branches"}</span>
           </div>
 
+          <div className="flex items-center gap-1">
+          {/* Chat Icon */}
+          {canAccessModule(role, "chat") && (
+            <Link href="/chat" className="relative p-2 rounded-md text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors">
+              <MessageCircle size={18} />
+              {chatUnreadCount > 0 && (
+                <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-green-500 text-white text-[9px] font-bold flex items-center justify-center leading-none animate-pulse">
+                  {chatUnreadCount > 9 ? "9+" : chatUnreadCount}
+                </span>
+              )}
+            </Link>
+          )}
+
           {/* Notification Bell */}
           <div ref={bellRef} className="relative">
             <button
@@ -435,6 +494,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 )}
               </div>
             )}
+          </div>
           </div>
         </header>
         <main className="flex-1 overflow-y-auto p-4 md:p-6">

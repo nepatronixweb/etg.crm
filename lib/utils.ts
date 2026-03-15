@@ -178,6 +178,7 @@ export function canAccessModule(role: UserRole, module: string): boolean {
     applications: ["super_admin", "application_team", "counsellor"],
     admissions: ["super_admin", "admission_team"],
     visa: ["super_admin", "visa_team"],
+    chat: ["super_admin", "counsellor", "telecaller", "front_desk", "application_team", "admission_team", "visa_team"],
   };
   return permissions[module]?.includes(role) ?? false;
 }
