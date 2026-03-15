@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { auth } from "@/lib/auth";
 
-export async function POST(req: NextRequest) {
+// This route handles the client upload protocol for @vercel/blob/client
+// The file goes directly from browser → Vercel Blob (never through this function)
+export async function POST(req: Request) {
   const body = (await req.json()) as HandleUploadBody;
 
   try {
@@ -13,23 +15,16 @@ export async function POST(req: NextRequest) {
         const session = await auth();
         if (!session) throw new Error("Unauthorized");
         return {
-          allowedContentTypes: [
-            "application/pdf",
-            "image/jpeg",
-            "image/png",
-            "image/webp",
-            "application/msword",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          ],
           maximumSizeInBytes: 100 * 1024 * 1024, // 100MB
         };
       },
       onUploadCompleted: async () => {
-        // No-op: document record is created separately
+        // Document record is created separately via POST /api/documents
       },
     });
     return NextResponse.json(jsonResponse);
   } catch (err) {
+    console.error("POST /api/documents/upload error:", err);
     const message = err instanceof Error ? err.message : "Upload failed";
     return NextResponse.json({ error: message }, { status: 400 });
   }

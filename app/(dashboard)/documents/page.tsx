@@ -6,8 +6,8 @@ import {
   FileText, Download, Trash2, Search,
   CheckCircle, Eye, Upload, Plus, X, CloudUpload,
 } from "lucide-react";
-import { upload } from "@vercel/blob/client";
 import { formatDate, COUNTRIES } from "@/lib/utils";
+import { upload } from "@vercel/blob/client";
 
 interface Document {
   _id: string;
@@ -127,7 +127,7 @@ export default function DocumentsPage() {
     setUploading(true);
     setUploadError("");
     try {
-      // Direct client upload to Vercel Blob (no body size limit)
+      // Direct browser-to-blob upload (bypasses serverless body limit)
       const blob = await upload(uploadForm.file.name, uploadForm.file, {
         access: "public",
         handleUploadUrl: "/api/documents/upload",
@@ -151,10 +151,10 @@ export default function DocumentsPage() {
         setShowModal(false);
         fetchDocuments();
       } else {
-        setUploadError(data?.error || "Upload failed. Please try again.");
+        setUploadError(data?.error || "Failed to save document record.");
       }
-    } catch {
-      setUploadError("Network error. Please try again.");
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Network error. Please try again.");
     } finally {
       setUploading(false);
     }

@@ -173,6 +173,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     if (!file || !selectedCountry || !docName) return;
     setUploading(true);
     try {
+      // Direct browser-to-blob upload
       const blob = await upload(file.name, file, {
         access: "public",
         handleUploadUrl: "/api/documents/upload",
