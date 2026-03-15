@@ -687,6 +687,7 @@ export default function LeadsPage() {
                     headers.push("Status");
                   } else {
                     headers.push("Stage");
+                    if (isAdmin) headers.push("Status");
                   }
                   headers.push("Standing", "Follow-Up");
                   return headers.map((h, i) => (
@@ -919,37 +920,98 @@ export default function LeadsPage() {
                       {/* STAGE column - shown for non-FD, non-counsellor users */}
                       {session?.user?.role !== "front_desk" && session?.user?.role !== "counsellor" && (
                       <td className="px-4 py-3.5 min-w-36">
-                        {(() => {
-                          const ext = lead as unknown as { stage?: string; stageDates?: Record<string, string> };
-                          const leadStage = ext.stage;
-                          const stageInfo = LEAD_STAGES.find((s) => s.value === leadStage);
-                          const dotColor = leadStage ? getLeadStageDotColor(leadStage) : "";
-                          const stageDate = leadStage && ext.stageDates?.[leadStage];
-                          return (
-                            <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
-                              {/* Trigger pill */}
-                              <button
-                                onClick={(e) => canUpdateStage && openStageDropdown(e, lead._id)}
-                                className={`inline-flex items-center gap-2 pl-2.5 pr-2 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 shadow-sm border ${
-                                  stageInfo
-                                    ? `${stageInfo.color} border-transparent hover:shadow-md`
-                                    : "bg-white border-dashed border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500"
-                                } ${canUpdateStage ? "cursor-pointer" : "cursor-default"}`}
-                              >
-                                {stageInfo
-                                  ? <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} opacity-70`} />
-                                  : <span className="text-[13px] leading-none opacity-50">+</span>
-                                }
-                                <span className="max-w-32 truncate">{stageInfo ? stageInfo.label : "Set Stage"}</span>
-                                {canUpdateStage && <ChevronDown size={10} className={`shrink-0 opacity-50 transition-transform duration-200 ${crmStageDropdownId === lead._id ? "rotate-180" : ""}`} />}
-                              </button>
-                              {stageDate && (
-                                <p className="text-[10px] text-gray-400 mt-0.5 tabular-nums">{formatDate(new Date(stageDate))}</p>
-                              )}
-                              {/* Dropdown rendered as fixed portal – see bottom of component */}
-                            </div>
-                          );
-                        })()}
+                        {isAdmin ? (
+                          // Admin: Status dropdown
+                          (() => {
+                            const ext = lead as unknown as { status?: string; statusDates?: Record<string, string> };
+                            const leadStatus = ext.status;
+                            const statusInfo = FD_STATUSES.find((s) => s.value === leadStatus);
+                            const statusDate = leadStatus && ext.statusDates?.[leadStatus];
+                            return (
+                              <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  onClick={() => setFdStatusDropdownId(fdStatusDropdownId === lead._id ? null : lead._id)}
+                                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-150 group
+                                    ${
+                                      statusInfo
+                                        ? `${statusInfo.color} cursor-pointer hover:shadow-md hover:scale-105`
+                                        : "bg-white border border-dashed border-gray-300 text-gray-400 cursor-pointer hover:border-gray-400"
+                                    }`}
+                                >
+                                  <span className="w-2 h-2 rounded-full bg-white/60"></span>
+                                  {statusInfo ? statusInfo.label : "Set Status"}
+                                  <ChevronDown size={12} className={`shrink-0 opacity-60 transition-transform duration-200 ${fdStatusDropdownId === lead._id ? "rotate-180" : ""}`} />
+                                </button>
+                                {fdStatusDropdownId === lead._id && (
+                                  <div className="absolute z-30 top-full left-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden min-w-64 max-h-96 overflow-y-auto">
+                                    <div className="sticky top-0 bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b border-gray-200">
+                                      <p className="text-xs font-bold text-gray-700 uppercase tracking-widest">Change Status</p>
+                                    </div>
+                                    <div className="p-3 space-y-1.5">
+                                      {FD_STATUSES.map((s) => {
+                                        const isSelected = leadStatus === s.value;
+                                        const bgColor = s.color;
+                                        return (
+                                          <button
+                                            key={s.value}
+                                            onClick={() => quickUpdateFdStatus(lead._id, s.value)}
+                                            className={`w-full px-3.5 py-3 rounded-lg text-xs font-semibold transition-all duration-150 flex items-center justify-between group
+                                              ${isSelected 
+                                                ? `${bgColor} shadow-md scale-100 ring-2 ring-offset-1` 
+                                                : `${bgColor} opacity-70 hover:opacity-100 hover:shadow-md hover:scale-105`
+                                              }`}
+                                          >
+                                            <span className="flex items-center gap-2">
+                                              <span className="w-2 h-2 rounded-full bg-white/60 group-hover:bg-white"></span>
+                                              {s.label}
+                                            </span>
+                                            {isSelected && (
+                                              <span className="text-white font-bold animate-pulse">✓</span>
+                                            )}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                                {statusDate && (
+                                  <p className="text-[10px] text-gray-400 mt-0.5 tabular-nums">{formatDate(new Date(statusDate))}</p>
+                                )}
+                              </div>
+                            );
+                          })()
+                        ) : (
+                          // Non-admin, non-FD, non-counsellor: Stage dropdown
+                          (() => {
+                            const ext = lead as unknown as { stage?: string; stageDates?: Record<string, string> };
+                            const leadStage = ext.stage;
+                            const stageInfo = LEAD_STAGES.find((s) => s.value === leadStage);
+                            const dotColor = leadStage ? getLeadStageDotColor(leadStage) : "";
+                            const stageDate = leadStage && ext.stageDates?.[leadStage];
+                            return (
+                              <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  onClick={(e) => canUpdateStage && openStageDropdown(e, lead._id)}
+                                  className={`inline-flex items-center gap-2 pl-2.5 pr-2 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 shadow-sm border ${
+                                    stageInfo
+                                      ? `${stageInfo.color} border-transparent hover:shadow-md`
+                                      : "bg-white border-dashed border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500"
+                                  } ${canUpdateStage ? "cursor-pointer" : "cursor-default"}`}
+                                >
+                                  {stageInfo
+                                    ? <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} opacity-70`} />
+                                    : <span className="text-[13px] leading-none opacity-50">+</span>
+                                  }
+                                  <span className="max-w-32 truncate">{stageInfo ? stageInfo.label : "Set Stage"}</span>
+                                  {canUpdateStage && <ChevronDown size={10} className={`shrink-0 opacity-50 transition-transform duration-200 ${crmStageDropdownId === lead._id ? "rotate-180" : ""}`} />}
+                                </button>
+                                {stageDate && (
+                                  <p className="text-[10px] text-gray-400 mt-0.5 tabular-nums">{formatDate(new Date(stageDate))}</p>
+                                )}
+                              </div>
+                            );
+                          })()
+                        )}
                       </td>
                       )}
 

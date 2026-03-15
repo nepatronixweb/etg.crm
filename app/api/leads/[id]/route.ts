@@ -100,8 +100,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         return NextResponse.json({ error: "Front desk users cannot update stage" }, { status: 403 });
       }
     } 
-    // Counsellors: can update both status and stage
-    else if (session.user.role === "counsellor") {
+    // Super admin and counsellors: can update both status and stage
+    else if (session.user.role === "super_admin" || session.user.role === "counsellor") {
       if (body.status) {
         update.status = body.status;
         update[`statusDates.${body.status}`] = new Date();
@@ -119,7 +119,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
       // Remove status if accidentally provided
       if (body.status) {
-        return NextResponse.json({ error: "Only front desk and counsellors can update status" }, { status: 403 });
+        return NextResponse.json({ error: "Only front desk, counsellors and admin can update status" }, { status: 403 });
       }
     }
 
