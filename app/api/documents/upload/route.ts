@@ -80,17 +80,19 @@ export async function PUT(req: NextRequest) {
 
     // If this is the last chunk, assemble into GridFS
     if (currentIdx === total - 1) {
-      const allChunks = await chunkCollection
-        .find({ uploadId: new mongoose.Types.ObjectId(uploadId) })
-        .sort({ index: 1 })
-        .toArray();
-
-      const fullBuffer = Buffer.concat(allChunks.map((c) => {
-        const d = c.data;
-        if (Buffer.isBuffer(d)) return d;
-        if (d.buffer) return Buffer.from(d.buffer);
-        return Buffer.from(d);
-      }));
+      // Fetch each chunk individually by index to avoid sort memory limit
+      const buffers: Buffer[] = [];
+      for (let i = 0; i < total; i++) {
+        const chunk = await chunkCollection.findOne({
+          uploadId: new mongoose.Types.ObjectId(uploadId),
+          index: i,
+        });
+        if (!chunk) throw new Error(`Missing chunk ${i}`);
+        const d = chunk.data;
+        if (Buffer.isBuffer(d)) buffers.push(d);
+        else if (d.buffer) buffers.push(Buffer.from(d.buffer));
+        else buffers.push(Buffer.from(d));
+      }
 
       const bucket = new mongoose.mongo.GridFSBucket(db, { bucketName: "documents" });
       const uploadStream = bucket.openUploadStream(pending.fileName, {
@@ -104,7 +106,7 @@ export async function PUT(req: NextRequest) {
       await new Promise<void>((resolve, reject) => {
         uploadStream.on("finish", resolve);
         uploadStream.on("error", reject);
-        uploadStream.end(fullBuffer);
+        uploadStream.end(Buffer.concat(buffers));
       });
 
       // Cleanup temp data
