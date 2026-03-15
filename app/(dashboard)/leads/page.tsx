@@ -39,6 +39,7 @@ export default function LeadsPage() {
   const [filterLeadStage, setFilterLeadStage] = useState("");
   const [filterAcademicYear, setFilterAcademicYear] = useState("");
   const [filterApplyLevel, setFilterApplyLevel] = useState("");
+  const [filterFdStatus, setFilterFdStatus] = useState("");
   const [branches, setBranches] = useState<{ _id: string; name: string }[]>([]);
   const [counsellors, setCounsellors] = useState<{ _id: string; name: string }[]>([]);
   const [paymentQr, setPaymentQr] = useState("");
@@ -94,6 +95,7 @@ export default function LeadsPage() {
     setFilterDateTo("");
     setFilterAcademicYear("");
     setFilterApplyLevel("");
+    setFilterFdStatus("");
   };
 
   // exclude stage filter from the count for counsellors since they don't see it
@@ -107,6 +109,7 @@ export default function LeadsPage() {
     filterDateFrom || filterDateTo,
     filterAcademicYear,
     filterApplyLevel,
+    filterFdStatus,
   ].filter(Boolean).length;
 
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
@@ -283,7 +286,8 @@ export default function LeadsPage() {
     const matchesDateTo = !filterDateTo || leadDate <= new Date(filterDateTo + "T23:59:59");
     const matchesAcademicYear = !filterAcademicYear || (l as unknown as { academicYear?: string }).academicYear === filterAcademicYear;
     const matchesApplyLevel = !filterApplyLevel || (l as unknown as { applyLevel?: string }).applyLevel === filterApplyLevel;
-    return matchesSearch && matchesStatus && matchesCountry && matchesAssigned && matchesSource && matchesService && matchesLeadStage && matchesDateFrom && matchesDateTo && matchesAcademicYear && matchesApplyLevel;
+    const matchesFdStatus = !filterFdStatus || (l as unknown as { status?: string }).status === filterFdStatus;
+    return matchesSearch && matchesStatus && matchesCountry && matchesAssigned && matchesSource && matchesService && matchesLeadStage && matchesDateFrom && matchesDateTo && matchesAcademicYear && matchesApplyLevel && matchesFdStatus;
   });
 
   const canCreate = ["super_admin", "telecaller", "front_desk", "counsellor"].includes(session?.user?.role || "");
@@ -523,6 +527,21 @@ export default function LeadsPage() {
               <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
           )}
+          {/* Status filter – admin only */}
+          {isAdmin && (
+            <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
+              <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Status</label>
+              <select
+                value={filterFdStatus}
+                onChange={(e) => setFilterFdStatus(e.target.value)}
+                className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
+              >
+                <option value="">All Statuses</option>
+                {FD_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </select>
+              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            </div>
+          )}
           {/* Lead Standing */}
           <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Standing</label>
@@ -663,6 +682,7 @@ export default function LeadsPage() {
             {filterDateTo && <span className="flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full font-medium">To: {filterDateTo}<button onClick={() => setFilterDateTo("")}><X size={10} /></button></span>}
             {filterAcademicYear && <span className="flex items-center gap-1 text-xs bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-0.5 rounded-full font-medium">Year: {filterAcademicYear}<button onClick={() => setFilterAcademicYear("")}><X size={10} /></button></span>}
             {filterApplyLevel && <span className="flex items-center gap-1 text-xs bg-teal-50 text-teal-700 border border-teal-100 px-2.5 py-0.5 rounded-full font-medium capitalize">{filterApplyLevel}<button onClick={() => setFilterApplyLevel("")}><X size={10} /></button></span>}
+            {filterFdStatus && <span className="flex items-center gap-1 text-xs bg-orange-50 text-orange-700 border border-orange-100 px-2.5 py-0.5 rounded-full font-medium">{FD_STATUSES.find((s) => s.value === filterFdStatus)?.label ?? filterFdStatus}<button onClick={() => setFilterFdStatus("")}><X size={10} /></button></span>}
             <button onClick={clearFilters} className="ml-auto text-xs text-red-500 hover:text-red-700 font-semibold flex items-center gap-1"><X size={11} /> Clear all</button>
           </div>
         )}
