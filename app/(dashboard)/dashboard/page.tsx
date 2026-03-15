@@ -139,10 +139,14 @@ export default function DashboardPage() {
   const dateRef = useRef<HTMLDivElement>(null);
   const isAdmin = session?.user?.role === "super_admin";
   const isCounsellor = session?.user?.role === "counsellor";
+  const isFrontDesk = session?.user?.role === "front_desk";
   const role = (session?.user?.role ?? "") as UserRole;
 
   // Counsellor: assigned leads
   const [assignedLeads, setAssignedLeads] = useState<IAssignedLead[]>([]);
+
+  // Front Desk: stats
+  const [fdStats, setFdStats] = useState({ totalLeads: 0, convertedToStudent: 0, enrolledStudents: 0 });
 
   // Admin + Counsellor: recent notifications on dashboard
   const [notifs, setNotifs] = useState<INotif[]>([]);
@@ -193,10 +197,26 @@ export default function DashboardPage() {
         .then((d) => setNotifs(d.notifications ?? []))
         .catch(() => {});
       setLoading(false);
+    } else if (isFrontDesk) {
+      Promise.all([
+        fetch("/api/leads").then((r) => r.json()),
+        fetch("/api/students").then((r) => r.json()),
+      ])
+        .then(([leads, students]) => {
+          const leadsArr = Array.isArray(leads) ? leads : [];
+          const studentsArr = Array.isArray(students) ? students : [];
+          setFdStats({
+            totalLeads: leadsArr.length,
+            convertedToStudent: leadsArr.filter((l: { convertedToStudent?: boolean }) => l.convertedToStudent).length,
+            enrolledStudents: studentsArr.filter((s: { enrolled?: boolean }) => s.enrolled).length,
+          });
+          setLoading(false);
+        })
+        .catch(() => setLoading(false));
     } else {
       setTimeout(() => setLoading(false), 0);
     }
-  }, [isAdmin, isCounsellor, filterPeriod, filterDateFrom, filterDateTo]);
+  }, [isAdmin, isCounsellor, isFrontDesk, filterPeriod, filterDateFrom, filterDateTo]);
 
   if (loading) {
     return (
@@ -821,8 +841,54 @@ export default function DashboardPage() {
             );
           })()}
 
-          {/* Generic quick links for non-counsellor, non-admin roles */}
-          {!isCounsellor && (
+          {/* Front Desk Dashboard */}
+          {isFrontDesk && (
+            <div className="space-y-5">
+              {/* Stat Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <Link href="/leads" className="group bg-white border border-gray-200 rounded-xl p-5 hover:border-gray-300 hover:shadow-sm transition-all">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="p-2 bg-gray-50 border border-gray-100 rounded-md">
+                      <Users size={16} className="text-gray-600" />
+                    </div>
+                    <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-500 transition-colors mt-1" />
+                  </div>
+                  <p className="text-2xl font-bold text-gray-900 tracking-tight">{fdStats.totalLeads}</p>
+                  <p className="text-xs font-medium text-gray-700 mt-1">Total Leads</p>
+                  <p className="text-xs text-gray-400 mt-0.5">All leads in your branch</p>
+                </Link>
+
+                <Link href="/leads" className="group bg-white border border-gray-200 rounded-xl p-5 hover:border-gray-300 hover:shadow-sm transition-all">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="p-2 bg-emerald-50 border border-emerald-100 rounded-md">
+                      <TrendingUp size={16} className="text-emerald-600" />
+                    </div>
+                    <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-500 transition-colors mt-1" />
+                  </div>
+                  <p className="text-2xl font-bold text-gray-900 tracking-tight">{fdStats.convertedToStudent}</p>
+                  <p className="text-xs font-medium text-gray-700 mt-1">Converted to Student</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Leads converted to students</p>
+                </Link>
+
+                <Link href="/students?enrolled=true" className="group bg-white border border-gray-200 rounded-xl p-5 hover:border-gray-300 hover:shadow-sm transition-all">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="p-2 bg-blue-50 border border-blue-100 rounded-md">
+                      <UserCheck size={16} className="text-blue-600" />
+                    </div>
+                    <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-500 transition-colors mt-1" />
+                  </div>
+                  <p className="text-2xl font-bold text-gray-900 tracking-tight">{fdStats.enrolledStudents}</p>
+                  <p className="text-xs font-medium text-gray-700 mt-1">Enrolled Students</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Students fully enrolled</p>
+                </Link>
+              </div>
+
+
+            </div>
+          )}
+
+          {/* Generic quick links for non-counsellor, non-admin, non-front-desk roles */}
+          {!isCounsellor && !isFrontDesk && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {[
                 { label: "Leads", href: "/leads", module: "leads", icon: Users, desc: "View and manage your assigned leads" },

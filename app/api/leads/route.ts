@@ -137,3 +137,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Failed to create lead: ${message}` }, { status: 500 });
   }
 }
+
+// DELETE — bulk delete (super_admin only)
+export async function DELETE(req: NextRequest) {
+  try {
+    const session = await auth();
+    if (!session || session.user.role !== "super_admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const { ids } = await req.json();
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return NextResponse.json({ error: "No lead IDs provided" }, { status: 400 });
+    }
+    await connectDB();
+    const result = await Lead.deleteMany({ _id: { $in: ids } });
+    await ActivityLog.create({
+      user: session.user.id,
+      userName: session.user.name,
+      userRole: session.user.role,
+      action: "DELETE",
+      module: "Leads",
+      targetId: ids.join(","),
+      targetName: `${result.deletedCount} leads`,
+      details: `Bulk deleted ${result.deletedCount} leads`,
+    });
+    return NextResponse.json({ message: `${result.deletedCount} leads deleted` });
+  } catch {
+    return NextResponse.json({ error: "Failed to delete leads" }, { status: 500 });
+  }
+}

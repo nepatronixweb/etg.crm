@@ -292,6 +292,30 @@ export default function LeadsPage() {
   // counsellors no longer need access to stage controls
   const canUpdateStage = ["super_admin", "telecaller", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
   const canExport = ["super_admin", "telecaller"].includes(session?.user?.role || "");
+  const isAdmin = session?.user?.role === "super_admin";
+
+  const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  const toggleSelectLead = (id: string) => {
+    setSelectedLeads((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = () => {
+    if (selectedLeads.size === filtered.length) setSelectedLeads(new Set());
+    else setSelectedLeads(new Set(filtered.map((l) => l._id)));
+  };
+  const bulkDeleteLeads = async () => {
+    if (selectedLeads.size === 0) return;
+    if (!confirm(`Delete ${selectedLeads.size} selected lead(s)? This cannot be undone.`)) return;
+    setBulkDeleting(true);
+    const res = await fetch("/api/leads", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: Array.from(selectedLeads) }) });
+    if (res.ok) { setSelectedLeads(new Set()); fetchLeads(); }
+    setBulkDeleting(false);
+  };
 
   const [statusDropdownId, setStatusDropdownId] = useState<string | null>(null);
   const [fdStatusDropdownId, setFdStatusDropdownId] = useState<string | null>(null);
@@ -654,7 +678,9 @@ export default function LeadsPage() {
                   // build headers dynamically; counsellors only see Status (no Stage)
                   const isCounsellor = session?.user?.role === "counsellor";
                   const isFrontDesk = session?.user?.role === "front_desk";
-                  const headers: string[] = ["Lead", "Client", "Services"];
+                  const headers: string[] = [];
+                  if (isAdmin) headers.push(""); // checkbox column
+                  headers.push("Lead", "Client", "Services");
                   if (isFrontDesk) {
                     headers.push("Status");
                   } else if (isCounsellor) {
@@ -663,9 +689,11 @@ export default function LeadsPage() {
                     headers.push("Stage");
                   }
                   headers.push("Standing", "Follow-Up");
-                  return headers.map((h) => (
-                    <th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">
-                      {h}
+                  return headers.map((h, i) => (
+                    <th key={h || `chk-${i}`} className={`text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap ${h === "" ? "w-10" : ""}`}>
+                      {h === "" ? (
+                        <input type="checkbox" checked={filtered.length > 0 && selectedLeads.size === filtered.length} onChange={toggleSelectAll} className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-500 cursor-pointer" />
+                      ) : h}
                     </th>
                   ));
                 })()}
@@ -710,7 +738,14 @@ export default function LeadsPage() {
                 const countryPart = lead.interestedCountries?.[0]?.country || lead.interestedCountry;
                 return (
                   <React.Fragment key={lead._id}>
-                    <tr key={lead._id} className="hover:bg-gray-50/60 transition-colors align-top">
+                    <tr key={lead._id} className={`hover:bg-gray-50/60 transition-colors align-top ${selectedLeads.has(lead._id) ? "bg-blue-50/40" : ""}`}>
+
+                      {/* Checkbox column (admin only) */}
+                      {isAdmin && (
+                        <td className="px-4 py-3.5 w-10" onClick={(e) => e.stopPropagation()}>
+                          <input type="checkbox" checked={selectedLeads.has(lead._id)} onChange={() => toggleSelectLead(lead._id)} className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-500 cursor-pointer" />
+                        </td>
+                      )}
 
                       {/* LEAD column */}
                       <td className="px-4 py-3.5 min-w-32">
@@ -970,6 +1005,17 @@ export default function LeadsPage() {
                                     className="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 font-medium"
                                   >Edit Lead</button>
                                 )}
+                                {isAdmin && (
+                                  <button
+                                    onClick={async () => {
+                                      setMenuOpenId(null);
+                                      if (!confirm(`Delete lead "${lead.name}"? This cannot be undone.`)) return;
+                                      const res = await fetch(`/api/leads/${lead._id}`, { method: "DELETE" });
+                                      if (res.ok) fetchLeads();
+                                    }}
+                                    className="block w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 font-medium"
+                                  >Delete Lead</button>
+                                )}
                               </div>
                             )}
                           </div>
@@ -995,6 +1041,27 @@ export default function LeadsPage() {
           </div>
         )}
       </div>
+
+      {/* Bulk Delete Bar */}
+      {isAdmin && selectedLeads.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-gray-900 text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-4 animate-in fade-in slide-in-from-bottom-4">
+          <span className="text-sm font-medium">{selectedLeads.size} lead{selectedLeads.size > 1 ? "s" : ""} selected</span>
+          <button
+            onClick={bulkDeleteLeads}
+            disabled={bulkDeleting}
+            className="inline-flex items-center gap-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-colors"
+          >
+            <Trash2 size={14} />
+            {bulkDeleting ? "Deleting…" : "Delete Selected"}
+          </button>
+          <button
+            onClick={() => setSelectedLeads(new Set())}
+            className="text-gray-300 hover:text-white text-sm font-medium transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
       {/* Add Lead Modal */}
       {showForm && (
