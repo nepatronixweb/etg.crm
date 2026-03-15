@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { formatDate, getStatusColor, COUNTRIES, SERVICES, LEAD_STAGES, LEAD_STAGE_GROUPS, getLeadStageColor, getLeadStageDotColor } from "@/lib/utils";
 import { IStudent } from "@/types";
 import Link from "next/link";
-import { Search, UserCheck, Plus, X, ChevronDown, MessageSquare, MoreVertical, Phone, Mail, FileSpreadsheet } from "lucide-react";
+import { Search, UserCheck, Plus, X, ChevronDown, MessageSquare, MoreVertical, Phone, Mail, FileSpreadsheet, Trash2 } from "lucide-react";
 import { useSession } from "next-auth/react";
 
 const SOURCES = [
@@ -220,6 +220,44 @@ export default function StudentsPage() {
   const canCreate = ["super_admin", "counsellor", "front_desk"].includes(session?.user?.role || "");
   const canExport = ["super_admin", "telecaller"].includes(session?.user?.role || "");
   const canUpdateStage = ["super_admin", "counsellor", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
+  const isAdmin = session?.user?.role === "super_admin";
+
+  const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  const toggleSelectStudent = (id: string) => {
+    setSelectedStudents((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedStudents.size === filtered.length) setSelectedStudents(new Set());
+    else setSelectedStudents(new Set(filtered.map((s) => s._id)));
+  };
+
+  const bulkDeleteStudents = async () => {
+    if (selectedStudents.size === 0) return;
+    if (!confirm(`Are you sure you want to delete ${selectedStudents.size} student(s)? This cannot be undone.`)) return;
+    setBulkDeleting(true);
+    await fetch("/api/students", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: Array.from(selectedStudents) }),
+    });
+    setStudents((prev) => prev.filter((s) => !selectedStudents.has(s._id)));
+    setSelectedStudents(new Set());
+    setBulkDeleting(false);
+  };
+
+  const deleteStudent = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this student? This cannot be undone.")) return;
+    await fetch(`/api/students/${id}`, { method: "DELETE" });
+    setStudents((prev) => prev.filter((s) => s._id !== id));
+    setMenuOpenId(null);
+  };
 
   const filtered = students.filter((s) => {
     const q = search.toLowerCase();
@@ -432,6 +470,11 @@ export default function StudentsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
+                {isAdmin && (
+                  <th className="w-10 px-2.5 py-2">
+                    <input type="checkbox" checked={filtered.length > 0 && selectedStudents.size === filtered.length} onChange={toggleSelectAll} className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-500 cursor-pointer" />
+                  </th>
+                )}
                 {["Student", "Client", "Services", "Stage", "Standing", "Pipeline", "Follow-Up"].map((h) => (
                   <th key={h} className="text-left px-2.5 py-2 text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">
                     {h}
@@ -442,7 +485,7 @@ export default function StudentsPage() {
             <tbody className="divide-y divide-gray-100">
               {loading && (
                 <tr>
-                  <td colSpan={7} className="text-center py-14">
+                  <td colSpan={isAdmin ? 8 : 7} className="text-center py-14">
                     <div className="inline-flex flex-col items-center gap-2 text-gray-400">
                       <div className="w-5 h-5 border-2 border-gray-200 border-t-gray-500 rounded-full animate-spin" />
                       <span className="text-sm">Loading students…</span>
@@ -452,7 +495,7 @@ export default function StudentsPage() {
               )}
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-center py-14">
+                  <td colSpan={isAdmin ? 8 : 7} className="text-center py-14">
                     <div className="inline-flex flex-col items-center gap-2 text-gray-400">
                       <UserCheck size={28} className="text-gray-300" />
                       <span className="text-sm">No students found</span>
@@ -477,7 +520,14 @@ export default function StudentsPage() {
                 const countryPart = student.countries?.[0]?.country;
                 return (
                   <React.Fragment key={student._id}>
-                    <tr className="hover:bg-gray-50/60 transition-colors align-top">
+                    <tr className={`hover:bg-gray-50/60 transition-colors align-top ${selectedStudents.has(student._id) ? "bg-red-50/40" : ""}`}>
+
+                      {/* Checkbox column - admin only */}
+                      {isAdmin && (
+                        <td className="px-2.5 py-2 w-10" onClick={(e) => e.stopPropagation()}>
+                          <input type="checkbox" checked={selectedStudents.has(student._id)} onChange={() => toggleSelectStudent(student._id)} className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-500 cursor-pointer" />
+                        </td>
+                      )}
 
                       {/* STUDENT column */}
                       <td className="px-2.5 py-2 min-w-36">
@@ -627,6 +677,11 @@ export default function StudentsPage() {
                             {menuOpenId === student._id && (
                               <div className="absolute z-30 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden min-w-28">
                                 <Link href={`/students/${student._id}`} className="block px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 font-medium">View Details</Link>
+                                {isAdmin && (
+                                  <button onClick={() => deleteStudent(student._id)} className="w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 font-medium flex items-center gap-1.5">
+                                    <Trash2 size={12} /> Delete
+                                  </button>
+                                )}
                               </div>
                             )}
                           </div>
@@ -637,7 +692,7 @@ export default function StudentsPage() {
                     {/* Notes sub-row */}
                     {latestNote && (
                       <tr key={`${student._id}-note`} className="bg-gray-50/50">
-                        <td colSpan={7} className="px-2.5 py-1.5 border-b border-gray-100">
+                        <td colSpan={isAdmin ? 8 : 7} className="px-2.5 py-1.5 border-b border-gray-100">
                           <div className="flex items-start gap-1.5 text-[11px] text-gray-500">
                             <MessageSquare size={11} className="text-gray-400 mt-0.5 shrink-0" />
                             <span className="font-semibold text-gray-600">Notes:</span>
@@ -970,6 +1025,19 @@ export default function StudentsPage() {
           document.body
         );
       })()}
+
+      {/* Floating bulk delete bar */}
+      {isAdmin && selectedStudents.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-4">
+          <span className="text-sm font-medium">{selectedStudents.size} student{selectedStudents.size > 1 ? "s" : ""} selected</span>
+          <button onClick={bulkDeleteStudents} disabled={bulkDeleting}
+            className="inline-flex items-center gap-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-1.5 rounded-lg transition-colors">
+            <Trash2 size={14} />
+            {bulkDeleting ? "Deleting…" : "Delete"}
+          </button>
+          <button onClick={() => setSelectedStudents(new Set())} className="text-gray-400 hover:text-white text-sm transition-colors">Cancel</button>
+        </div>
+      )}
     </div>
   );
 }

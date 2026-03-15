@@ -155,3 +155,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Failed to create student" }, { status: 500 });
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const session = await auth();
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (session.user.role !== "super_admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    await connectDB();
+    const { ids } = await req.json();
+    if (!Array.isArray(ids) || ids.length === 0) return NextResponse.json({ error: "No IDs provided" }, { status: 400 });
+    await Student.deleteMany({ _id: { $in: ids } });
+    return NextResponse.json({ message: `Deleted ${ids.length} students` });
+  } catch {
+    return NextResponse.json({ error: "Failed to delete students" }, { status: 500 });
+  }
+}

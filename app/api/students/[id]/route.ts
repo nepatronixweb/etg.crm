@@ -75,3 +75,28 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "Failed to update student" }, { status: 500 });
   }
 }
+
+export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const session = await auth();
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (session.user.role !== "super_admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const { id } = await params;
+    await connectDB();
+    const student = await Student.findByIdAndDelete(id);
+    if (!student) return NextResponse.json({ error: "Student not found" }, { status: 404 });
+    await ActivityLog.create({
+      user: session.user.id,
+      userName: session.user.name,
+      userRole: session.user.role,
+      action: "DELETE",
+      module: "Students",
+      targetId: id,
+      targetName: student.name,
+      details: `Deleted student ${student.name}`,
+    });
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json({ error: "Failed to delete student" }, { status: 500 });
+  }
+}

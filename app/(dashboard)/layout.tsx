@@ -229,8 +229,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
-      <aside className={`no-print fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 transform transition-transform duration-200 ease-in-out
-        ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:relative lg:translate-x-0`}
+      <aside className={`no-print fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 flex flex-col transform transition-transform duration-300 ease-in-out
+        ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
         <div className="flex items-center justify-between h-16 px-4 border-b border-gray-700">
           <div className="flex items-center gap-2">
@@ -254,7 +254,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               {branding.companyName.split(" ").slice(0, 2).join(" ")}
             </span>
           </div>
-          <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-gray-400 hover:text-white">
+          <button onClick={() => setSidebarOpen(false)} className="text-gray-400 hover:text-white">
             <X size={20} />
           </button>
         </div>
@@ -296,9 +296,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      {/* Overlay */}
+      {/* Overlay (mobile only) */}
       {sidebarOpen && (
-        <div className="no-print fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSidebarOpen(false)} />
+        <div className="no-print fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Toast notifications (top-center) */}
@@ -334,9 +334,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ease-in-out ${sidebarOpen ? "lg:ml-64" : ""}`}>
         <header className="no-print h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4">
-          <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-gray-500 hover:text-gray-700">
+          <button onClick={() => setSidebarOpen(true)} className="text-gray-500 hover:text-gray-700">
             <Menu size={22} />
           </button>
           <div className="flex items-center gap-2 text-sm text-gray-600">
