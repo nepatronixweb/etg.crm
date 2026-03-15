@@ -3,7 +3,6 @@ import { use, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { ArrowLeft, Upload, FileText, CheckCircle, Plus, UserCheck, Trash2, GraduationCap, Pencil } from "lucide-react";
 import { formatDate, formatDateTime, getStatusColor, getRoleLabel, COUNTRIES } from "@/lib/utils";
-import { upload } from "@vercel/blob/client";
 import Link from "next/link";
 
 interface StudentDetail {
@@ -173,11 +172,13 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     if (!file || !selectedCountry || !docName) return;
     setUploading(true);
     try {
-      // Direct browser-to-blob upload
-      const blob = await upload(file.name, file, {
-        access: "public",
-        handleUploadUrl: "/api/documents/upload",
+      // Upload file as raw body
+      const blobRes = await fetch(`/api/documents/upload?filename=${encodeURIComponent(file.name)}`, {
+        method: "PUT",
+        body: file,
       });
+      if (!blobRes.ok) throw new Error("Upload failed");
+      const blob = await blobRes.json();
       await fetch("/api/documents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

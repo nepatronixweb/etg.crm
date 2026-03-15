@@ -1,31 +1,27 @@
-import { NextResponse } from "next/server";
-import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
+import { NextRequest, NextResponse } from "next/server";
+import { put } from "@vercel/blob";
 import { auth } from "@/lib/auth";
 
-// This route handles the client upload protocol for @vercel/blob/client
-// The file goes directly from browser → Vercel Blob (never through this function)
-export async function POST(req: Request) {
-  const body = (await req.json()) as HandleUploadBody;
-
+// Accepts the raw file body (not FormData) to bypass the 4.5MB body parser limit.
+// The filename and metadata are passed via headers/query params.
+export async function PUT(req: NextRequest) {
   try {
-    const jsonResponse = await handleUpload({
-      body,
-      request: req,
-      onBeforeGenerateToken: async () => {
-        const session = await auth();
-        if (!session) throw new Error("Unauthorized");
-        return {
-          maximumSizeInBytes: 100 * 1024 * 1024, // 100MB
-        };
-      },
-      onUploadCompleted: async () => {
-        // Document record is created separately via POST /api/documents
-      },
+    const session = await auth();
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const filename = req.nextUrl.searchParams.get("filename");
+    if (!filename) return NextResponse.json({ error: "filename required" }, { status: 400 });
+
+    if (!req.body) return NextResponse.json({ error: "No body" }, { status: 400 });
+
+    const blob = await put(filename, req.body, {
+      access: "public",
     });
-    return NextResponse.json(jsonResponse);
+
+    return NextResponse.json(blob);
   } catch (err) {
-    console.error("POST /api/documents/upload error:", err);
+    console.error("PUT /api/documents/upload error:", err);
     const message = err instanceof Error ? err.message : "Upload failed";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

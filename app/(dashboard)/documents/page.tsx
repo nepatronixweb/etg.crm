@@ -7,7 +7,6 @@ import {
   CheckCircle, Eye, Upload, Plus, X, CloudUpload,
 } from "lucide-react";
 import { formatDate, COUNTRIES } from "@/lib/utils";
-import { upload } from "@vercel/blob/client";
 
 interface Document {
   _id: string;
@@ -127,11 +126,18 @@ export default function DocumentsPage() {
     setUploading(true);
     setUploadError("");
     try {
-      // Direct browser-to-blob upload (bypasses serverless body limit)
-      const blob = await upload(uploadForm.file.name, uploadForm.file, {
-        access: "public",
-        handleUploadUrl: "/api/documents/upload",
+      // Upload file as raw body to bypass serverless body limit
+      const blobRes = await fetch(`/api/documents/upload?filename=${encodeURIComponent(uploadForm.file.name)}`, {
+        method: "PUT",
+        body: uploadForm.file,
       });
+      if (!blobRes.ok) {
+        const err = await blobRes.json();
+        setUploadError(err?.error || "File upload failed.");
+        setUploading(false);
+        return;
+      }
+      const blob = await blobRes.json();
       // Save document metadata
       const res = await fetch("/api/documents", {
         method: "POST",
