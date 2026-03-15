@@ -11,12 +11,23 @@ const NoteSchema = new Schema<INote>(
   { timestamps: true }
 );
 
+const CourseSchema = new Schema(
+  {
+    name: { type: String, required: true },
+    intakeQuarter: { type: String, enum: ["Q1", "Q2", "Q3", "Q4"], default: "" },
+    intakeYear: { type: String, default: "" },
+    commencementDate: { type: String, default: "" },
+  },
+  { timestamps: false, _id: false }
+);
+
 const AdmissionDetailSchema = new Schema(
   {
     country: { type: String, required: true },
     universityName: { type: String, default: "" },
-    courseName: { type: String, default: "" },
     annualTuitionFee: { type: String, default: "" },
+    standing: { type: String, enum: ["heated", "hot", "warm", "out_of_contact", ""], default: "" },
+    courses: [CourseSchema],
   },
   { timestamps: true }
 );
@@ -37,7 +48,22 @@ const CountrySchema = new Schema({
   rejectionReason: { type: String },
 });
 
-export interface IStudentDocument extends Document {
+export interface ICourse {
+  name: string;
+  intakeQuarter: string;
+  intakeYear: string;
+  commencementDate: string;
+}
+
+interface IAdmissionDetail {
+  _id?: string;
+  country: string;
+  universityName: string;
+  annualTuitionFee: string;
+  courses: ICourse[];
+}
+
+interface IStudentDocument extends Document {
   lead: mongoose.Types.ObjectId;
   name: string;
   phone: string;
@@ -74,7 +100,7 @@ const StudentSchema = new Schema<IStudentDocument>(
       default: "counsellor",
     },
     stage: { type: String, default: "" },
-    standing: { type: String, enum: ["heated", "hot", "warm", "out_of_contact", ""], default: "" },
+    standing: { type: String, enum: ["heated", "warm", "cold", "out_of_contact", ""], default: "" },
     enrolled: { type: Boolean, default: false },
     enrolledAt: { type: Date },
     countries: [CountrySchema],

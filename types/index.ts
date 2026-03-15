@@ -7,7 +7,7 @@ export type UserRole =
   | "visa_team"
   | "front_desk";
 
-export type LeadStanding = "heated" | "hot" | "warm" | "out_of_contact";
+export type LeadStanding = "heated" | "warm" | "cold" | "out_of_contact";
 
 export type LeadStatus =
   | "FD-Junk"
@@ -153,6 +153,24 @@ export interface INote {
   createdAt: Date;
 }
 
+export interface ICourse {
+  name: string;
+  intakeQuarter?: string;
+  intakeYear?: string;
+  commencementDate?: string;
+}
+
+export interface IAdmissionDetail {
+  _id?: string;
+  country: string;
+  universityName?: string;
+  annualTuitionFee?: string;
+  standing?: LeadStanding;
+  courses?: ICourse[];
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 export interface IStudent {
   _id: string;
   lead: string;
@@ -165,7 +183,11 @@ export interface IStudent {
   counsellor: string;
   currentStage: StudentStage;
   stage?: string;
+  standing?: LeadStanding;
+  enrolled?: boolean;
+  enrolledAt?: Date;
   countries: IStudentCountry[];
+  admissionDetails?: IAdmissionDetail[];
   notes: INote[];
   createdAt: Date;
   updatedAt: Date;

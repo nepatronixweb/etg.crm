@@ -72,12 +72,15 @@ export default function StudentsPage() {
 
   const [stageDropdownId, setStageDropdownId] = useState<string | null>(null);
   const [crmStageDropdownId, setCrmStageDropdownId] = useState<string | null>(null);
+  const [standingDropdownId, setStandingDropdownId] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [crmStagePanelPos, setCrmStagePanelPos] = useState({ top: 0, left: 0 });
   const crmStagePanelRef = useRef<HTMLDivElement>(null);
   const [crmStageSearch, setCrmStageSearch] = useState("");
   const [pipelinePanelPos, setPipelinePanelPos] = useState({ top: 0, left: 0 });
   const pipelinePanelRef = useRef<HTMLDivElement>(null);
+  const [standingPanelPos, setStandingPanelPos] = useState({ top: 0, left: 0 });
+  const standingPanelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -400,8 +403,8 @@ export default function StudentsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                {["Student", "Client", "Services", "CRM Stage", "Pipeline", "Follow-Up"].map((h) => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">
+                {["Student", "Client", "Services", "CRM Stage", "Standing", "Pipeline", "Follow-Up"].map((h) => (
+                  <th key={h} className="text-left px-2.5 py-2 text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">
                     {h}
                   </th>
                 ))}
@@ -410,7 +413,7 @@ export default function StudentsPage() {
             <tbody className="divide-y divide-gray-100">
               {loading && (
                 <tr>
-                  <td colSpan={6} className="text-center py-14">
+                  <td colSpan={7} className="text-center py-14">
                     <div className="inline-flex flex-col items-center gap-2 text-gray-400">
                       <div className="w-5 h-5 border-2 border-gray-200 border-t-gray-500 rounded-full animate-spin" />
                       <span className="text-sm">Loading students…</span>
@@ -420,7 +423,7 @@ export default function StudentsPage() {
               )}
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="text-center py-14">
+                  <td colSpan={7} className="text-center py-14">
                     <div className="inline-flex flex-col items-center gap-2 text-gray-400">
                       <UserCheck size={28} className="text-gray-300" />
                       <span className="text-sm">No students found</span>
@@ -448,21 +451,21 @@ export default function StudentsPage() {
                     <tr className="hover:bg-gray-50/60 transition-colors align-top">
 
                       {/* STUDENT column */}
-                      <td className="px-4 py-3.5 min-w-40">
-                        <p className="font-bold text-gray-900 text-sm">{studentTag}</p>
-                        <p className="text-[11px] text-gray-400 mt-0.5 tabular-nums">{formatStudentDateTime(student.createdAt)}</p>
-                        <p className="text-[11px] text-gray-500 mt-0.5 capitalize">{student.source?.replace(/_/g, " ")}</p>
+                      <td className="px-2.5 py-2 min-w-36">
+                        <p className="font-bold text-gray-900 text-xs">{studentTag}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5 tabular-nums">{formatStudentDateTime(student.createdAt)}</p>
+                        <p className="text-[10px] text-gray-500 mt-0.5 capitalize">{student.source?.replace(/_/g, " ")}</p>
                       </td>
 
                       {/* CLIENT column */}
-                      <td className="px-4 py-3.5 min-w-52">
+                      <td className="px-2.5 py-2 min-w-44">
                         <div className="flex items-center gap-1.5 mb-1">
-                          <span className="text-amber-400 text-sm">★</span>
-                          <span className="font-semibold text-gray-900 text-sm">{student.name}</span>
+                          <span className="text-amber-400 text-xs">★</span>
+                          <span className="font-semibold text-gray-900 text-xs">{student.name}</span>
                         </div>
-                        <div className="flex items-center gap-1 text-[12px] text-gray-500 mb-0.5">
-                          <Phone size={10} className="text-gray-400 shrink-0" />
-                          <span className="tabular-nums">{student.phone}</span>
+                        <div className="flex items-center gap-1 text-[11px] text-gray-500 mb-0.5">
+                          <Phone size={9} className="text-gray-400 shrink-0" />
+                          <span className="tabular-nums text-[10px]">{student.phone}</span>
                           {student.phone && (
                             <a
                               href={`https://wa.me/${student.phone.replace(/[^\d]/g, "")}`}
@@ -476,9 +479,9 @@ export default function StudentsPage() {
                             </a>
                           )}
                         </div>
-                        <div className="flex items-center gap-1 text-[12px] text-gray-500">
-                          <Mail size={10} className="text-gray-400 shrink-0" />
-                          <span className="truncate max-w-44">{student.email}</span>
+                        <div className="flex items-center gap-1 text-[11px] text-gray-500">
+                          <Mail size={9} className="text-gray-400 shrink-0" />
+                          <span className="truncate max-w-40 text-[10px]">{student.email}</span>
                           {student.email && (
                             <a
                               href={`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(student.email)}`}
@@ -495,21 +498,21 @@ export default function StudentsPage() {
                       </td>
 
                       {/* SERVICES column */}
-                      <td className="px-4 py-3.5 min-w-48">
-                        <p className="text-sm font-medium text-gray-800">
+                      <td className="px-2.5 py-2 min-w-40">
+                        <p className="text-xs font-medium text-gray-800">
                           {interestedService || <span className="text-gray-300">—</span>}
-                          {countryPart && <span className="text-gray-500 font-normal"> - ({countryPart})</span>}
+                          {countryPart && <span className="text-gray-500 font-normal text-[10px]"> - ({countryPart})</span>}
                         </p>
                         {student.countries && student.countries.length > 1 && (
-                          <p className="text-[11px] text-gray-400 mt-0.5">
-                            +{student.countries.length - 1} more countr{student.countries.length - 1 > 1 ? "ies" : "y"}
+                          <p className="text-[10px] text-gray-400 mt-0.5">
+                            +{student.countries.length - 1} more
                           </p>
                         )}
-                        <p className="text-[11px] text-gray-400 mt-1 tabular-nums">{formatDate(student.createdAt)}</p>
+                        <p className="text-[10px] text-gray-400 mt-1 tabular-nums">{formatDate(student.createdAt)}</p>
                       </td>
 
                       {/* CRM STAGE column */}
-                      <td className="px-4 py-3.5 min-w-44">
+                      <td className="px-2.5 py-2 min-w-40">
                         {(() => {
                           const crmStage = (student as unknown as { stage?: string }).stage;
                           const stageInfo = LEAD_STAGES.find((s) => s.value === crmStage);
@@ -537,8 +540,31 @@ export default function StudentsPage() {
                         })()}
                       </td>
 
+                      {/* STANDING column */}
+                      <td className="px-2.5 py-2 min-w-28">
+                        {(() => {
+                          const standing = (student as unknown as { standing?: string }).standing;
+                          if (!standing) {
+                            return <span className="text-gray-300 text-xs">—</span>;
+                          }
+                          const standingColor = 
+                            standing === "heated" ? "bg-red-50 text-red-700 border-red-200" :
+                            standing === "hot" ? "bg-orange-50 text-orange-700 border-orange-200" :
+                            standing === "warm" ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
+                            standing === "out_of_contact" ? "bg-gray-100 text-gray-700 border-gray-200" :
+                            "bg-gray-50 text-gray-700 border-gray-200";
+                          return (
+                            <span className={`px-2.5 py-1 rounded-md text-xs font-semibold border inline-block capitalize whitespace-nowrap`}>
+                              <span className={standingColor + " px-2 py-1 rounded inline-block"}>
+                                {standing.replace("_", " ")}
+                              </span>
+                            </span>
+                          );
+                        })()}
+                      </td>
+
                       {/* PIPELINE (currentStage) column */}
-                      <td className="px-4 py-3.5 min-w-36">
+                      <td className="px-2.5 py-2 min-w-32">
                         <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={(e) => canUpdateStage && openPipelinePortal(e, student._id)}
@@ -552,7 +578,7 @@ export default function StudentsPage() {
                       </td>
 
                       {/* FOLLOW-UP column */}
-                      <td className="px-4 py-3.5">
+                      <td className="px-2.5 py-2">
                         <div className="flex items-center gap-2">
                           <Link href={`/students/${student._id}#notes`}
                             className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-0.5 border border-blue-100 hover:border-blue-300 px-2 py-1 rounded-md transition-colors whitespace-nowrap">
@@ -581,7 +607,7 @@ export default function StudentsPage() {
                     {/* Notes sub-row */}
                     {latestNote && (
                       <tr key={`${student._id}-note`} className="bg-gray-50/50">
-                        <td colSpan={6} className="px-4 py-2 border-b border-gray-100">
+                        <td colSpan={7} className="px-2.5 py-1.5 border-b border-gray-100">
                           <div className="flex items-start gap-1.5 text-[11px] text-gray-500">
                             <MessageSquare size={11} className="text-gray-400 mt-0.5 shrink-0" />
                             <span className="font-semibold text-gray-600">Notes:</span>

@@ -96,8 +96,18 @@ export default function LeadsPage() {
     setFilterApplyLevel("");
   };
 
-  const activeFilterCount = [filterStatus, filterCountry, filterAssignedTo, filterSource, filterService, filterLeadStage, filterDateFrom || filterDateTo, filterAcademicYear, filterApplyLevel]
-    .filter(Boolean).length;
+  // exclude stage filter from the count for counsellors since they don't see it
+  const activeFilterCount = [
+    filterStatus,
+    filterCountry,
+    filterAssignedTo,
+    filterSource,
+    filterService,
+    session?.user?.role === "counsellor" ? "" : filterLeadStage,
+    filterDateFrom || filterDateTo,
+    filterAcademicYear,
+    filterApplyLevel,
+  ].filter(Boolean).length;
 
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -266,6 +276,7 @@ export default function LeadsPage() {
       (l.assignedTo as unknown as { _id: string } | undefined)?._id === filterAssignedTo;
     const matchesSource = !filterSource || l.source === filterSource;
     const matchesService = !filterService || l.interestedService === filterService;
+    // counsellors can't set a stage filter, but we still respect it if somehow present
     const matchesLeadStage = !filterLeadStage || (l as unknown as { stage?: string }).stage === filterLeadStage;
     const leadDate = new Date(l.createdAt);
     const matchesDateFrom = !filterDateFrom || leadDate >= new Date(filterDateFrom);
@@ -278,7 +289,8 @@ export default function LeadsPage() {
   const canCreate = ["super_admin", "telecaller", "front_desk", "counsellor"].includes(session?.user?.role || "");
   const canAssign = ["super_admin", "telecaller", "front_desk"].includes(session?.user?.role || "");
   const canUpdateStatus = ["super_admin", "counsellor", "telecaller", "front_desk", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
-  const canUpdateStage = ["super_admin", "counsellor", "telecaller", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
+  // counsellors no longer need access to stage controls
+  const canUpdateStage = ["super_admin", "telecaller", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
   const canExport = ["super_admin", "telecaller"].includes(session?.user?.role || "");
 
   const [statusDropdownId, setStatusDropdownId] = useState<string | null>(null);
@@ -472,8 +484,8 @@ export default function LeadsPage() {
       {/* Filter + Search Bar */}
       <div className="bg-white border border-gray-200 rounded-lg overflow-visible">
         <div className="flex items-stretch gap-0 divide-x divide-gray-200 flex-wrap">
-          {/* Lead Stage - Hidden for FD */}
-          {session?.user?.role !== "front_desk" && (
+          {/* Lead Stage filter – hidden for FD and counsellors */}
+          {session?.user?.role !== "front_desk" && session?.user?.role !== "counsellor" && (
             <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
               <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Stage</label>
               <select
@@ -638,18 +650,25 @@ export default function LeadsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                {[
-                  "Lead",
-                  "Client",
-                  "Services",
-                  session?.user?.role === "front_desk" ? "Status" : "Stage",
-                  "Standing",
-                  "Follow-Up",
-                ].map((h) => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">
-                    {h}
-                  </th>
-                ))}
+                {(() => {
+                  // build headers dynamically; counsellors only see Status (no Stage)
+                  const isCounsellor = session?.user?.role === "counsellor";
+                  const isFrontDesk = session?.user?.role === "front_desk";
+                  const headers: string[] = ["Lead", "Client", "Services"];
+                  if (isFrontDesk) {
+                    headers.push("Status");
+                  } else if (isCounsellor) {
+                    headers.push("Status");
+                  } else {
+                    headers.push("Stage");
+                  }
+                  headers.push("Standing", "Follow-Up");
+                  return headers.map((h) => (
+                    <th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">
+                      {h}
+                    </th>
+                  ));
+                })()}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -862,8 +881,8 @@ export default function LeadsPage() {
                         )}
                       </td>
 
-                      {/* STAGE column - shown for Counsellors and others */}
-                      {session?.user?.role !== "front_desk" && (
+                      {/* STAGE column - shown for non-FD, non-counsellor users */}
+                      {session?.user?.role !== "front_desk" && session?.user?.role !== "counsellor" && (
                       <td className="px-4 py-3.5 min-w-36">
                         {(() => {
                           const ext = lead as unknown as { stage?: string; stageDates?: Record<string, string> };

@@ -69,8 +69,8 @@ export default function AdmissionsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                {["Student", "Counsellor", "Countries & Universities", "Enrolled", ""].map((h) => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
+                {["Student", "Counsellor", "Countries & Universities", "Standing", "Enrolled", ""].map((h) => (
+                  <th key={h} className={`text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap ${h === "Standing" ? "min-w-[120px]" : ""}`}>
                     {h}
                   </th>
                 ))}
@@ -79,7 +79,7 @@ export default function AdmissionsPage() {
             <tbody className="divide-y divide-gray-100">
               {loading && (
                 <tr>
-                  <td colSpan={5} className="text-center py-14">
+                  <td colSpan={6} className="text-center py-14">
                     <div className="inline-flex flex-col items-center gap-2 text-gray-400">
                       <div className="w-5 h-5 border-2 border-gray-200 border-t-gray-500 rounded-full animate-spin" />
                       <span className="text-sm">Loading admissions…</span>
@@ -89,7 +89,7 @@ export default function AdmissionsPage() {
               )}
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="text-center py-14">
+                  <td colSpan={6} className="text-center py-14">
                     <div className="inline-flex flex-col items-center gap-2 text-gray-400">
                       <GraduationCap size={28} className="text-gray-300" />
                       <span className="text-sm">
@@ -140,16 +140,22 @@ export default function AdmissionsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3.5">
-                    <div className="flex flex-col gap-1">
-                      <span className="inline-block px-2.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200 w-fit">
-                        Heated
+                    <span className={`inline-block px-2.5 py-0.5 rounded text-xs font-semibold whitespace-nowrap capitalize border ${
+                      s.standing === "heated" ? "bg-red-100 text-red-700 border-red-200" :
+                      s.standing === "hot" ? "bg-orange-100 text-orange-700 border-orange-200" :
+                      s.standing === "warm" ? "bg-yellow-100 text-yellow-700 border-yellow-200" :
+                      s.standing === "out_of_contact" ? "bg-gray-100 text-gray-700 border-gray-200" :
+                      "bg-blue-100 text-blue-700 border-blue-200"
+                    }`}>
+                      {s.standing ? s.standing.replace(/_/g, " ") : "Pending"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    {s.enrolledAt && (
+                      <span className="text-xs text-gray-600">
+                        {new Date(s.enrolledAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
                       </span>
-                      {s.enrolledAt && (
-                        <span className="text-xs text-gray-400">
-                          {new Date(s.enrolledAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
-                        </span>
-                      )}
-                    </div>
+                    )}
                   </td>
                   <td className="px-4 py-3.5">
                     <Link

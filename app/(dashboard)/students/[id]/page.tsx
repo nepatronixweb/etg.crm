@@ -19,9 +19,18 @@ interface StudentDetail {
   counsellor: { name: string; email: string };
   branch: { name: string };
   countries: Array<{ country: string; status: string; universityName?: string; visaStatus?: string; visaApprovedAt?: string }>;
-  admissionDetails: Array<{ _id: string; country: string; universityName: string; courseName: string; annualTuitionFee: string; createdAt: string }>;
+  admissionDetails: Array<{ 
+    _id: string; 
+    country: string; 
+    universityName: string; 
+    annualTuitionFee: string;
+    standing: string;
+    courses: Array<{ name: string; intakeQuarter: string; intakeYear: string; commencementDate: string }>;
+    createdAt: string 
+  }>;
   notes: Array<{ _id: string; content: string; addedByName: string; addedByRole: string; createdAt: string }>;
 }
+
 
 interface Document {
   _id: string;
@@ -48,10 +57,22 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   const [newCountry, setNewCountry] = useState("");
   const [enrolling, setEnrolling] = useState(false);
   const [showAdmissionForm, setShowAdmissionForm] = useState(false);
-  const [admissionForm, setAdmissionForm] = useState({ country: "", universityName: "", courseName: "", annualTuitionFee: "" });
+  const [admissionForm, setAdmissionForm] = useState({ 
+    country: "", 
+    universityName: "", 
+    annualTuitionFee: "",
+    standing: "",
+    courses: [{ name: "", intakeQuarter: "", intakeYear: "", commencementDate: "" }]
+  });
   const [savingAdmission, setSavingAdmission] = useState(false);
   const [editingAdmission, setEditingAdmission] = useState<number | null>(null);
-  const [editAdmissionForm, setEditAdmissionForm] = useState({ country: "", universityName: "", courseName: "", annualTuitionFee: "" });
+  const [editAdmissionForm, setEditAdmissionForm] = useState({ 
+    country: "", 
+    universityName: "", 
+    annualTuitionFee: "",
+    standing: "",
+    courses: [{ name: "", intakeQuarter: "", intakeYear: "", commencementDate: "" }]
+  });
 
   const fetchData = async () => {
     const [sRes, dRes] = await Promise.all([
@@ -174,6 +195,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
 
   const saveAdmissionDetail = async () => {
     if (!admissionForm.country) return;
+    if (admissionForm.courses.some(c => !c.name)) return; // Validate at least one course with name
     setSavingAdmission(true);
     await fetch(`/api/students/${id}`, {
       method: "PATCH",
@@ -182,7 +204,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     });
     setSavingAdmission(false);
     setShowAdmissionForm(false);
-    setAdmissionForm({ country: "", universityName: "", courseName: "", annualTuitionFee: "" });
+    setAdmissionForm({ country: "", universityName: "", annualTuitionFee: "", standing: "", courses: [{ name: "", intakeQuarter: "", intakeYear: "", commencementDate: "" }] });
     fetchData();
   };
 
@@ -329,7 +351,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                   <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">New Admission Entry</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1">Country</label>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Country *</label>
                       <select
                         value={admissionForm.country}
                         onChange={(e) => setAdmissionForm((f) => ({ ...f, country: e.target.value }))}
@@ -351,15 +373,6 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1">Course Name</label>
-                      <input
-                        value={admissionForm.courseName}
-                        onChange={(e) => setAdmissionForm((f) => ({ ...f, courseName: e.target.value }))}
-                        placeholder="e.g. Bachelor of Engineering"
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
                       <label className="block text-xs font-semibold text-gray-600 mb-1">Annual Tuition Fee</label>
                       <input
                         value={admissionForm.annualTuitionFee}
@@ -368,17 +381,127 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Standing</label>
+                      <select
+                        value={admissionForm.standing}
+                        onChange={(e) => setAdmissionForm((f) => ({ ...f, standing: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Select Standing</option>
+                        <option value="heated">Heated</option>
+                        <option value="warm">Warm</option>
+                        <option value="cold">Cold</option>
+                        <option value="out_of_contact">Out of Contact</option>
+                      </select>
+                    </div>
                   </div>
+
+                  {/* Courses Section */}
+                  <div className="border-t border-gray-300 pt-3 mt-3">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Courses</p>
+                      <button
+                        onClick={() => setAdmissionForm((f) => ({
+                          ...f,
+                          courses: [...f.courses, { name: "", intakeQuarter: "", intakeYear: "", commencementDate: "" }]
+                        }))}
+                        className="text-blue-600 text-xs flex items-center gap-1 hover:underline"
+                      >
+                        <Plus size={12} /> Add Course
+                      </button>
+                    </div>
+                    <div className="space-y-3">
+                      {admissionForm.courses.map((course, idx) => (
+                        <div key={idx} className="bg-white rounded-lg border border-gray-200 p-3 space-y-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-xs font-semibold text-gray-600 mb-1">Course Name *</label>
+                              <input
+                                value={course.name}
+                                onChange={(e) => {
+                                  const updated = [...admissionForm.courses];
+                                  updated[idx].name = e.target.value;
+                                  setAdmissionForm((f) => ({ ...f, courses: updated }));
+                                }}
+                                placeholder="e.g. Bachelor of Engineering"
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold text-gray-600 mb-1">Intake Quarter</label>
+                              <select
+                                value={course.intakeQuarter}
+                                onChange={(e) => {
+                                  const updated = [...admissionForm.courses];
+                                  updated[idx].intakeQuarter = e.target.value;
+                                  setAdmissionForm((f) => ({ ...f, courses: updated }));
+                                }}
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              >
+                                <option value="">Select Quarter</option>
+                                <option value="Q1">Q1</option>
+                                <option value="Q2">Q2</option>
+                                <option value="Q3">Q3</option>
+                                <option value="Q4">Q4</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold text-gray-600 mb-1">Intake Year</label>
+                              <input
+                                value={course.intakeYear}
+                                onChange={(e) => {
+                                  const updated = [...admissionForm.courses];
+                                  updated[idx].intakeYear = e.target.value;
+                                  setAdmissionForm((f) => ({ ...f, courses: updated }));
+                                }}
+                                placeholder="e.g. 2025"
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold text-gray-600 mb-1">Course Commencement Date</label>
+                              <input
+                                type="date"
+                                value={course.commencementDate}
+                                onChange={(e) => {
+                                  const updated = [...admissionForm.courses];
+                                  updated[idx].commencementDate = e.target.value;
+                                  setAdmissionForm((f) => ({ ...f, courses: updated }));
+                                }}
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                            </div>
+                          </div>
+                          {admissionForm.courses.length > 1 && (
+                            <button
+                              onClick={() => setAdmissionForm((f) => ({
+                                ...f,
+                                courses: f.courses.filter((_, i) => i !== idx)
+                              }))}
+                              className="text-xs text-red-600 hover:text-red-800 flex items-center gap-1"
+                            >
+                              <Trash2 size={12} /> Remove Course
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="flex gap-2 pt-1">
                     <button
                       onClick={saveAdmissionDetail}
-                      disabled={!admissionForm.country || savingAdmission}
+                      disabled={!admissionForm.country || admissionForm.courses.some(c => !c.name) || savingAdmission}
                       className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg text-sm font-medium"
                     >
                       {savingAdmission ? "Saving" : "Save"}
                     </button>
                     <button
-                      onClick={() => { setShowAdmissionForm(false); setAdmissionForm({ country: "", universityName: "", courseName: "", annualTuitionFee: "" }); }}
+                      onClick={() => { 
+                        setShowAdmissionForm(false); 
+                        setAdmissionForm({ country: "", universityName: "", annualTuitionFee: "", standing: "", courses: [{ name: "", intakeQuarter: "", intakeYear: "", commencementDate: "" }] }); 
+                      }}
                       className="px-4 py-2 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg text-sm"
                     >
                       Cancel
@@ -421,15 +544,6 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Course Name</label>
-                            <input
-                              value={editAdmissionForm.courseName}
-                              onChange={(e) => setEditAdmissionForm((f) => ({ ...f, courseName: e.target.value }))}
-                              placeholder="e.g. Bachelor of Engineering"
-                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                          </div>
-                          <div>
                             <label className="block text-xs font-semibold text-gray-600 mb-1">Annual Tuition Fee</label>
                             <input
                               value={editAdmissionForm.annualTuitionFee}
@@ -438,11 +552,118 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
                           </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Standing</label>
+                            <select
+                              value={editAdmissionForm.standing}
+                              onChange={(e) => setEditAdmissionForm((f) => ({ ...f, standing: e.target.value }))}
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              <option value="">Select Standing</option>
+                              <option value="heated">Heated</option>
+                              <option value="warm">Warm</option>
+                              <option value="cold">Cold</option>
+                              <option value="out_of_contact">Out of Contact</option>
+                            </select>
+                          </div>
                         </div>
+
+                        {/* Edit Courses Section */}
+                        <div className="border-t border-gray-300 pt-3 mt-3">
+                          <div className="flex items-center justify-between mb-3">
+                            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Courses</p>
+                            <button
+                              onClick={() => setEditAdmissionForm((f) => ({
+                                ...f,
+                                courses: [...f.courses, { name: "", intakeQuarter: "", intakeYear: "", commencementDate: "" }]
+                              }))}
+                              className="text-blue-600 text-xs flex items-center gap-1 hover:underline"
+                            >
+                              <Plus size={12} /> Add Course
+                            </button>
+                          </div>
+                          <div className="space-y-3">
+                            {editAdmissionForm.courses.map((course, idx) => (
+                              <div key={idx} className="bg-white rounded-lg border border-gray-200 p-3 space-y-2">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Course Name *</label>
+                                    <input
+                                      value={course.name}
+                                      onChange={(e) => {
+                                        const updated = [...editAdmissionForm.courses];
+                                        updated[idx].name = e.target.value;
+                                        setEditAdmissionForm((f) => ({ ...f, courses: updated }));
+                                      }}
+                                      placeholder="e.g. Bachelor of Engineering"
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Intake Quarter</label>
+                                    <select
+                                      value={course.intakeQuarter}
+                                      onChange={(e) => {
+                                        const updated = [...editAdmissionForm.courses];
+                                        updated[idx].intakeQuarter = e.target.value;
+                                        setEditAdmissionForm((f) => ({ ...f, courses: updated }));
+                                      }}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                      <option value="">Select Quarter</option>
+                                      <option value="Q1">Q1</option>
+                                      <option value="Q2">Q2</option>
+                                      <option value="Q3">Q3</option>
+                                      <option value="Q4">Q4</option>
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Intake Year</label>
+                                    <input
+                                      value={course.intakeYear}
+                                      onChange={(e) => {
+                                        const updated = [...editAdmissionForm.courses];
+                                        updated[idx].intakeYear = e.target.value;
+                                        setEditAdmissionForm((f) => ({ ...f, courses: updated }));
+                                      }}
+                                      placeholder="e.g. 2025"
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Course Commencement Date</label>
+                                    <input
+                                      type="date"
+                                      value={course.commencementDate}
+                                      onChange={(e) => {
+                                        const updated = [...editAdmissionForm.courses];
+                                        updated[idx].commencementDate = e.target.value;
+                                        setEditAdmissionForm((f) => ({ ...f, courses: updated }));
+                                      }}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                  </div>
+                                </div>
+                                {editAdmissionForm.courses.length > 1 && (
+                                  <button
+                                    onClick={() => setEditAdmissionForm((f) => ({
+                                      ...f,
+                                      courses: f.courses.filter((_, ci) => ci !== idx)
+                                    }))}
+                                    className="text-xs text-red-600 hover:text-red-800 flex items-center gap-1"
+                                  >
+                                    <Trash2 size={12} /> Remove Course
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
                         <div className="flex gap-2 pt-1">
                           <button
                             onClick={() => updateAdmissionDetail(i)}
-                            disabled={!editAdmissionForm.country || savingAdmission}
+                            disabled={!editAdmissionForm.country || editAdmissionForm.courses.some(c => !c.name) || savingAdmission}
                             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg text-sm font-medium"
                           >
                             {savingAdmission ? "Saving…" : "Update"}
@@ -461,19 +682,53 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="px-2.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full">{entry.country}</span>
                             {entry.universityName && <span className="text-sm font-semibold text-gray-800">{entry.universityName}</span>}
-                          </div>
-                          <div className="flex items-center gap-4 flex-wrap mt-1">
-                            {entry.courseName && (
-                              <span className="text-sm text-gray-600"><span className="text-xs text-gray-400 font-medium">Course: </span>{entry.courseName}</span>
+                            {entry.standing && (
+                              <span className={`px-2.5 py-0.5 text-xs font-semibold rounded-full capitalize ${
+                                entry.standing === "heated" ? "bg-red-100 text-red-700" :
+                                entry.standing === "hot" ? "bg-orange-100 text-orange-700" :
+                                entry.standing === "warm" ? "bg-yellow-100 text-yellow-700" :
+                                "bg-gray-100 text-gray-700"
+                              }`}>
+                                {entry.standing.replace(/_/g, " ")}
+                              </span>
                             )}
+                          </div>
+                          <div className="flex items-center gap-4 flex-wrap mt-2">
                             {entry.annualTuitionFee && (
                               <span className="text-sm text-gray-600"><span className="text-xs text-gray-400 font-medium">Fee: </span>{entry.annualTuitionFee} / yr</span>
                             )}
                           </div>
+                          {/* Display Courses */}
+                          {entry.courses && entry.courses.length > 0 && (
+                            <div className="mt-2 space-y-2">
+                              {entry.courses.map((course, idx) => (
+                                <div key={idx} className="inline-block bg-green-50 border border-green-200 rounded-lg p-2 text-xs">
+                                  <div className="font-medium text-green-900">{course.name}</div>
+                                  <div className="text-green-700">
+                                    {course.intakeQuarter && <span>{course.intakeQuarter}</span>}
+                                    {course.intakeYear && <span>{course.intakeYear}</span>}
+                                    {course.intakeQuarter && course.intakeYear && <span> • </span>}
+                                  </div>
+                                  {course.commencementDate && (
+                                    <div className="text-green-600">{new Date(course.commencementDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center gap-1 ml-3 shrink-0">
                           <button
-                            onClick={() => { setEditingAdmission(i); setEditAdmissionForm({ country: entry.country, universityName: entry.universityName || "", courseName: entry.courseName || "", annualTuitionFee: entry.annualTuitionFee || "" }); }}
+                            onClick={() => { 
+                              setEditingAdmission(i); 
+                              setEditAdmissionForm({ 
+                                country: entry.country, 
+                                universityName: entry.universityName || "", 
+                                annualTuitionFee: entry.annualTuitionFee || "",
+                                standing: entry.standing || "",
+                                courses: entry.courses || []
+                              }); 
+                            }}
                             className="p-1.5 text-gray-300 hover:text-blue-500 transition-colors"
                             title="Edit entry"
                           >
