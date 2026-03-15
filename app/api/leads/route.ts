@@ -29,7 +29,6 @@ export async function GET(req: NextRequest) {
     if (session.user.role === "counsellor") filter.assignedTo = session.user.id;
     else if (session.user.role === "telecaller") filter.source = { $ne: "walk_in" };
     else if (session.user.role === "front_desk") {
-      filter.source = "walk_in";
       filter.branch = session.user.branch;
     } else if (session.user.role !== "super_admin") {
       filter.branch = session.user.branch;
