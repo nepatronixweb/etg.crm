@@ -53,9 +53,9 @@ export function getRoleLabel(role: UserRole): string {
 export function getStatusColor(status: string): string {
   const colors: Record<string, string> = {
     heated: "bg-red-100 text-red-800",
-    hot: "bg-orange-100 text-orange-800",
     warm: "bg-yellow-100 text-yellow-800",
-    out_of_contact: "bg-gray-100 text-gray-600",
+    cold: "bg-blue-100 text-blue-800",
+    missed: "bg-gray-100 text-gray-600",
     counsellor: "bg-blue-100 text-blue-800",
     application: "bg-purple-100 text-purple-800",
     admission: "bg-indigo-100 text-indigo-800",

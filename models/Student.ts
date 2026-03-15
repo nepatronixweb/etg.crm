@@ -26,7 +26,7 @@ const AdmissionDetailSchema = new Schema(
     country: { type: String, required: true },
     universityName: { type: String, default: "" },
     annualTuitionFee: { type: String, default: "" },
-    standing: { type: String, enum: ["heated", "hot", "warm", "out_of_contact", ""], default: "" },
+    standing: { type: String, enum: ["warm", "heated", "cold", "missed", ""], default: "" },
     courses: [CourseSchema],
   },
   { timestamps: true }
@@ -100,7 +100,7 @@ const StudentSchema = new Schema<IStudentDocument>(
       default: "counsellor",
     },
     stage: { type: String, default: "" },
-    standing: { type: String, enum: ["heated", "warm", "cold", "out_of_contact", ""], default: "" },
+    standing: { type: String, enum: ["warm", "heated", "cold", "missed", ""], default: "" },
     enrolled: { type: Boolean, default: false },
     enrolledAt: { type: Date },
     countries: [CountrySchema],

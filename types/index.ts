@@ -7,7 +7,7 @@ export type UserRole =
   | "visa_team"
   | "front_desk";
 
-export type LeadStanding = "heated" | "warm" | "cold" | "out_of_contact";
+export type LeadStanding = "warm" | "heated" | "cold" | "missed";
 
 export type LeadStatus =
   | "FD-Junk"

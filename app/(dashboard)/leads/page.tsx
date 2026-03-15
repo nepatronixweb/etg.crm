@@ -508,8 +508,8 @@ export default function LeadsPage() {
       {/* Filter + Search Bar */}
       <div className="bg-white border border-gray-200 rounded-lg overflow-visible">
         <div className="flex items-stretch gap-0 divide-x divide-gray-200 flex-wrap">
-          {/* Lead Stage filter – hidden for FD and counsellors */}
-          {session?.user?.role !== "front_desk" && session?.user?.role !== "counsellor" && (
+          {/* Lead Stage filter – hidden for FD, counsellors, and admin */}
+          {session?.user?.role !== "front_desk" && session?.user?.role !== "counsellor" && !isAdmin && (
             <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
               <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Stage</label>
               <select
@@ -532,10 +532,10 @@ export default function LeadsPage() {
               className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
             >
               <option value="">View All Lead</option>
-              <option value="heated">Heated</option>
-              <option value="hot">Hot</option>
               <option value="warm">Warm</option>
-              <option value="out_of_contact">Out of Contact</option>
+              <option value="heated">Heated</option>
+              <option value="cold">Cold</option>
+              <option value="missed">Missed</option>
             </select>
             <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
@@ -685,9 +685,10 @@ export default function LeadsPage() {
                     headers.push("Status");
                   } else if (isCounsellor) {
                     headers.push("Status");
+                  } else if (isAdmin) {
+                    headers.push("Status");
                   } else {
                     headers.push("Stage");
-                    if (isAdmin) headers.push("Status");
                   }
                   headers.push("Standing", "Follow-Up");
                   return headers.map((h, i) => (
@@ -816,7 +817,8 @@ export default function LeadsPage() {
                         <p className="text-[11px] text-gray-400 mt-1 tabular-nums whitespace-nowrap">{formatDate(lead.createdAt)}</p>
                       </td>
 
-                      {/* STAGE/STATUS column */}
+                      {/* STAGE/STATUS column – hidden for admin */}
+                      {!isAdmin && (
                       <td className="px-4 py-3.5 min-w-36">
                         {(session?.user?.role === "front_desk" || session?.user?.role === "counsellor") ? (
                           // FD Status column - INTERACTIVE (visible for FD and Counsellors)
@@ -916,6 +918,7 @@ export default function LeadsPage() {
                           })()
                         )}
                       </td>
+                      )}
 
                       {/* STAGE column - shown for non-FD, non-counsellor users */}
                       {session?.user?.role !== "front_desk" && session?.user?.role !== "counsellor" && (
@@ -1027,7 +1030,7 @@ export default function LeadsPage() {
                           </button>
                           {canUpdateStatus && statusDropdownId === lead._id && (
                             <div className="absolute z-30 top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden min-w-36">
-                              {["heated", "hot", "warm", "out_of_contact"].map((s) => (
+                              {["warm", "heated", "cold", "missed"].map((s) => (
                                 <button key={s} onClick={() => quickUpdateStatus(lead._id, s)}
                                   className={`w-full text-left px-3 py-2 text-xs font-medium capitalize transition-colors flex items-center justify-between ${
                                     lead.standing === s ? "bg-gray-100 text-gray-900 font-semibold" : "text-gray-600 hover:bg-gray-50"

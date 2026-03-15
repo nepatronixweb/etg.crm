@@ -85,7 +85,7 @@ const LeadSchema = new Schema<ILeadDocument>(
     branch: { type: Schema.Types.ObjectId, ref: "Branch", required: true },
     standing: {
       type: String,
-      enum: ["heated", "hot", "warm", "out_of_contact"],
+      enum: ["warm", "heated", "cold", "missed"],
       default: "warm",
     },
     assignedTo: { type: Schema.Types.ObjectId, ref: "User" },

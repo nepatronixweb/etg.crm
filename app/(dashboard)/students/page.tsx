@@ -102,6 +102,35 @@ export default function StudentsPage() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (standingPanelRef.current && !standingPanelRef.current.contains(e.target as Node)) {
+        setStandingDropdownId(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const quickUpdateStanding = async (studentId: string, newStanding: string) => {
+    setStandingDropdownId(null);
+    setStudents((prev) => prev.map((s) => s._id === studentId ? { ...s, standing: newStanding } as typeof s : s));
+    await fetch(`/api/students/${studentId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ standing: newStanding }),
+    });
+  };
+
+  const openStandingPortal = (e: React.MouseEvent, studentId: string) => {
+    if (standingDropdownId === studentId) { setStandingDropdownId(null); return; }
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const popoverWidth = 192;
+    const left = Math.min(rect.left, window.innerWidth - popoverWidth - 8);
+    setStandingPanelPos({ top: rect.bottom + window.scrollY + 8, left });
+    setStandingDropdownId(studentId);
+  };
+
   const quickUpdateCrmStage = async (studentId: string, newStage: string) => {
     setCrmStageDropdownId(null);
     setStudents((prev) => prev.map((s) => s._id === studentId ? { ...s, stage: newStage } : s));
@@ -214,7 +243,7 @@ export default function StudentsPage() {
   const exportToExcel = () => {
     const headers = [
       "ETG ID", "Name", "Phone", "Email", "Date of Birth",
-      "Stage", "CRM Stage", "Source",
+      "Stage", "Lead Stage", "Source",
       "Interested Service", "Interested Country",
       "Branch", "Counsellor", "Created Date",
     ];
@@ -359,9 +388,9 @@ export default function StudentsPage() {
             <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
 
-          {/* CRM Stage */}
+          {/* Stage */}
           <div className="flex-1 min-w-36 relative">
-            <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">CRM Stage</label>
+            <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Stage</label>
             <select value={filterLeadStage} onChange={(e) => setFilterLeadStage(e.target.value)}
               className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8">
               <option value="">All Stages</option>
@@ -403,7 +432,7 @@ export default function StudentsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                {["Student", "Client", "Services", "CRM Stage", "Standing", "Pipeline", "Follow-Up"].map((h) => (
+                {["Student", "Client", "Services", "Stage", "Standing", "Pipeline", "Follow-Up"].map((h) => (
                   <th key={h} className="text-left px-2.5 py-2 text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">
                     {h}
                   </th>
@@ -511,7 +540,7 @@ export default function StudentsPage() {
                         <p className="text-[10px] text-gray-400 mt-1 tabular-nums">{formatDate(student.createdAt)}</p>
                       </td>
 
-                      {/* CRM STAGE column */}
+                      {/* STAGE column */}
                       <td className="px-2.5 py-2 min-w-40">
                         {(() => {
                           const crmStage = (student as unknown as { stage?: string }).stage;
@@ -542,25 +571,26 @@ export default function StudentsPage() {
 
                       {/* STANDING column */}
                       <td className="px-2.5 py-2 min-w-28">
-                        {(() => {
-                          const standing = (student as unknown as { standing?: string }).standing;
-                          if (!standing) {
-                            return <span className="text-gray-300 text-xs">—</span>;
-                          }
-                          const standingColor = 
-                            standing === "heated" ? "bg-red-50 text-red-700 border-red-200" :
-                            standing === "hot" ? "bg-orange-50 text-orange-700 border-orange-200" :
-                            standing === "warm" ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
-                            standing === "out_of_contact" ? "bg-gray-100 text-gray-700 border-gray-200" :
-                            "bg-gray-50 text-gray-700 border-gray-200";
-                          return (
-                            <span className={`px-2.5 py-1 rounded-md text-xs font-semibold border inline-block capitalize whitespace-nowrap`}>
-                              <span className={standingColor + " px-2 py-1 rounded inline-block"}>
-                                {standing.replace("_", " ")}
-                              </span>
-                            </span>
-                          );
-                        })()}
+                        <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+                          {(() => {
+                            const standing = (student as unknown as { standing?: string }).standing;
+                            const standingColor = 
+                              standing === "heated" ? "bg-red-50 text-red-700 border-red-200" :
+                              standing === "warm" ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
+                              standing === "cold" ? "bg-blue-50 text-blue-700 border-blue-200" :
+                              standing === "missed" ? "bg-gray-100 text-gray-700 border-gray-200" :
+                              "bg-gray-50 text-gray-400 border-gray-200";
+                            return (
+                              <button
+                                onClick={(e) => openStandingPortal(e, student._id)}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border transition-colors cursor-pointer hover:opacity-80 ${standingColor}`}
+                              >
+                                <span className="capitalize max-w-24 truncate">{standing ? standing.replace("_", " ") : "Set"}</span>
+                                <ChevronDown size={10} className={`shrink-0 opacity-50 transition-transform duration-200 ${standingDropdownId === student._id ? "rotate-180" : ""}`} />
+                              </button>
+                            );
+                          })()}
+                        </div>
                       </td>
 
                       {/* PIPELINE (currentStage) column */}
@@ -774,7 +804,7 @@ export default function StudentsPage() {
         </div>
       )}
 
-      {/* CRM Stage dropdown portal */}
+      {/* Stage dropdown portal */}
       {crmStageDropdownId && typeof document !== "undefined" && (() => {
         const dropStudent = students.find((s) => s._id === crmStageDropdownId);
         if (!dropStudent) return null;
@@ -789,7 +819,7 @@ export default function StudentsPage() {
             className="bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-gray-100 w-80"
           >
             <div className="px-4 pt-3.5 pb-2.5 border-b border-gray-100 flex items-center justify-between">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.12em]">Select CRM Stage</span>
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.12em]">Select Stage</span>
               {dropStageInfo && (
                 <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${dropStageInfo.color}`}>{dropStageInfo.label}</span>
               )}
@@ -889,6 +919,53 @@ export default function StudentsPage() {
                 );
               })}
             </div>
+          </div>,
+          document.body
+        );
+      })()}
+
+      {/* Standing dropdown portal */}
+      {standingDropdownId && typeof document !== "undefined" && (() => {
+        const dropStudent = students.find((s) => s._id === standingDropdownId);
+        if (!dropStudent) return null;
+        const currentStanding = (dropStudent as unknown as { standing?: string }).standing || "";
+        const STANDING_OPTIONS = [
+          { value: "warm", label: "Warm", color: "bg-yellow-50 text-yellow-700" },
+          { value: "heated", label: "Heated", color: "bg-red-50 text-red-700" },
+          { value: "cold", label: "Cold", color: "bg-blue-50 text-blue-700" },
+          { value: "missed", label: "Missed", color: "bg-gray-100 text-gray-700" },
+        ];
+        return createPortal(
+          <div
+            ref={standingPanelRef}
+            style={{ position: "fixed", top: standingPanelPos.top, left: standingPanelPos.left, zIndex: 9999 }}
+            className="bg-white rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-gray-100 w-48 overflow-hidden"
+          >
+            <div className="px-4 pt-3 pb-2 border-b border-gray-100">
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.12em]">Select Standing</span>
+            </div>
+            <div className="py-1.5">
+              {STANDING_OPTIONS.map((opt) => {
+                const isActive = currentStanding === opt.value;
+                return (
+                  <button key={opt.value} onClick={() => quickUpdateStanding(standingDropdownId, opt.value)}
+                    className={`w-full text-left px-4 py-2.5 text-xs font-medium transition-colors flex items-center justify-between ${
+                      isActive ? "bg-gray-50 text-gray-900 font-semibold" : "text-gray-600 hover:bg-gray-50"
+                    }`}>
+                    <span className={`inline-block px-2.5 py-1 rounded-lg text-[11px] font-semibold ${opt.color}`}>{opt.label}</span>
+                    {isActive && <svg width="8" height="6" viewBox="0 0 8 6" fill="none" className="shrink-0"><path d="M1 3L3 5L7 1" stroke="#111" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                  </button>
+                );
+              })}
+            </div>
+            {currentStanding && (
+              <div className="border-t border-gray-100 px-3.5 py-2">
+                <button onClick={() => quickUpdateStanding(standingDropdownId, "")}
+                  className="text-[11px] text-gray-400 hover:text-red-500 font-medium transition-colors flex items-center gap-1.5">
+                  <X size={10} /> Clear standing
+                </button>
+              </div>
+            )}
           </div>,
           document.body
         );
