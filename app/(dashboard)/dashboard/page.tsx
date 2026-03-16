@@ -7,9 +7,10 @@ import {
   FolderOpen, LayoutDashboard, Bell,
   Clock, CheckCircle2, PlaneTakeoff, Award, XCircle, BadgeCheck, FilePlus2,
   SlidersHorizontal, Check, Calendar,
+  GraduationCap, Send, ShieldCheck, FileCheck, FileInput, MessageSquare,
 } from "lucide-react";
 import { formatDateTime, getStatusColor, canAccessModule } from "@/lib/utils";
-import { UserRole } from "@/types";
+import { IStudent, UserRole } from "@/types";
 import Link from "next/link";
 
 interface AnalyticsData {
@@ -72,6 +73,14 @@ interface IAssignedLead {
   status: string;
   standing: string;
   source: string;
+  createdAt: string;
+}
+
+interface ICounsellorRemark {
+  studentId: string;
+  studentName: string;
+  content: string;
+  addedBy: string;
   createdAt: string;
 }
 
@@ -140,13 +149,29 @@ export default function DashboardPage() {
   const isAdmin = session?.user?.role === "super_admin";
   const isCounsellor = session?.user?.role === "counsellor";
   const isFrontDesk = session?.user?.role === "front_desk";
+  const isAdmissionTeam = session?.user?.role === "admission_team";
   const role = (session?.user?.role ?? "") as UserRole;
 
   // Counsellor: assigned leads
   const [assignedLeads, setAssignedLeads] = useState<IAssignedLead[]>([]);
+  const [counsellorStudents, setCounsellorStudents] = useState<IStudent[]>([]);
 
   // Front Desk: stats
   const [fdStats, setFdStats] = useState({ totalLeads: 0, convertedToStudent: 0, enrolledStudents: 0 });
+
+  // Admission Team: stats
+  interface IAdmissionStats {
+    enrolled: number;
+    offerApplied: number;
+    conditionalOffers: number;
+    unconditionalOffers: number;
+    gteApplied: number;
+    gteApproved: number;
+    coeApplied: number;
+    coeReceived: number;
+    remarks: Array<{ studentId: string; studentName: string; content: string; addedBy: string; createdAt: string }>;
+  }
+  const [admissionStats, setAdmissionStats] = useState<IAdmissionStats | null>(null);
 
   // Admin + Counsellor: recent notifications on dashboard
   const [notifs, setNotifs] = useState<INotif[]>([]);
@@ -186,17 +211,18 @@ export default function DashboardPage() {
         .then((d) => setNotifs(d.notifications ?? []))
         .catch(() => {});
     } else if (isCounsellor) {
-      // Fetch my assigned leads (all, for stats)
-      fetch("/api/leads")
-        .then((r) => r.json())
-        .then((d) => setAssignedLeads(Array.isArray(d) ? d : []))
-        .catch(() => {});
-      // Fetch my notifications
-      fetch("/api/notifications?limit=6")
-        .then((r) => r.json())
-        .then((d) => setNotifs(d.notifications ?? []))
-        .catch(() => {});
-      setLoading(false);
+      Promise.all([
+        fetch("/api/leads").then((r) => r.json()).catch(() => []),
+        fetch("/api/students").then((r) => r.json()).catch(() => []),
+        fetch("/api/notifications?limit=6").then((r) => r.json()).catch(() => ({ notifications: [] })),
+      ])
+        .then(([leads, students, notifications]) => {
+          setAssignedLeads(Array.isArray(leads) ? leads : []);
+          setCounsellorStudents(Array.isArray(students) ? students : []);
+          setNotifs(notifications.notifications ?? []);
+          setLoading(false);
+        })
+        .catch(() => setLoading(false));
     } else if (isFrontDesk) {
       Promise.all([
         fetch("/api/leads").then((r) => r.json()),
@@ -213,10 +239,15 @@ export default function DashboardPage() {
           setLoading(false);
         })
         .catch(() => setLoading(false));
+    } else if (isAdmissionTeam) {
+      fetch("/api/analytics/admission")
+        .then((r) => r.json())
+        .then((d) => { setAdmissionStats(d); setLoading(false); })
+        .catch(() => setLoading(false));
     } else {
       setTimeout(() => setLoading(false), 0);
     }
-  }, [isAdmin, isCounsellor, isFrontDesk, filterPeriod, filterDateFrom, filterDateTo]);
+  }, [isAdmin, isCounsellor, isFrontDesk, isAdmissionTeam, filterPeriod, filterDateFrom, filterDateTo]);
 
   if (loading) {
     return (
@@ -698,6 +729,46 @@ export default function DashboardPage() {
             const ooc     = assignedLeads.filter((l) => l.status === "out_of_contact").length;
             const unread  = notifs.filter((n) => !n.read).length;
             const recentLeads = assignedLeads.slice(0, 8);
+            const totalStudents = counsellorStudents.length;
+            const enrolledStudents = counsellorStudents.filter((student) => student.enrolled).length;
+            const offerApplied = counsellorStudents.filter((student) => student.stage === "offer_applied").length;
+            const conditionalOffers = counsellorStudents.filter((student) => student.stage === "conditional_offer_received").length;
+            const unconditionalOffers = counsellorStudents.filter((student) => student.stage === "unconditional_offer_received").length;
+            const gsApplied = counsellorStudents.filter((student) => student.stage === "gte_applied").length;
+            const gsApproved = counsellorStudents.filter((student) => student.stage === "gte_approved").length;
+            const gsRejected = counsellorStudents.filter((student) => student.stage === "gte_rejected").length;
+            const coeApplied = counsellorStudents.filter((student) => student.stage === "coe_applied").length;
+            const coeReceived = counsellorStudents.filter((student) => student.stage === "coe_received").length;
+            const visaApplied = counsellorStudents.filter((student) => student.stage === "visa_applied").length;
+            const visaGranted = counsellorStudents.filter((student) => student.stage === "visa_grant").length;
+            const visaRejected = counsellorStudents.filter((student) => student.stage === "visa_reject").length;
+            const recentRemarks = counsellorStudents
+              .flatMap((student) =>
+                (student.notes || []).map((note) => ({
+                  studentId: student._id,
+                  studentName: student.name,
+                  content: note.content,
+                  addedBy: note.addedByName,
+                  createdAt: String(note.createdAt),
+                }))
+              )
+              .sort((first, second) => new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime())
+              .slice(0, 6) as ICounsellorRemark[];
+            const pipelineStats = [
+              { label: "Student", value: totalStudents, sub: "My converted students", color: "bg-white border border-gray-200", text: "text-gray-900", subText: "text-gray-500" },
+              { label: "Enrolled", value: enrolledStudents, sub: "Students marked enrolled", color: "bg-emerald-50 border border-emerald-100", text: "text-emerald-700", subText: "text-emerald-600/80" },
+              { label: "Offer Applied", value: offerApplied, sub: "Offer submissions", color: "bg-blue-50 border border-blue-100", text: "text-blue-700", subText: "text-blue-600/80" },
+              { label: "Unconditional", value: unconditionalOffers, sub: "Unconditional offers", color: "bg-cyan-100 border border-cyan-200", text: "text-cyan-800", subText: "text-cyan-700/80" },
+              { label: "Conditional", value: conditionalOffers, sub: "Conditional offers", color: "bg-cyan-50 border border-cyan-100", text: "text-cyan-700", subText: "text-cyan-600/80" },
+              { label: "GS Applied", value: gsApplied, sub: "GS/GTE submitted", color: "bg-purple-50 border border-purple-100", text: "text-purple-700", subText: "text-purple-600/80" },
+              { label: "Approved", value: gsApproved, sub: "GS approved", color: "bg-violet-100 border border-violet-200", text: "text-violet-800", subText: "text-violet-700/80" },
+              { label: "GS Reject", value: gsRejected, sub: "GS rejected", color: "bg-red-50 border border-red-100", text: "text-red-700", subText: "text-red-600/80" },
+              { label: "COE Applied", value: coeApplied, sub: "COE submissions", color: "bg-emerald-50 border border-emerald-100", text: "text-emerald-700", subText: "text-emerald-600/80" },
+              { label: "COE Received", value: coeReceived, sub: "COE completed", color: "bg-green-100 border border-green-200", text: "text-green-800", subText: "text-green-700/80" },
+              { label: "Visa Applied", value: visaApplied, sub: "Visa lodged", color: "bg-teal-50 border border-teal-100", text: "text-teal-700", subText: "text-teal-600/80" },
+              { label: "Visa Grant", value: visaGranted, sub: "Visa approved", color: "bg-teal-100 border border-teal-200", text: "text-teal-800", subText: "text-teal-700/80" },
+              { label: "Visa Reject", value: visaRejected, sub: "Visa rejected", color: "bg-rose-50 border border-rose-100", text: "text-rose-700", subText: "text-rose-600/80" },
+            ];
             return (
               <div className="space-y-5">
 
@@ -716,6 +787,31 @@ export default function DashboardPage() {
                       <p className={`text-xs mt-0.5 opacity-70 ${s.text}`}>{s.sub}</p>
                     </Link>
                   ))}
+                </div>
+
+                <div className="bg-white border border-gray-200 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h2 className="text-sm font-semibold text-gray-900">Student Pipeline Snapshot</h2>
+                      <p className="text-xs text-gray-500 mt-0.5">Counsellor-owned student progress across offer, GS, COE and visa stages</p>
+                    </div>
+                    <Link href="/students" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                      View students <ChevronRight size={12} />
+                    </Link>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
+                    {pipelineStats.map((stat) => (
+                      <Link
+                        key={stat.label}
+                        href="/students"
+                        className={`${stat.color} rounded-lg p-4 hover:shadow-sm transition-shadow`}
+                      >
+                        <p className={`text-2xl font-bold tracking-tight ${stat.text}`}>{stat.value}</p>
+                        <p className={`text-xs font-semibold mt-1 ${stat.text}`}>{stat.label}</p>
+                        <p className={`text-[11px] mt-0.5 ${stat.subText}`}>{stat.sub}</p>
+                      </Link>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Out of contact pill */}
@@ -765,7 +861,7 @@ export default function DashboardPage() {
                             href={`/leads/${lead._id}`}
                             className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50/80 transition-colors group"
                           >
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center shrink-0">
+                            <div className="w-8 h-8 rounded-full bg-linear-to-br from-gray-200 to-gray-300 flex items-center justify-center shrink-0">
                               <span className="text-xs font-bold text-gray-700">{lead.name.charAt(0).toUpperCase()}</span>
                             </div>
                             <div className="flex-1 min-w-0">
@@ -792,48 +888,90 @@ export default function DashboardPage() {
                   </div>
 
                   {/* Notifications — narrower */}
-                  <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl flex flex-col">
-                    <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-                      <div className="flex items-center gap-2">
-                        <div className="p-1.5 bg-gray-100 rounded-md">
-                          <Bell size={14} className="text-gray-600" />
+                  <div className="lg:col-span-2 space-y-5">
+                    <div className="bg-white border border-gray-200 rounded-xl flex flex-col">
+                      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1.5 bg-gray-100 rounded-md">
+                            <Bell size={14} className="text-gray-600" />
+                          </div>
+                          <h2 className="text-sm font-semibold text-gray-900">Notifications</h2>
+                          {unread > 0 && (
+                            <span className="text-[10px] font-bold bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">
+                              {unread} new
+                            </span>
+                          )}
                         </div>
-                        <h2 className="text-sm font-semibold text-gray-900">Notifications</h2>
-                        {unread > 0 && (
-                          <span className="text-[10px] font-bold bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">
-                            {unread} new
-                          </span>
-                        )}
                       </div>
-                    </div>
 
-                    {notifs.length === 0 ? (
-                      <div className="flex-1 flex flex-col items-center justify-center py-12 text-center px-6">
-                        <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
-                          <Bell size={20} className="text-gray-400" />
+                      {notifs.length === 0 ? (
+                        <div className="flex-1 flex flex-col items-center justify-center py-12 text-center px-6">
+                          <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                            <Bell size={20} className="text-gray-400" />
+                          </div>
+                          <p className="text-sm font-medium text-gray-600">All caught up!</p>
+                          <p className="text-xs text-gray-400 mt-1">No new notifications</p>
                         </div>
-                        <p className="text-sm font-medium text-gray-600">All caught up!</p>
-                        <p className="text-xs text-gray-400 mt-1">No new notifications</p>
-                      </div>
-                    ) : (
-                      <div className="divide-y divide-gray-50 flex-1">
-                        {notifs.map((n) => (
-                          <div key={n._id} className={`px-4 py-3.5 flex items-start gap-3 ${!n.read ? "bg-blue-50/60" : ""}`}>
-                            <div className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${n.read ? "bg-gray-200" : "bg-blue-500"}`} />
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs font-semibold text-gray-800 leading-snug">{n.title}</p>
-                              <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{n.message}</p>
-                              <div className="flex items-center justify-between mt-1.5">
-                                {n.link ? (
-                                  <Link href={n.link} className="text-[11px] text-blue-600 hover:underline font-medium">View lead →</Link>
-                                ) : <span />}
-                                <span className="text-[11px] text-gray-400">{formatDateTime(n.createdAt)}</span>
+                      ) : (
+                        <div className="divide-y divide-gray-50 flex-1">
+                          {notifs.map((n) => (
+                            <div key={n._id} className={`px-4 py-3.5 flex items-start gap-3 ${!n.read ? "bg-blue-50/60" : ""}`}>
+                              <div className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${n.read ? "bg-gray-200" : "bg-blue-500"}`} />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-semibold text-gray-800 leading-snug">{n.title}</p>
+                                <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{n.message}</p>
+                                <div className="flex items-center justify-between mt-1.5">
+                                  {n.link ? (
+                                    <Link href={n.link} className="text-[11px] text-blue-600 hover:underline font-medium">View lead →</Link>
+                                  ) : <span />}
+                                  <span className="text-[11px] text-gray-400">{formatDateTime(n.createdAt)}</span>
+                                </div>
                               </div>
                             </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="bg-white border border-gray-200 rounded-xl flex flex-col">
+                      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1.5 bg-amber-50 rounded-md border border-amber-100">
+                            <MessageSquare size={14} className="text-amber-600" />
                           </div>
-                        ))}
+                          <h2 className="text-sm font-semibold text-gray-900">Recent Remarks</h2>
+                        </div>
+                        <Link href="/students" className="text-xs text-blue-600 hover:underline">View students →</Link>
                       </div>
-                    )}
+
+                      {recentRemarks.length === 0 ? (
+                        <div className="flex-1 flex flex-col items-center justify-center py-10 text-center px-6">
+                          <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                            <MessageSquare size={20} className="text-gray-400" />
+                          </div>
+                          <p className="text-sm font-medium text-gray-600">No remarks yet</p>
+                          <p className="text-xs text-gray-400 mt-1">Student notes will appear here once added</p>
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-gray-50">
+                          {recentRemarks.map((remark) => (
+                            <Link key={`${remark.studentId}-${remark.createdAt}`}
+                              href={`/students/${remark.studentId}#notes`}
+                              className="block px-4 py-3.5 hover:bg-gray-50/80 transition-colors"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="text-xs font-semibold text-gray-800 truncate">{remark.studentName}</p>
+                                  <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{remark.content}</p>
+                                  <p className="text-[11px] text-gray-400 mt-1">By {remark.addedBy || "Unknown"}</p>
+                                </div>
+                                <span className="text-[11px] text-gray-400 shrink-0">{formatDateTime(remark.createdAt)}</span>
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                 </div>
@@ -887,8 +1025,180 @@ export default function DashboardPage() {
             </div>
           )}
 
+          {/* Admission Team Dashboard */}
+          {isAdmissionTeam && admissionStats && (
+            <div className="space-y-5">
+              {/* Stat Cards Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {[
+                  {
+                    label: "Enrolled",
+                    value: admissionStats.enrolled,
+                    sub: "Total enrolled students",
+                    icon: GraduationCap,
+                    color: "text-emerald-600",
+                    bg: "bg-emerald-50 border-emerald-100",
+                    href: "/admissions",
+                  },
+                  {
+                    label: "Offer Applied",
+                    value: admissionStats.offerApplied,
+                    sub: "Offers submitted",
+                    icon: Send,
+                    color: "text-blue-600",
+                    bg: "bg-blue-50 border-blue-100",
+                    href: "/students",
+                  },
+                  {
+                    label: "Unconditional",
+                    value: admissionStats.unconditionalOffers,
+                    sub: "Unconditional offers",
+                    icon: CheckCircle2,
+                    color: "text-green-600",
+                    bg: "bg-green-50 border-green-100",
+                    href: "/students",
+                  },
+                  {
+                    label: "Conditional",
+                    value: admissionStats.conditionalOffers,
+                    sub: "Conditional offers",
+                    icon: Clock,
+                    color: "text-amber-600",
+                    bg: "bg-amber-50 border-amber-100",
+                    href: "/students",
+                  },
+                ].map((card) => {
+                  const Icon = card.icon;
+                  return (
+                    <Link
+                      key={card.label}
+                      href={card.href}
+                      className="group bg-white border border-gray-200 rounded-lg p-5 hover:border-gray-300 hover:shadow-sm transition-all"
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className={`w-9 h-9 rounded-md border flex items-center justify-center ${card.bg}`}>
+                          <Icon size={16} className={card.color} />
+                        </div>
+                        <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-500 transition-colors mt-1" />
+                      </div>
+                      <p className="text-2xl font-bold text-gray-900 tracking-tight">{card.value}</p>
+                      <p className="text-xs font-semibold text-gray-700 mt-1">{card.label}</p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">{card.sub}</p>
+                    </Link>
+                  );
+                })}
+              </div>
+
+              {/* Second Row: GTE & COE */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {[
+                  {
+                    label: "GS Applied",
+                    value: admissionStats.gteApplied,
+                    sub: "GTE/GS applications",
+                    icon: FileInput,
+                    color: "text-purple-600",
+                    bg: "bg-purple-50 border-purple-100",
+                    href: "/students",
+                  },
+                  {
+                    label: "GS Approved",
+                    value: admissionStats.gteApproved,
+                    sub: "GTE/GS approved",
+                    icon: ShieldCheck,
+                    color: "text-violet-600",
+                    bg: "bg-violet-50 border-violet-100",
+                    href: "/students",
+                  },
+                  {
+                    label: "COE Applied",
+                    value: admissionStats.coeApplied,
+                    sub: "COE applications sent",
+                    icon: FilePlus2,
+                    color: "text-sky-600",
+                    bg: "bg-sky-50 border-sky-100",
+                    href: "/students",
+                  },
+                  {
+                    label: "COE Received",
+                    value: admissionStats.coeReceived,
+                    sub: "COE confirmations",
+                    icon: BadgeCheck,
+                    color: "text-teal-600",
+                    bg: "bg-teal-50 border-teal-100",
+                    href: "/students",
+                  },
+                ].map((card) => {
+                  const Icon = card.icon;
+                  return (
+                    <Link
+                      key={card.label}
+                      href={card.href}
+                      className="group bg-white border border-gray-200 rounded-lg p-5 hover:border-gray-300 hover:shadow-sm transition-all"
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className={`w-9 h-9 rounded-md border flex items-center justify-center ${card.bg}`}>
+                          <Icon size={16} className={card.color} />
+                        </div>
+                        <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-500 transition-colors mt-1" />
+                      </div>
+                      <p className="text-2xl font-bold text-gray-900 tracking-tight">{card.value}</p>
+                      <p className="text-xs font-semibold text-gray-700 mt-1">{card.label}</p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">{card.sub}</p>
+                    </Link>
+                  );
+                })}
+              </div>
+
+              {/* Recent Remarks */}
+              <div className="bg-white border border-gray-200 rounded-lg">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare size={15} className="text-gray-500" />
+                    <h2 className="text-sm font-semibold text-gray-800">Recent Remarks</h2>
+                  </div>
+                  <Link
+                    href="/admissions"
+                    className="text-xs text-gray-500 hover:text-gray-800 flex items-center gap-1 transition-colors"
+                  >
+                    View all <ChevronRight size={12} />
+                  </Link>
+                </div>
+                {admissionStats.remarks.length === 0 ? (
+                  <div className="px-5 py-10 text-center text-sm text-gray-400">No remarks yet</div>
+                ) : (
+                  <div className="divide-y divide-gray-50">
+                    {admissionStats.remarks.map((r, i) => (
+                      <Link
+                        key={i}
+                        href={`/students/${r.studentId}`}
+                        className="flex items-start gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="w-7 h-7 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center shrink-0 mt-0.5">
+                          <span className="text-xs font-semibold text-gray-600">
+                            {r.studentName.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-medium text-gray-900 truncate">{r.studentName}</p>
+                            <span className="text-xs text-gray-400 whitespace-nowrap shrink-0">
+                              {formatDateTime(r.createdAt)}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{r.content}</p>
+                          <p className="text-[11px] text-gray-400 mt-0.5">by {r.addedBy}</p>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Generic quick links for non-counsellor, non-admin, non-front-desk roles */}
-          {!isCounsellor && !isFrontDesk && (
+          {!isCounsellor && !isFrontDesk && !isAdmissionTeam && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {[
                 { label: "Leads", href: "/leads", module: "leads", icon: Users, desc: "View and manage your assigned leads" },

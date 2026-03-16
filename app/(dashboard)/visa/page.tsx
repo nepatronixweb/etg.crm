@@ -8,7 +8,13 @@ interface Student {
   name: string;
   email: string;
   currentStage: string;
-  countries: Array<{ country: string; status: string; visaStatus?: string; visaApprovedAt?: string }>;
+  countries: Array<{ country: string; status: string; universityName?: string; visaStatus?: string; visaApprovedAt?: string }>;
+  admissionDetails?: Array<{
+    country?: string;
+    universityName?: string;
+    location?: string;
+    courses?: Array<{ name?: string; intakeQuarter?: string; intakeYear?: string }>;
+  }>;
   counsellor: { name: string };
 }
 
@@ -28,10 +34,28 @@ export default function VisaPage() {
   }, []);
 
   const filtered = students.filter((s) => {
+    const q = search.toLowerCase();
+    const destinationMatches = s.countries?.some((c) =>
+      [c.country, c.universityName]
+        .filter(Boolean)
+        .some((v) => (v || "").toLowerCase().includes(q))
+    ) ?? false;
+    const admissionMatches = s.admissionDetails?.some((entry) => {
+      const baseMatch = [entry.country, entry.universityName, entry.location]
+        .filter(Boolean)
+        .some((v) => (v || "").toLowerCase().includes(q));
+      const intakeMatch = entry.courses?.some((course) => {
+        const intakeText = `${course.intakeQuarter || ""} ${course.intakeYear || ""}`.trim().toLowerCase();
+        return ((course.name || "").toLowerCase().includes(q) || intakeText.includes(q));
+      }) ?? false;
+      return baseMatch || intakeMatch;
+    }) ?? false;
+
     const matchesSearch =
-      s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.email.toLowerCase().includes(search.toLowerCase()) ||
-      s.countries?.some((c) => c.country.toLowerCase().includes(search.toLowerCase()));
+      s.name.toLowerCase().includes(q) ||
+      s.email.toLowerCase().includes(q) ||
+      destinationMatches ||
+      admissionMatches;
 
     const matchesVisa =
       visaFilter === "All" ||
@@ -67,7 +91,7 @@ export default function VisaPage() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by student name, email or country…"
+              placeholder="Search by student, destination, university or intake…"
               className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-md text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-colors"
             />
           </div>

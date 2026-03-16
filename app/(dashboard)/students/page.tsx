@@ -74,12 +74,12 @@ export default function StudentsPage() {
   const [crmStageDropdownId, setCrmStageDropdownId] = useState<string | null>(null);
   const [standingDropdownId, setStandingDropdownId] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
-  const [crmStagePanelPos, setCrmStagePanelPos] = useState({ top: 0, left: 0 });
+  const [crmStagePanelPos, setCrmStagePanelPos] = useState({ insetBlockStart: 0, insetInlineStart: 0 });
   const crmStagePanelRef = useRef<HTMLDivElement>(null);
   const [crmStageSearch, setCrmStageSearch] = useState("");
-  const [pipelinePanelPos, setPipelinePanelPos] = useState({ top: 0, left: 0 });
+  const [pipelinePanelPos, setPipelinePanelPos] = useState({ insetBlockStart: 0, insetInlineStart: 0 });
   const pipelinePanelRef = useRef<HTMLDivElement>(null);
-  const [standingPanelPos, setStandingPanelPos] = useState({ top: 0, left: 0 });
+  const [standingPanelPos, setStandingPanelPos] = useState({ insetBlockStart: 0, insetInlineStart: 0 });
   const standingPanelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -127,7 +127,7 @@ export default function StudentsPage() {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const popoverWidth = 192;
     const left = Math.min(rect.left, window.innerWidth - popoverWidth - 8);
-    setStandingPanelPos({ top: rect.bottom + window.scrollY + 8, left });
+    setStandingPanelPos({ insetBlockStart: rect.bottom + window.scrollY + 8, insetInlineStart: left });
     setStandingDropdownId(studentId);
   };
 
@@ -157,7 +157,7 @@ export default function StudentsPage() {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const popoverWidth = 320;
     const left = Math.min(rect.left, window.innerWidth - popoverWidth - 8);
-    setCrmStagePanelPos({ top: rect.bottom + window.scrollY + 8, left });
+    setCrmStagePanelPos({ insetBlockStart: rect.bottom + window.scrollY + 8, insetInlineStart: left });
     setCrmStageDropdownId(studentId);
   };
 
@@ -166,7 +166,7 @@ export default function StudentsPage() {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const popoverWidth = 192;
     const left = Math.min(rect.left, window.innerWidth - popoverWidth - 8);
-    setPipelinePanelPos({ top: rect.bottom + window.scrollY + 8, left });
+    setPipelinePanelPos({ insetBlockStart: rect.bottom + window.scrollY + 8, insetInlineStart: left });
     setStageDropdownId(studentId);
   };
 
@@ -262,11 +262,37 @@ export default function StudentsPage() {
   const filtered = students.filter((s) => {
     const q = search.toLowerCase();
     const counsellorName = (s.counsellor as unknown as { name: string } | undefined)?.name ?? "";
+    const destinationMatches = s.countries?.some((c) =>
+      [c.country, c.universityName]
+        .filter(Boolean)
+        .some((v) => (v || "").toLowerCase().includes(q))
+    ) ?? false;
+    const admissionMatches = s.admissionDetails?.some((entry) => {
+      const baseMatch = [entry.country, entry.universityName, entry.location]
+        .filter(Boolean)
+        .some((v) => (v || "").toLowerCase().includes(q));
+      const courseMatch = entry.courses?.some((course) => {
+        const intakeText = `${course.intakeQuarter || ""} ${course.intakeYear || ""}`.trim().toLowerCase();
+        return (
+          (course.name || "").toLowerCase().includes(q) ||
+          intakeText.includes(q)
+        );
+      }) ?? false;
+      return baseMatch || courseMatch;
+    }) ?? false;
+    const legacyDestination = ((s as unknown as { interestedCountry?: string }).interestedCountry || "").toLowerCase();
+    const legacyIntake = `${
+      (s as unknown as { intakeQuarter?: string }).intakeQuarter || ""
+    } ${(s as unknown as { intakeYear?: string }).intakeYear || ""}`.trim().toLowerCase();
     const matchesSearch = !q ||
       s.name.toLowerCase().includes(q) ||
       s.email.toLowerCase().includes(q) ||
       s.phone.includes(q) ||
-      counsellorName.toLowerCase().includes(q);
+      counsellorName.toLowerCase().includes(q) ||
+      destinationMatches ||
+      admissionMatches ||
+      legacyDestination.includes(q) ||
+      legacyIntake.includes(q);
     const matchesStage = !filterStage || s.currentStage === filterStage;
     const matchesSource = !filterSource || s.source === filterSource;
     const matchesService = !filterService || (s as unknown as { interestedService?: string }).interestedService === filterService;
@@ -442,7 +468,7 @@ export default function StudentsPage() {
             <label className="absolute left-10 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Search</label>
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder="Name, phone, email, counsellor…"
+              placeholder="Name, phone, email, counsellor, destination, university, intake…"
               className="w-full pt-7 pb-2 pl-9 pr-8 bg-transparent text-sm text-gray-800 focus:outline-none focus:bg-gray-50 placeholder-gray-400" />
             {search && (
               <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"><X size={14} /></button>
@@ -870,7 +896,7 @@ export default function StudentsPage() {
         return createPortal(
           <div
             ref={crmStagePanelRef}
-            style={{ position: "fixed", top: crmStagePanelPos.top, left: crmStagePanelPos.left, zIndex: 9999 }}
+            style={{ position: "fixed", insetBlockStart: crmStagePanelPos.insetBlockStart, insetInlineStart: crmStagePanelPos.insetInlineStart, zIndex: 9999 }}
             className="bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-gray-100 w-80"
           >
             <div className="px-4 pt-3.5 pb-2.5 border-b border-gray-100 flex items-center justify-between">
@@ -954,7 +980,7 @@ export default function StudentsPage() {
         return createPortal(
           <div
             ref={pipelinePanelRef}
-            style={{ position: "fixed", top: pipelinePanelPos.top, left: pipelinePanelPos.left, zIndex: 9999 }}
+            style={{ position: "fixed", insetBlockStart: pipelinePanelPos.insetBlockStart, insetInlineStart: pipelinePanelPos.insetInlineStart, zIndex: 9999 }}
             className="bg-white rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-gray-100 w-48 overflow-hidden"
           >
             <div className="px-4 pt-3 pb-2 border-b border-gray-100">
@@ -993,7 +1019,7 @@ export default function StudentsPage() {
         return createPortal(
           <div
             ref={standingPanelRef}
-            style={{ position: "fixed", top: standingPanelPos.top, left: standingPanelPos.left, zIndex: 9999 }}
+            style={{ position: "fixed", insetBlockStart: standingPanelPos.insetBlockStart, insetInlineStart: standingPanelPos.insetInlineStart, zIndex: 9999 }}
             className="bg-white rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-gray-100 w-48 overflow-hidden"
           >
             <div className="px-4 pt-3 pb-2 border-b border-gray-100">

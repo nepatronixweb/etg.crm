@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSession } from "next-auth/react";
 import { Plus, Search, X, Users, Paperclip, FileText, Trash2, ChevronDown, MessageSquare, MoreVertical, Phone, Mail, Calendar, FileSpreadsheet } from "lucide-react";
-import { formatDate, formatDateTime, getStatusColor, COUNTRIES, SERVICES, LEAD_STAGES, LEAD_STAGE_GROUPS, FD_STATUSES, getLeadStageColor, getLeadStageDotColor } from "@/lib/utils";
+import { formatDate, getStatusColor, COUNTRIES, SERVICES, LEAD_STAGES, LEAD_STAGE_GROUPS, FD_STATUSES, getLeadStageColor, getLeadStageDotColor } from "@/lib/utils";
 import { ILead, LeadSource, LeadStanding } from "@/types";
 import Link from "next/link";
 
@@ -81,7 +81,6 @@ export default function LeadsPage() {
     fetch("/api/settings/app").then((r) => r.json()).then((d) => {
       if (d?.paymentQrPath) setPaymentQr(d.paymentQrPath);
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const clearFilters = () => {
@@ -273,12 +272,21 @@ export default function LeadsPage() {
     const q = search.toLowerCase();
     const assignedName = (l.assignedTo as unknown as { name: string } | undefined)?.name ?? "";
     const dateStr = formatDate(l.createdAt).toLowerCase();
+    const intakeText = `${l.intakeQuarter || ""} ${l.intakeYear || ""}`.trim().toLowerCase();
+    const destinationAndUniversity = (l.interestedCountries || []).some((entry) =>
+      [entry.country, entry.universityName]
+        .filter(Boolean)
+        .some((value) => (value || "").toLowerCase().includes(q))
+    );
     const matchesSearch =
       !q ||
       l.name.toLowerCase().includes(q) ||
       l.email.toLowerCase().includes(q) ||
       l.phone.includes(q) ||
       (l.interestedCountry || "").toLowerCase().includes(q) ||
+      destinationAndUniversity ||
+      intakeText.includes(q) ||
+      (l.course || "").toLowerCase().includes(q) ||
       (l.standing || "").replace("_", " ").toLowerCase().includes(q) ||
       assignedName.toLowerCase().includes(q) ||
       dateStr.includes(q);
@@ -333,14 +341,14 @@ export default function LeadsPage() {
   const [statusDropdownId, setStatusDropdownId] = useState<string | null>(null);
   const [fdStatusDropdownId, setFdStatusDropdownId] = useState<string | null>(null);
   const [crmStageDropdownId, setCrmStageDropdownId] = useState<string | null>(null);
-  const [crmStageDropdownPos, setCrmStageDropdownPos] = useState({ top: 0, left: 0 });
+  const [crmStageDropdownPos, setCrmStageDropdownPos] = useState({ insetBlockStart: 0, insetInlineStart: 0 });
   const stageDropdownRef = useRef<HTMLDivElement>(null);
   const [stageSearch, setStageSearch] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const datePickerRef = useRef<HTMLDivElement>(null);
   const dateButtonRef = useRef<HTMLButtonElement>(null);
-  const [datePickerPos, setDatePickerPos] = useState({ top: 0, left: 0 });
+  const [datePickerPos, setDatePickerPos] = useState({ insetBlockStart: 0, insetInlineStart: 0 });
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -371,7 +379,7 @@ export default function LeadsPage() {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const popoverWidth = 320; // w-80
     const left = Math.min(rect.left, window.innerWidth - popoverWidth - 8);
-    setCrmStageDropdownPos({ top: rect.bottom + window.scrollY + 8, left });
+    setCrmStageDropdownPos({ insetBlockStart: rect.bottom + window.scrollY + 8, insetInlineStart: left });
     setCrmStageDropdownId(leadId);
   };
 
@@ -383,8 +391,8 @@ export default function LeadsPage() {
       const idealLeft = rect.right - popoverWidth;
       const clampedLeft = Math.max(rect.left, Math.min(idealLeft, window.innerWidth - popoverWidth - 8));
       setDatePickerPos({
-        top: rect.bottom + window.scrollY + 8,
-        left: clampedLeft,
+        insetBlockStart: rect.bottom + window.scrollY + 8,
+        insetInlineStart: clampedLeft,
       });
     }
     setShowDatePicker((p) => !p);
@@ -523,7 +531,7 @@ export default function LeadsPage() {
         <div className="flex items-stretch gap-0 divide-x divide-gray-200 flex-wrap">
           {/* Lead Stage filter – hidden for FD, counsellors, and admin */}
           {session?.user?.role !== "front_desk" && session?.user?.role !== "counsellor" && !isAdmin && (
-            <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
+            <div className="flex-1 min-w-22.5 xl:min-w-27.5 relative">
               <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Stage</label>
               <select
                 value={filterLeadStage}
@@ -538,7 +546,7 @@ export default function LeadsPage() {
           )}
           {/* Status filter – admin only */}
           {isAdmin && (
-            <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
+            <div className="flex-1 min-w-22.5 xl:min-w-27.5 relative">
               <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Status</label>
               <select
                 value={filterFdStatus}
@@ -552,7 +560,7 @@ export default function LeadsPage() {
             </div>
           )}
           {/* Lead Standing */}
-          <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
+          <div className="flex-1 min-w-22.5 xl:min-w-27.5 relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Standing</label>
             <select
               value={filterStatus}
@@ -569,7 +577,7 @@ export default function LeadsPage() {
           </div>
 
           {/* Lead Source */}
-          <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
+          <div className="flex-1 min-w-22.5 xl:min-w-27.5 relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Source</label>
             <select
               value={filterSource}
@@ -583,7 +591,7 @@ export default function LeadsPage() {
           </div>
 
           {/* All Services */}
-          <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
+          <div className="flex-1 min-w-22.5 xl:min-w-27.5 relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">All Services</label>
             <select
               value={filterService}
@@ -597,7 +605,7 @@ export default function LeadsPage() {
           </div>
 
           {/* Academic Year */}
-          <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
+          <div className="flex-1 min-w-22.5 xl:min-w-27.5 relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Acad. Year</label>
             <select
               value={filterAcademicYear}
@@ -613,7 +621,7 @@ export default function LeadsPage() {
           </div>
 
           {/* Apply Level */}
-          <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
+          <div className="flex-1 min-w-22.5 xl:min-w-27.5 relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Apply Level</label>
             <select
               value={filterApplyLevel}
@@ -629,7 +637,7 @@ export default function LeadsPage() {
           </div>
 
           {/* Follow Up (Assigned Counsellor) */}
-          <div className="flex-1 min-w-[90px] xl:min-w-[110px] relative">
+          <div className="flex-1 min-w-22.5 xl:min-w-27.5 relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Follow Up</label>
             <select
               value={filterAssignedTo}
@@ -643,13 +651,13 @@ export default function LeadsPage() {
           </div>
 
           {/* Search */}
-          <div className="flex-[2] min-w-[150px] xl:min-w-48 relative">
+          <div className="flex-2 min-w-37.5 xl:min-w-48 relative">
             <label className="absolute left-10 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Search</label>
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Name, phone, email, country…"
+              placeholder="Name, phone, email, destination, university, intake…"
               className="w-full pt-7 pb-2 pl-9 pr-8 bg-transparent text-sm text-gray-800 focus:outline-none focus:bg-gray-50 placeholder-gray-400"
             />
             {search && (
@@ -828,7 +836,7 @@ export default function LeadsPage() {
                         </div>
                         {/* Recent note / comment preview */}
                         {(latestNote || lead.comments) && (
-                          <div className="mt-1.5 flex items-start gap-1 text-[11px] text-gray-500 bg-gray-50 rounded px-1.5 py-1 max-w-[210px]">
+                          <div className="mt-1.5 flex items-start gap-1 text-[11px] text-gray-500 bg-gray-50 rounded px-1.5 py-1 max-w-52.5">
                             <MessageSquare size={9} className="text-gray-400 mt-0.5 shrink-0" />
                             <span className="line-clamp-2 leading-relaxed">
                               {latestNote ? latestNote.content : lead.comments}
@@ -874,7 +882,7 @@ export default function LeadsPage() {
                                 {fdStatusDropdownId === lead._id && (
                                   <div className="absolute z-30 top-full left-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden min-w-64 max-h-96 overflow-y-auto">
                                     {/* Dropdown Header */}
-                                    <div className="sticky top-0 bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b border-gray-200">
+                                    <div className="sticky top-0 bg-linear-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b border-gray-200">
                                       <p className="text-xs font-bold text-gray-700 uppercase tracking-widest">Change Status</p>
                                     </div>
                                     
@@ -976,7 +984,7 @@ export default function LeadsPage() {
                                 </button>
                                 {fdStatusDropdownId === lead._id && (
                                   <div className="absolute z-30 top-full left-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden min-w-64 max-h-96 overflow-y-auto">
-                                    <div className="sticky top-0 bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b border-gray-200">
+                                    <div className="sticky top-0 bg-linear-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b border-gray-200">
                                       <p className="text-xs font-bold text-gray-700 uppercase tracking-widest">Change Status</p>
                                     </div>
                                     <div className="p-3 space-y-1.5">
@@ -1759,7 +1767,7 @@ export default function LeadsPage() {
         return createPortal(
           <div
             ref={stageDropdownRef}
-            style={{ position: "fixed", top: crmStageDropdownPos.top, left: crmStageDropdownPos.left, zIndex: 9999 }}
+            style={{ position: "fixed", insetBlockStart: crmStageDropdownPos.insetBlockStart, insetInlineStart: crmStageDropdownPos.insetInlineStart, zIndex: 9999 }}
             className="bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-gray-100 w-80"
           >
             {/* Header */}
@@ -1845,7 +1853,7 @@ export default function LeadsPage() {
       {showDatePicker && typeof document !== "undefined" && createPortal(
         <div
           ref={datePickerRef}
-          style={{ position: "fixed", top: datePickerPos.top, left: datePickerPos.left, zIndex: 9999 }}
+          style={{ position: "fixed", insetBlockStart: datePickerPos.insetBlockStart, insetInlineStart: datePickerPos.insetInlineStart, zIndex: 9999 }}
           className="w-72 bg-white border border-gray-200 rounded-2xl shadow-2xl p-5"
         >
           <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-4">Filter by Date</p>

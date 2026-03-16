@@ -11,6 +11,12 @@ interface Student {
   standing: string;
   currentStage: string;
   countries: Array<{ country: string; status: string; universityName?: string; admissionStatus?: string }>;
+  admissionDetails?: Array<{
+    country?: string;
+    universityName?: string;
+    location?: string;
+    courses?: Array<{ name?: string; intakeQuarter?: string; intakeYear?: string }>;
+  }>;
   counsellor: { name: string };
   enrolledAt?: string;
 }
@@ -26,11 +32,31 @@ export default function AdmissionsPage() {
       .then((d) => { setStudents(Array.isArray(d) ? d : []); setLoading(false); });
   }, []);
 
-  const filtered = students.filter((s) =>
-    s.name.toLowerCase().includes(search.toLowerCase()) ||
-    s.email.toLowerCase().includes(search.toLowerCase()) ||
-    s.countries?.some((c) => c.country.toLowerCase().includes(search.toLowerCase()))
-  );
+  const filtered = students.filter((s) => {
+    const q = search.toLowerCase();
+    const countryMatches = s.countries?.some((c) =>
+      [c.country, c.universityName]
+        .filter(Boolean)
+        .some((v) => (v || "").toLowerCase().includes(q))
+    ) ?? false;
+    const admissionMatches = s.admissionDetails?.some((entry) => {
+      const baseMatch = [entry.country, entry.universityName, entry.location]
+        .filter(Boolean)
+        .some((v) => (v || "").toLowerCase().includes(q));
+      const intakeMatch = entry.courses?.some((course) => {
+        const intakeText = `${course.intakeQuarter || ""} ${course.intakeYear || ""}`.trim().toLowerCase();
+        return ((course.name || "").toLowerCase().includes(q) || intakeText.includes(q));
+      }) ?? false;
+      return baseMatch || intakeMatch;
+    }) ?? false;
+
+    return (
+      s.name.toLowerCase().includes(q) ||
+      s.email.toLowerCase().includes(q) ||
+      countryMatches ||
+      admissionMatches
+    );
+  });
 
   return (
     <div className="space-y-5 max-w-7xl mx-auto">
@@ -57,7 +83,7 @@ export default function AdmissionsPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by student name, email or country…"
+            placeholder="Search by student, destination, university or intake…"
             className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-md text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-colors"
           />
         </div>
@@ -70,7 +96,7 @@ export default function AdmissionsPage() {
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
                 {["Student", "Counsellor", "Countries & Universities", "Standing", "Enrolled", ""].map((h) => (
-                  <th key={h} className={`text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap ${h === "Standing" ? "min-w-[120px]" : ""}`}>
+                  <th key={h} className={`text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap ${h === "Standing" ? "min-w-30" : ""}`}>
                     {h}
                   </th>
                 ))}

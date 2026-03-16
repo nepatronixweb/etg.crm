@@ -25,8 +25,10 @@ const AdmissionDetailSchema = new Schema(
   {
     country: { type: String, required: true },
     universityName: { type: String, default: "" },
+    location: { type: String, default: "" },
     annualTuitionFee: { type: String, default: "" },
     standing: { type: String, enum: ["warm", "heated", "cold", "missed", ""], default: "" },
+    closed: { type: Boolean, default: false },
     courses: [CourseSchema],
   },
   { timestamps: true }
@@ -53,14 +55,6 @@ export interface ICourse {
   intakeQuarter: string;
   intakeYear: string;
   commencementDate: string;
-}
-
-interface IAdmissionDetail {
-  _id?: string;
-  country: string;
-  universityName: string;
-  annualTuitionFee: string;
-  courses: ICourse[];
 }
 
 interface IStudentDocument extends Document {
