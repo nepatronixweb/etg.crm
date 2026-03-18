@@ -4,10 +4,13 @@ import { createPortal } from "react-dom";
 import { useSession } from "next-auth/react";
 import { Plus, Search, X, Users, Paperclip, FileText, Trash2, ChevronDown, MessageSquare, MoreVertical, Phone, Mail, Calendar, FileSpreadsheet } from "lucide-react";
 import { formatDate, getStatusColor, COUNTRIES, SERVICES, LEAD_STAGES, LEAD_STAGE_GROUPS, FD_STATUSES, getLeadStageColor, getLeadStageDotColor } from "@/lib/utils";
+
+const DEFAULT_COUNTRIES = COUNTRIES;
 import { ILead, LeadSource, LeadStanding } from "@/types";
 import Link from "next/link";
+import { useBranding } from "@/app/branding-context";
 
-const SOURCES: { value: LeadSource; label: string }[] = [
+const DEFAULT_SOURCES: { value: string; label: string }[] = [
   { value: "walk_in", label: "Walk-in" },
   { value: "facebook", label: "Facebook" },
   { value: "whatsapp", label: "WhatsApp" },
@@ -17,6 +20,8 @@ const SOURCES: { value: LeadSource; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
+const DEFAULT_STANDINGS = ["heated", "hot", "warm", "out_of_contact"];
+
 const FIELD_CLASS =
   "w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-colors";
 
@@ -24,6 +29,7 @@ const LABEL_CLASS = "block text-xs font-semibold text-gray-700 mb-1.5 uppercase 
 
 export default function LeadsPage() {
   const { data: session } = useSession();
+  const branding = useBranding();
   const [leads, setLeads] = useState<ILead[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -42,7 +48,14 @@ export default function LeadsPage() {
   const [filterFdStatus, setFilterFdStatus] = useState("");
   const [branches, setBranches] = useState<{ _id: string; name: string }[]>([]);
   const [counsellors, setCounsellors] = useState<{ _id: string; name: string }[]>([]);
-  const [paymentQr, setPaymentQr] = useState("");
+
+  // Dynamic settings from admin
+  const [appSources, setAppSources] = useState(DEFAULT_SOURCES);
+  const [appStandings, setAppStandings] = useState(DEFAULT_STANDINGS);
+  const [appFdStatuses, setAppFdStatuses] = useState(FD_STATUSES);
+  const [appLeadStages, setAppLeadStages] = useState(LEAD_STAGES);
+  const [appStageGroups, setAppStageGroups] = useState(LEAD_STAGE_GROUPS);
+  const [appCountries, setAppCountries] = useState<string[]>(DEFAULT_COUNTRIES);
 
   const [form, setForm] = useState({
     name: "", phone: "", email: "", dateOfBirth: "",
@@ -79,7 +92,40 @@ export default function LeadsPage() {
       setCounsellors(Array.isArray(u) ? u : [])
     );
     fetch("/api/settings/app").then((r) => r.json()).then((d) => {
-      if (d?.paymentQrPath) setPaymentQr(d.paymentQrPath);
+      // Load dynamic lead config
+      if (d?.leadSources?.length) {
+        setAppSources(d.leadSources.map((s: string) => ({
+          value: s.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, ""),
+          label: s,
+        })));
+      }
+      if (d?.leadStandings?.length) setAppStandings(d.leadStandings);
+      if (d?.countries?.length) {
+        setAppCountries(d.countries.map((c: string | { name: string }) => typeof c === "string" ? c : c.name));
+      }
+      if (d?.fdStatuses?.length) {
+        setAppFdStatuses(d.fdStatuses.map((s: string) => {
+          const existing = FD_STATUSES.find(f => f.value === s);
+          return existing || { value: s, label: s, color: "bg-gray-500 text-white" };
+        }));
+      }
+      if (d?.leadStages?.length) {
+        setAppLeadStages(d.leadStages.map((s: { value: string; label: string; group: string }) => {
+          const existing = LEAD_STAGES.find(ls => ls.value === s.value);
+          return { value: s.value, label: s.label, color: existing?.color || "bg-gray-100 text-gray-700" };
+        }));
+      }
+      if (d?.leadStageGroups?.length && d?.leadStages?.length) {
+        const groupDots: Record<string, string> = {
+          Application: "bg-amber-400", Offer: "bg-blue-400", GTE: "bg-purple-400",
+          COE: "bg-emerald-400", Visa: "bg-teal-400",
+        };
+        setAppStageGroups(d.leadStageGroups.map((g: string) => ({
+          label: g,
+          dot: groupDots[g] || "bg-gray-400",
+          stages: d.leadStages.filter((s: { group: string }) => s.group === g).map((s: { value: string }) => s.value),
+        })));
+      }
     });
   }, []);
 
@@ -451,7 +497,7 @@ export default function LeadsPage() {
   // ── Export filtered leads to Excel (CSV) ──
   const exportToExcel = () => {
     const headers = [
-      "ETG ID", "Name", "Phone", "Email", "Date of Birth", "Gender", "Marital Status",
+      `${branding.shortCode} ID`, "Name", "Phone", "Email", "Date of Birth", "Gender", "Marital Status",
       "Nationality", "Passport Number", "Standing", "Stage", "Source", "Referred By",
       "Interested Service", "Interested Country", "Branch", "Assigned To", "Created Date",
     ];
@@ -463,9 +509,9 @@ export default function LeadsPage() {
       const assigned = (l.assignedTo as unknown as { name?: string } | undefined)?.name ?? "";
       const br = (l.branch as unknown as { name?: string } | undefined)?.name ?? "";
       const ext = l as unknown as Record<string, string | undefined>;
-      const stageLabel = LEAD_STAGES.find((s) => s.value === ext.stage)?.label ?? ext.stage ?? "";
+      const stageLabel = appLeadStages.find((s) => s.value === ext.stage)?.label ?? ext.stage ?? "";
       return [
-        `ETG-${l._id.slice(-4).toUpperCase()}`,
+        `${branding.shortCode}-${l._id.slice(-4).toUpperCase()}`,
         l.name, l.phone, l.email,
         l.dateOfBirth ?? "", ext.gender ?? "", ext.maritalStatus ?? "",
         ext.nationality ?? "", ext.passportNumber ?? "",
@@ -539,7 +585,7 @@ export default function LeadsPage() {
                 className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
               >
                 <option value="">All Stages</option>
-                {LEAD_STAGES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                {appLeadStages.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>
               <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
@@ -554,7 +600,7 @@ export default function LeadsPage() {
                 className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
               >
                 <option value="">All Statuses</option>
-                {FD_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                {appFdStatuses.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>
               <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
@@ -568,10 +614,7 @@ export default function LeadsPage() {
               className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
             >
               <option value="">View All Lead</option>
-              <option value="warm">Warm</option>
-              <option value="heated">Heated</option>
-              <option value="cold">Cold</option>
-              <option value="missed">Missed</option>
+              {appStandings.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</option>)}
             </select>
             <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
@@ -585,7 +628,7 @@ export default function LeadsPage() {
               className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
             >
               <option value="">View All Source</option>
-              {SOURCES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              {appSources.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
             <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
@@ -693,13 +736,13 @@ export default function LeadsPage() {
             {filterStatus && <span className="flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2.5 py-0.5 rounded-full font-medium capitalize">{filterStatus.replace(/_/g, " ")}<button onClick={() => setFilterStatus("")}><X size={10} /></button></span>}
             {filterSource && <span className="flex items-center gap-1 text-xs bg-purple-50 text-purple-700 border border-purple-100 px-2.5 py-0.5 rounded-full font-medium capitalize">{filterSource.replace(/_/g, " ")}<button onClick={() => setFilterSource("")}><X size={10} /></button></span>}
             {filterService && <span className="flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-0.5 rounded-full font-medium">{filterService}<button onClick={() => setFilterService("")}><X size={10} /></button></span>}
-            {filterLeadStage && <span className={`flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-medium ${getLeadStageColor(filterLeadStage)}`}>{LEAD_STAGES.find((s) => s.value === filterLeadStage)?.label ?? filterLeadStage}<button onClick={() => setFilterLeadStage("")}><X size={10} /></button></span>}
+            {filterLeadStage && <span className={`flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-medium ${getLeadStageColor(filterLeadStage)}`}>{appLeadStages.find((s) => s.value === filterLeadStage)?.label ?? filterLeadStage}<button onClick={() => setFilterLeadStage("")}><X size={10} /></button></span>}
             {filterAssignedTo && <span className="flex items-center gap-1 text-xs bg-amber-50 text-amber-700 border border-amber-100 px-2.5 py-0.5 rounded-full font-medium">{counsellors.find((c) => c._id === filterAssignedTo)?.name ?? "Assigned"}<button onClick={() => setFilterAssignedTo("")}><X size={10} /></button></span>}
             {filterDateFrom && <span className="flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full font-medium">From: {filterDateFrom}<button onClick={() => setFilterDateFrom("")}><X size={10} /></button></span>}
             {filterDateTo && <span className="flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full font-medium">To: {filterDateTo}<button onClick={() => setFilterDateTo("")}><X size={10} /></button></span>}
             {filterAcademicYear && <span className="flex items-center gap-1 text-xs bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-0.5 rounded-full font-medium">Year: {filterAcademicYear}<button onClick={() => setFilterAcademicYear("")}><X size={10} /></button></span>}
             {filterApplyLevel && <span className="flex items-center gap-1 text-xs bg-teal-50 text-teal-700 border border-teal-100 px-2.5 py-0.5 rounded-full font-medium capitalize">{filterApplyLevel}<button onClick={() => setFilterApplyLevel("")}><X size={10} /></button></span>}
-            {filterFdStatus && <span className="flex items-center gap-1 text-xs bg-orange-50 text-orange-700 border border-orange-100 px-2.5 py-0.5 rounded-full font-medium">{FD_STATUSES.find((s) => s.value === filterFdStatus)?.label ?? filterFdStatus}<button onClick={() => setFilterFdStatus("")}><X size={10} /></button></span>}
+            {filterFdStatus && <span className="flex items-center gap-1 text-xs bg-orange-50 text-orange-700 border border-orange-100 px-2.5 py-0.5 rounded-full font-medium">{appFdStatuses.find((s) => s.value === filterFdStatus)?.label ?? filterFdStatus}<button onClick={() => setFilterFdStatus("")}><X size={10} /></button></span>}
             <button onClick={clearFilters} className="ml-auto text-xs text-red-500 hover:text-red-700 font-semibold flex items-center gap-1"><X size={11} /> Clear all</button>
           </div>
         )}
@@ -773,7 +816,7 @@ export default function LeadsPage() {
                 const initials = assignedUser?.name
                   ? assignedUser.name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()
                   : null;
-                const leadTag = `ETG-${lead._id.slice(-4).toUpperCase()}`;
+                const leadTag = `${branding.shortCode}-${lead._id.slice(-4).toUpperCase()}`;
                 const countryPart = lead.interestedCountries?.[0]?.country || lead.interestedCountry;
                 return (
                   <React.Fragment key={lead._id}>
@@ -862,7 +905,7 @@ export default function LeadsPage() {
                           (() => {
                             const ext = lead as unknown as { status?: string; statusDates?: Record<string, string> };
                             const leadStatus = ext.status;
-                            const statusInfo = FD_STATUSES.find((s) => s.value === leadStatus);
+                            const statusInfo = appFdStatuses.find((s) => s.value === leadStatus);
                             const statusDate = leadStatus && ext.statusDates?.[leadStatus];
                             return (
                               <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
@@ -888,7 +931,7 @@ export default function LeadsPage() {
                                     
                                     {/* Status Grid */}
                                     <div className="p-3 space-y-1.5">
-                                      {FD_STATUSES.map((s) => {
+                                      {appFdStatuses.map((s) => {
                                         const isSelected = leadStatus === s.value;
                                         const bgColor = s.color;
                                         return (
@@ -925,7 +968,7 @@ export default function LeadsPage() {
                           (() => {
                             const ext = lead as unknown as { stage?: string; stageDates?: Record<string, string> };
                             const leadStage = ext.stage;
-                            const stageInfo = LEAD_STAGES.find((s) => s.value === leadStage);
+                            const stageInfo = appLeadStages.find((s) => s.value === leadStage);
                             const dotColor = leadStage ? getLeadStageDotColor(leadStage) : "";
                             const stageDate = leadStage && ext.stageDates?.[leadStage];
                             return (
@@ -965,7 +1008,7 @@ export default function LeadsPage() {
                           (() => {
                             const ext = lead as unknown as { status?: string; statusDates?: Record<string, string> };
                             const leadStatus = ext.status;
-                            const statusInfo = FD_STATUSES.find((s) => s.value === leadStatus);
+                            const statusInfo = appFdStatuses.find((s) => s.value === leadStatus);
                             const statusDate = leadStatus && ext.statusDates?.[leadStatus];
                             return (
                               <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
@@ -988,7 +1031,7 @@ export default function LeadsPage() {
                                       <p className="text-xs font-bold text-gray-700 uppercase tracking-widest">Change Status</p>
                                     </div>
                                     <div className="p-3 space-y-1.5">
-                                      {FD_STATUSES.map((s) => {
+                                      {appFdStatuses.map((s) => {
                                         const isSelected = leadStatus === s.value;
                                         const bgColor = s.color;
                                         return (
@@ -1025,7 +1068,7 @@ export default function LeadsPage() {
                           (() => {
                             const ext = lead as unknown as { stage?: string; stageDates?: Record<string, string> };
                             const leadStage = ext.stage;
-                            const stageInfo = LEAD_STAGES.find((s) => s.value === leadStage);
+                            const stageInfo = appLeadStages.find((s) => s.value === leadStage);
                             const dotColor = leadStage ? getLeadStageDotColor(leadStage) : "";
                             const stageDate = leadStage && ext.stageDates?.[leadStage];
                             return (
@@ -1067,7 +1110,7 @@ export default function LeadsPage() {
                           </button>
                           {canUpdateStatus && statusDropdownId === lead._id && (
                             <div className="absolute z-30 top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden min-w-36">
-                              {["warm", "heated", "cold", "missed"].map((s) => (
+                              {appStandings.map((s) => (
                                 <button key={s} onClick={() => quickUpdateStatus(lead._id, s)}
                                   className={`w-full text-left px-3 py-2 text-xs font-medium capitalize transition-colors flex items-center justify-between ${
                                     lead.standing === s ? "bg-gray-100 text-gray-900 font-semibold" : "text-gray-600 hover:bg-gray-50"
@@ -1286,7 +1329,7 @@ export default function LeadsPage() {
                       onChange={(e) => setForm({ ...form, source: e.target.value as LeadSource })}
                       className={FIELD_CLASS}
                     >
-                      {SOURCES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                      {appSources.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                     </select>
                   </div>
 
@@ -1310,10 +1353,9 @@ export default function LeadsPage() {
                       onChange={(e) => setForm({ ...form, standing: e.target.value as LeadStanding })}
                       className={FIELD_CLASS}
                     >
-                      <option value="warm">Warm</option>
-                      <option value="hot">Hot</option>
-                      <option value="heated">Heated</option>
-                      <option value="out_of_contact">Out of Contact</option>
+                      {appStandings.map((s) => (
+                        <option key={s} value={s}>{s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</option>
+                      ))}
                     </select>
                   </div>
 
@@ -1326,7 +1368,7 @@ export default function LeadsPage() {
                       className={FIELD_CLASS}
                     >
                       <option value="">Select country</option>
-                      {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                      {appCountries.map((c) => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
 
@@ -1631,11 +1673,11 @@ export default function LeadsPage() {
                   </div>
                   {form.examPaymentMethod === "online" && (
                     <div className="sm:col-span-2">
-                      {paymentQr ? (
+                      {branding.paymentQrPath ? (
                         <div className="flex flex-col items-center gap-2 p-4 border border-gray-200 rounded-lg bg-gray-50">
                           <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Scan to Pay</p>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={paymentQr} alt="Payment QR Code" className="w-40 h-40 object-contain rounded-md border border-gray-200 bg-white p-1" />
+                          <img src={branding.paymentQrPath} alt="Payment QR Code" className="w-40 h-40 object-contain rounded-md border border-gray-200 bg-white p-1" />
                           <p className="text-xs text-gray-400">Use the company QR code to make the payment</p>
                         </div>
                       ) : (
@@ -1761,9 +1803,9 @@ export default function LeadsPage() {
         const dropLead = leads.find((l) => l._id === crmStageDropdownId);
         if (!dropLead) return null;
         const dropLeadStage = (dropLead as unknown as { stage?: string }).stage;
-        const dropStageInfo = LEAD_STAGES.find((s) => s.value === dropLeadStage);
+        const dropStageInfo = appLeadStages.find((s) => s.value === dropLeadStage);
         const searched = stageSearch.trim().toLowerCase();
-        const filteredStages = searched ? LEAD_STAGES.filter((s) => s.label.toLowerCase().includes(searched)) : null;
+        const filteredStages = searched ? appLeadStages.filter((s) => s.label.toLowerCase().includes(searched)) : null;
         return createPortal(
           <div
             ref={stageDropdownRef}
@@ -1810,8 +1852,8 @@ export default function LeadsPage() {
                       );
                     })
               ) : (
-                LEAD_STAGE_GROUPS.map((group) => {
-                  const groupStages = LEAD_STAGES.filter((s) => group.stages.includes(s.value));
+                appStageGroups.map((group) => {
+                  const groupStages = appLeadStages.filter((s) => group.stages.includes(s.value));
                   return (
                     <div key={group.label}>
                       <div className="px-3.5 pt-3 pb-1 flex items-center gap-2">

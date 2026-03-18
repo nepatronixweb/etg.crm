@@ -6,6 +6,7 @@ import { IStudent } from "@/types";
 import Link from "next/link";
 import { Search, UserCheck, Plus, X, ChevronDown, MessageSquare, MoreVertical, Phone, Mail, FileSpreadsheet, Trash2 } from "lucide-react";
 import { useSession } from "next-auth/react";
+import { useBranding } from "@/app/branding-context";
 
 const SOURCES = [
   { value: "walk_in", label: "Walk-in" },
@@ -24,6 +25,7 @@ const STAGES = ["counsellor", "application", "admission", "visa", "completed", "
 
 export default function StudentsPage() {
   const { data: session } = useSession();
+  const branding = useBranding();
   const [students, setStudents] = useState<IStudent[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -306,7 +308,7 @@ export default function StudentsPage() {
   // ── Export filtered students to Excel (CSV) ──
   const exportToExcel = () => {
     const headers = [
-      "ETG ID", "Name", "Phone", "Email", "Date of Birth",
+      `${branding.shortCode} ID`, "Name", "Phone", "Email", "Date of Birth",
       "Stage", "Lead Stage", "Source",
       "Interested Service", "Interested Country",
       "Branch", "Counsellor", "Created Date",
@@ -321,7 +323,7 @@ export default function StudentsPage() {
       const ext = s as unknown as Record<string, string | undefined>;
       const stageLabel = LEAD_STAGES.find((st) => st.value === ext.stage)?.label ?? ext.stage ?? "";
       return [
-        `ETG-${s._id.slice(-4).toUpperCase()}`,
+        `${branding.shortCode}-${s._id.slice(-4).toUpperCase()}`,
         s.name, s.phone, s.email,
         s.dateOfBirth ?? "",
         s.currentStage ?? "",
@@ -541,7 +543,7 @@ export default function StudentsPage() {
                 const initials = counsellorUser?.name
                   ? counsellorUser.name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()
                   : null;
-                const studentTag = `ETG-${student._id.slice(-4).toUpperCase()}`;
+                const studentTag = `${branding.shortCode}-${student._id.slice(-4).toUpperCase()}`;
                 const interestedService = (student as unknown as { interestedService?: string }).interestedService;
                 const countryPart = student.countries?.[0]?.country;
                 return (

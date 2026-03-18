@@ -6,8 +6,9 @@ import {
   Palette, Building2, Phone, Mail, Globe, MapPin,
   Users, Tag, List, ToggleLeft, ToggleRight, Server,
   FileText, Image as ImageIcon, ChevronRight, X,
+  Flame, Zap, Target, Layers, GitBranch, GraduationCap, ChevronDown,
 } from "lucide-react";
-import { COUNTRIES } from "@/lib/utils";
+import { useBrandingRefresh } from "@/app/branding-context";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface AppSettings {
@@ -23,7 +24,11 @@ interface AppSettings {
   website: string;
   leadStatuses: string[];
   leadSources: string[];
-  countries: string[];
+  leadStandings: string[];
+  fdStatuses: string[];
+  leadStageGroups: string[];
+  leadStages: { value: string; label: string; group: string }[];
+  countries: { name: string; universities: string[] }[];
   services: string[];
   enabledModules: string[];
   smtpHost: string;
@@ -76,7 +81,69 @@ const DEFAULT_SETTINGS: AppSettings = {
   website: "",
   leadStatuses: ["new","contacted","qualified","application","admission","visa","completed","rejected"],
   leadSources: ["Walk-in","Referral","Social Media","Website","Partner","Phone Call","Email","Exhibition","Other"],
-  countries: COUNTRIES,
+  leadStandings: ["heated", "hot", "warm", "out_of_contact"],
+  fdStatuses: [
+    "FD-Junk","AP-Call Not Received","AP-Call Back Later","AP-Not Interested",
+    "Wrong Number","Not Qualified","Not Interested","AP-Pending",
+    "Interested 2027","FD-Future Prospective","On Hold","Plan Dropped",
+    "Counselling","Counselled","AP-Interested","Negotiation",
+    "Open/Unassigned","Future Prospect","FD-Interested","Dead/Junk Lead",
+    "Not Answering","Assigned","In-Progress","Not Genuine",
+    "Phone Counselling","Qualified Lead","Registered/Completed",
+    "Interested","Closed Lost",
+  ],
+  leadStageGroups: ["Application", "Offer", "GTE", "COE", "Visa"],
+  leadStages: [
+    { value: "document_pending", label: "Document Pending", group: "Application" },
+    { value: "document_submitted", label: "Document Submitted", group: "Application" },
+    { value: "offer_applied", label: "Offer Applied", group: "Offer" },
+    { value: "acknowledge", label: "Acknowledge", group: "Offer" },
+    { value: "document_requested", label: "Document Requested", group: "Offer" },
+    { value: "document_sent", label: "Document Sent", group: "Offer" },
+    { value: "conditional_offer_received", label: "Conditional Offer Received", group: "Offer" },
+    { value: "unconditional_offer_received", label: "Unconditional Offer Received", group: "Offer" },
+    { value: "gte_applied", label: "GTE Applied", group: "GTE" },
+    { value: "gte_additional_doc_requested", label: "GTE Additional Doc Requested", group: "GTE" },
+    { value: "gte_additional_doc_sent", label: "GTE Additional Doc Sent", group: "GTE" },
+    { value: "gte_approved", label: "GTE Approved", group: "GTE" },
+    { value: "gte_rejected", label: "GTE Rejected", group: "GTE" },
+    { value: "coe_applied", label: "COE Applied", group: "COE" },
+    { value: "coe_additional_doc_requested", label: "COE Additional Doc Requested", group: "COE" },
+    { value: "coe_additional_doc_sent", label: "COE Additional Doc Sent", group: "COE" },
+    { value: "coe_received", label: "COE Received", group: "COE" },
+    { value: "visa_applied", label: "Visa Applied", group: "Visa" },
+    { value: "visa_grant", label: "Visa Grant", group: "Visa" },
+    { value: "visa_reject", label: "Visa Reject", group: "Visa" },
+    { value: "visa_invalid", label: "Visa Invalid", group: "Visa" },
+    { value: "visa_withdrawn", label: "Visa Withdrawn", group: "Visa" },
+  ],
+  countries: [
+    { name: "Australia", universities: ["University of Melbourne","Australian National University","University of Sydney","Monash University","University of New South Wales"] },
+    { name: "Canada", universities: ["University of Toronto","University of British Columbia","McGill University","University of Alberta","McMaster University"] },
+    { name: "United Kingdom", universities: ["University of Oxford","University of Cambridge","Imperial College London","University College London","London School of Economics"] },
+    { name: "United States", universities: ["MIT","Stanford University","Harvard University","Columbia University","Yale University"] },
+    { name: "New Zealand", universities: ["University of Auckland","University of Otago","Victoria University of Wellington"] },
+    { name: "Germany", universities: ["Technical University of Munich","Heidelberg University","Humboldt University of Berlin"] },
+    { name: "France", universities: ["Sorbonne University","Sciences Po","HEC Paris"] },
+    { name: "Japan", universities: ["University of Tokyo","Kyoto University","Osaka University"] },
+    { name: "South Korea", universities: ["Seoul National University","Yonsei University","Korea University"] },
+    { name: "Netherlands", universities: ["University of Amsterdam","Delft University of Technology","Leiden University"] },
+    { name: "Sweden", universities: ["Karolinska Institute","Lund University","Uppsala University"] },
+    { name: "Denmark", universities: ["University of Copenhagen","Technical University of Denmark","Aarhus University"] },
+    { name: "Finland", universities: ["University of Helsinki","Aalto University"] },
+    { name: "Norway", universities: ["University of Oslo","Norwegian University of Science and Technology"] },
+    { name: "Switzerland", universities: ["ETH Zurich","EPFL","University of Zurich"] },
+    { name: "Austria", universities: ["University of Vienna","Vienna University of Technology"] },
+    { name: "Ireland", universities: ["Trinity College Dublin","University College Dublin"] },
+    { name: "Singapore", universities: ["National University of Singapore","Nanyang Technological University"] },
+    { name: "Malaysia", universities: ["University of Malaya","Universiti Putra Malaysia"] },
+    { name: "Dubai (UAE)", universities: ["American University in Dubai","University of Dubai"] },
+    { name: "Cyprus", universities: ["University of Cyprus","European University Cyprus"] },
+    { name: "Malta", universities: ["University of Malta"] },
+    { name: "Hungary", universities: ["Budapest University of Technology and Economics"] },
+    { name: "Poland", universities: ["University of Warsaw","Jagiellonian University"] },
+    { name: "Czech Republic", universities: ["Charles University","Czech Technical University in Prague"] },
+  ],
   services: [
     "Study Abroad","Language Courses","University Application",
     "Visa Assistance","Test Preparation (IELTS/TOEFL)","Scholarship Guidance",
@@ -198,6 +265,7 @@ function Field({
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function SettingsPage() {
   const { data: session } = useSession();
+  const refreshBranding = useBrandingRefresh();
   const [tab, setTab] = useState<TabId>("branding");
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
@@ -227,6 +295,12 @@ export default function SettingsPage() {
       .then((r) => r.json())
       .then((d) => {
         if (d && d.companyName) {
+          // Normalize countries: handle old string[] format from DB
+          if (Array.isArray(d.countries)) {
+            d.countries = d.countries.map((c: string | { name: string; universities?: string[] }) =>
+              typeof c === "string" ? { name: c, universities: [] } : { name: c.name, universities: c.universities || [] }
+            );
+          }
           setSettings((prev) => ({ ...prev, ...d }));
           if (d.logoPath) setLogoPreview(d.logoPath);
           if (d.paymentQrPath) setQrPreview(d.paymentQrPath);
@@ -256,7 +330,7 @@ export default function SettingsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings),
       });
-      if (res.ok) { setSaved(true); setTimeout(() => setSaved(false), 3000); }
+      if (res.ok) { setSaved(true); setTimeout(() => setSaved(false), 3000); refreshBranding(); }
     } finally { setSaving(false); }
   };
 
@@ -270,7 +344,7 @@ export default function SettingsPage() {
     try {
       const res = await fetch("/api/settings/logo", { method: "POST", body: formData });
       const d = await res.json();
-      if (d.logoPath) { setLogoPreview(d.logoPath); set("logoPath", d.logoPath); }
+      if (d.logoPath) { setLogoPreview(d.logoPath); set("logoPath", d.logoPath); refreshBranding(); }
     } finally { setUploadingLogo(false); }
   };
 
@@ -284,7 +358,7 @@ export default function SettingsPage() {
     try {
       const res = await fetch("/api/settings/qr", { method: "POST", body: formData });
       const d = await res.json();
-      if (d.paymentQrPath) { setQrPreview(d.paymentQrPath); set("paymentQrPath", d.paymentQrPath); }
+      if (d.paymentQrPath) { setQrPreview(d.paymentQrPath); set("paymentQrPath", d.paymentQrPath); refreshBranding(); }
     } finally { setUploadingQr(false); }
   };
 
@@ -584,27 +658,300 @@ export default function SettingsPage() {
 
       {/* ── Tab: Lead Configuration ── */}
       {tab === "leads" && (
-        <div className="space-y-5">
-          <SectionCard title="Lead Statuses" description="Define the stages in your lead pipeline. These will be available as status options when managing leads.">
-            <TagEditor
-              label="Pipeline Stages"
-              items={settings.leadStatuses}
-              onChange={(v) => set("leadStatuses", v)}
-              placeholder="Add a new status (e.g. 'proposal')"
-            />
-            <p className="text-xs text-gray-400 mt-3">Press Enter or click Add to insert a new stage. Click × to remove.</p>
+        <div className="space-y-6">
+          {/* Section Header */}
+          <div className="flex items-center gap-3 pb-2">
+            <div className="p-2 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-lg">
+              <Target size={16} className="text-blue-600" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">Lead Configuration</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Manage standings, sources, stages, and statuses — changes apply across all departments instantly</p>
+            </div>
+          </div>
+
+          {/* ── Lead Standings ── */}
+          <SectionCard title="Lead Standings" description="Categorize leads by temperature / priority. These labels appear everywhere leads are displayed.">
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2 p-3 bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200 rounded-xl min-h-[48px]">
+                {settings.leadStandings.map((item) => (
+                  <span key={item} className="group inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all">
+                    <span className={`w-2 h-2 rounded-full ${
+                      item === "heated" ? "bg-red-500" :
+                      item === "hot" ? "bg-orange-500" :
+                      item === "warm" ? "bg-yellow-500" :
+                      item === "cold" ? "bg-blue-500" :
+                      "bg-gray-400"
+                    }`} />
+                    <span className="capitalize">{item.replace(/_/g, " ")}</span>
+                    <button type="button" onClick={() => set("leadStandings", settings.leadStandings.filter(i => i !== item))}
+                      className="ml-0.5 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+                {settings.leadStandings.length === 0 && <span className="text-xs text-gray-400 self-center">No standings defined</span>}
+              </div>
+              <div className="flex gap-2">
+                <input id="standingInput"
+                  placeholder="e.g. cold, lukewarm"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const val = (e.target as HTMLInputElement).value.trim().toLowerCase().replace(/\s+/g, "_");
+                      if (val && !settings.leadStandings.includes(val)) {
+                        set("leadStandings", [...settings.leadStandings, val]);
+                        (e.target as HTMLInputElement).value = "";
+                      }
+                    }
+                  }}
+                  className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder-gray-400"
+                />
+                <button type="button" onClick={() => {
+                  const input = document.getElementById("standingInput") as HTMLInputElement;
+                  const val = input.value.trim().toLowerCase().replace(/\s+/g, "_");
+                  if (val && !settings.leadStandings.includes(val)) {
+                    set("leadStandings", [...settings.leadStandings, val]);
+                    input.value = "";
+                  }
+                }} className="px-4 py-2.5 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm">
+                  <Plus size={13} /> Add
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-400 flex items-center gap-1">
+                <Flame size={10} /> Standings help prioritize follow-ups. Changes reflect in lead tables, forms, and detail views.
+              </p>
+            </div>
           </SectionCard>
 
-          <SectionCard title="Lead Sources" description="Where your leads come from. Shown in the source dropdown when creating or editing leads.">
-            <TagEditor
-              label="Lead Sources"
-              items={settings.leadSources}
-              onChange={(v) => set("leadSources", v)}
-              placeholder="Add a source (e.g. 'LinkedIn')"
-            />
+          {/* ── Lead Sources ── */}
+          <SectionCard title="Lead Sources" description="Where your leads come from. Shown in dropdowns when creating or editing leads.">
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2 p-3 bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200 rounded-xl min-h-[48px]">
+                {settings.leadSources.map((item) => (
+                  <span key={item} className="group inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all">
+                    <span className="w-2 h-2 rounded-full bg-blue-400" />
+                    {item}
+                    <button type="button" onClick={() => set("leadSources", settings.leadSources.filter(i => i !== item))}
+                      className="ml-0.5 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+                {settings.leadSources.length === 0 && <span className="text-xs text-gray-400 self-center">No sources defined</span>}
+              </div>
+              <div className="flex gap-2">
+                <input id="sourceInput"
+                  placeholder="e.g. LinkedIn, TikTok, Billboard"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const val = (e.target as HTMLInputElement).value.trim();
+                      if (val && !settings.leadSources.includes(val)) {
+                        set("leadSources", [...settings.leadSources, val]);
+                        (e.target as HTMLInputElement).value = "";
+                      }
+                    }
+                  }}
+                  className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder-gray-400"
+                />
+                <button type="button" onClick={() => {
+                  const input = document.getElementById("sourceInput") as HTMLInputElement;
+                  const val = input.value.trim();
+                  if (val && !settings.leadSources.includes(val)) {
+                    set("leadSources", [...settings.leadSources, val]);
+                    input.value = "";
+                  }
+                }} className="px-4 py-2.5 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm">
+                  <Plus size={13} /> Add
+                </button>
+              </div>
+            </div>
           </SectionCard>
 
-          <div className="flex justify-end">
+          {/* ── Front Desk Statuses ── */}
+          <SectionCard title="Front Desk Statuses" description="Status labels used by the Front Desk team. Visible in the FD status dropdown on lead detail pages.">
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2 p-3 bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200 rounded-xl min-h-[48px] max-h-52 overflow-y-auto">
+                {settings.fdStatuses.map((item) => (
+                  <span key={item} className="group inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all">
+                    <span className="w-2 h-2 rounded-full bg-purple-400" />
+                    {item}
+                    <button type="button" onClick={() => set("fdStatuses", settings.fdStatuses.filter(i => i !== item))}
+                      className="ml-0.5 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+                {settings.fdStatuses.length === 0 && <span className="text-xs text-gray-400 self-center">No statuses defined</span>}
+              </div>
+              <div className="flex gap-2">
+                <input id="fdStatusInput"
+                  placeholder="e.g. Follow Up Required, Callback Scheduled"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const val = (e.target as HTMLInputElement).value.trim();
+                      if (val && !settings.fdStatuses.includes(val)) {
+                        set("fdStatuses", [...settings.fdStatuses, val]);
+                        (e.target as HTMLInputElement).value = "";
+                      }
+                    }
+                  }}
+                  className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder-gray-400"
+                />
+                <button type="button" onClick={() => {
+                  const input = document.getElementById("fdStatusInput") as HTMLInputElement;
+                  const val = input.value.trim();
+                  if (val && !settings.fdStatuses.includes(val)) {
+                    set("fdStatuses", [...settings.fdStatuses, val]);
+                    input.value = "";
+                  }
+                }} className="px-4 py-2.5 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm">
+                  <Plus size={13} /> Add
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-400 flex items-center gap-1">
+                <Zap size={10} /> {settings.fdStatuses.length} statuses configured. These appear in the Front Desk status dropdown.
+              </p>
+            </div>
+          </SectionCard>
+
+          {/* ── Pipeline Stages ── */}
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            <div className="px-6 py-5 border-b border-gray-100 bg-gradient-to-r from-white to-gray-50">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                    <Layers size={14} className="text-indigo-500" />
+                    Pipeline Stages
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Organize your lead pipeline into groups and stages. Each stage belongs to a group.</p>
+                </div>
+                <span className="px-2.5 py-1 bg-indigo-50 text-indigo-600 text-xs font-semibold rounded-full">
+                  {settings.leadStages.length} stages · {settings.leadStageGroups.length} groups
+                </span>
+              </div>
+            </div>
+            <div className="p-6 space-y-5">
+              {/* Stage Groups */}
+              {settings.leadStageGroups.map((group) => {
+                const groupStages = settings.leadStages.filter(s => s.group === group);
+                const groupColors: Record<string, string> = {
+                  Application: "border-amber-200 bg-amber-50",
+                  Offer: "border-blue-200 bg-blue-50",
+                  GTE: "border-purple-200 bg-purple-50",
+                  COE: "border-emerald-200 bg-emerald-50",
+                  Visa: "border-teal-200 bg-teal-50",
+                };
+                const dotColors: Record<string, string> = {
+                  Application: "bg-amber-400",
+                  Offer: "bg-blue-400",
+                  GTE: "bg-purple-400",
+                  COE: "bg-emerald-400",
+                  Visa: "bg-teal-400",
+                };
+                const borderColor = groupColors[group] || "border-gray-200 bg-gray-50";
+                const dotColor = dotColors[group] || "bg-gray-400";
+
+                return (
+                  <div key={group} className={`border rounded-xl overflow-hidden ${borderColor}`}>
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-3 h-3 rounded-full ${dotColor}`} />
+                        <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wide">{group}</h4>
+                        <span className="text-[10px] text-gray-400 font-medium">{groupStages.length} stages</span>
+                      </div>
+                      <button type="button" onClick={() => {
+                        set("leadStageGroups", settings.leadStageGroups.filter(g => g !== group));
+                        set("leadStages", settings.leadStages.filter(s => s.group !== group));
+                      }} className="text-gray-300 hover:text-red-500 transition-colors p-1 rounded-md hover:bg-white/60">
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                    <div className="px-4 pb-3">
+                      <div className="flex flex-wrap gap-1.5 mb-3">
+                        {groupStages.map((stage) => (
+                          <span key={stage.value} className="group inline-flex items-center gap-1.5 px-2.5 py-1 bg-white/80 backdrop-blur border border-white rounded-md text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all">
+                            {stage.label}
+                            <button type="button" onClick={() => set("leadStages", settings.leadStages.filter(s => s.value !== stage.value))}
+                              className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                              <X size={10} />
+                            </button>
+                          </span>
+                        ))}
+                        {groupStages.length === 0 && <span className="text-[11px] text-gray-400 italic">No stages in this group</span>}
+                      </div>
+                      <div className="flex gap-2">
+                        <input id={`stageInput-${group}`}
+                          placeholder={`Add stage to ${group}...`}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              const label = (e.target as HTMLInputElement).value.trim();
+                              const value = label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+                              if (label && value && !settings.leadStages.some(s => s.value === value)) {
+                                set("leadStages", [...settings.leadStages, { value, label, group }]);
+                                (e.target as HTMLInputElement).value = "";
+                              }
+                            }
+                          }}
+                          className="flex-1 px-3 py-2 border border-white/60 bg-white/60 backdrop-blur rounded-lg text-xs focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 focus:bg-white transition-all placeholder-gray-400"
+                        />
+                        <button type="button" onClick={() => {
+                          const input = document.getElementById(`stageInput-${group}`) as HTMLInputElement;
+                          const label = input.value.trim();
+                          const value = label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+                          if (label && value && !settings.leadStages.some(s => s.value === value)) {
+                            set("leadStages", [...settings.leadStages, { value, label, group }]);
+                            input.value = "";
+                          }
+                        }} className="px-3 py-2 bg-white hover:bg-gray-100 text-gray-700 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 border border-gray-200 shadow-sm">
+                          <Plus size={11} /> Add
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Add New Group */}
+              <div className="border-2 border-dashed border-gray-200 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <GitBranch size={13} className="text-gray-400" />
+                  <p className="text-xs font-semibold text-gray-500">Add New Stage Group</p>
+                </div>
+                <div className="flex gap-2">
+                  <input id="groupInput"
+                    placeholder="e.g. Pre-CAS, Post-Arrival"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const val = (e.target as HTMLInputElement).value.trim();
+                        if (val && !settings.leadStageGroups.includes(val)) {
+                          set("leadStageGroups", [...settings.leadStageGroups, val]);
+                          (e.target as HTMLInputElement).value = "";
+                        }
+                      }
+                    }}
+                    className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder-gray-400"
+                  />
+                  <button type="button" onClick={() => {
+                    const input = document.getElementById("groupInput") as HTMLInputElement;
+                    const val = input.value.trim();
+                    if (val && !settings.leadStageGroups.includes(val)) {
+                      set("leadStageGroups", [...settings.leadStageGroups, val]);
+                      input.value = "";
+                    }
+                  }} className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm">
+                    <Plus size={13} /> Add Group
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2">
             <SaveBtn saving={saving} saved={saved} onClick={saveSettings} />
           </div>
         </div>
@@ -613,13 +960,125 @@ export default function SettingsPage() {
       {/* ── Tab: Countries & Services ── */}
       {tab === "lists" && (
         <div className="space-y-5">
-          <SectionCard title="Destination Countries" description="Countries shown in lead forms, document checklists, and filters.">
-            <TagEditor
-              label="Countries"
-              items={settings.countries}
-              onChange={(v) => set("countries", v)}
-              placeholder="Add a country (e.g. 'Italy')"
-            />
+          {/* ── Destination Countries with Universities ── */}
+          <SectionCard title="Destination Countries & Universities" description="Manage countries and their universities. These appear in lead forms, student profiles, and document checklists.">
+            <div className="space-y-3">
+              {settings.countries.map((country, ci) => (
+                <div key={ci} className="border border-gray-200 rounded-xl overflow-hidden transition-all hover:border-gray-300">
+                  {/* Country Header */}
+                  <div className="flex items-center gap-3 px-4 py-3 bg-gray-50/80">
+                    <Globe size={14} className="text-blue-500 shrink-0" />
+                    <span className="text-sm font-semibold text-gray-800 flex-1">{country.name}</span>
+                    <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{country.universities.length} {country.universities.length === 1 ? "uni" : "unis"}</span>
+                    <button
+                      onClick={() => {
+                        const expanded = document.getElementById(`country-${ci}`);
+                        if (expanded) expanded.classList.toggle("hidden");
+                      }}
+                      className="p-1 hover:bg-gray-200 rounded-md transition-colors"
+                    >
+                      <ChevronDown size={14} className="text-gray-400" />
+                    </button>
+                    <button
+                      onClick={() => set("countries", settings.countries.filter((_, i) => i !== ci))}
+                      className="p-1 hover:bg-red-50 rounded-md transition-colors group"
+                    >
+                      <X size={13} className="text-gray-300 group-hover:text-red-500" />
+                    </button>
+                  </div>
+                  {/* Universities (collapsible) */}
+                  <div id={`country-${ci}`} className="hidden px-4 py-3 border-t border-gray-100 bg-white">
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                      {country.universities.map((uni, ui) => (
+                        <span key={ui} className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
+                          <GraduationCap size={11} className="opacity-60" />
+                          {uni}
+                          <button onClick={() => {
+                            const updated = [...settings.countries];
+                            updated[ci] = { ...updated[ci], universities: updated[ci].universities.filter((_, i) => i !== ui) };
+                            set("countries", updated);
+                          }} className="ml-0.5 hover:text-red-500 transition-colors">
+                            <X size={11} />
+                          </button>
+                        </span>
+                      ))}
+                      {country.universities.length === 0 && (
+                        <p className="text-xs text-gray-400 italic">No universities added yet</p>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        id={`uni-input-${ci}`}
+                        placeholder="Add university name…"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            const input = e.target as HTMLInputElement;
+                            const val = input.value.trim();
+                            if (val && !country.universities.includes(val)) {
+                              const updated = [...settings.countries];
+                              updated[ci] = { ...updated[ci], universities: [...updated[ci].universities, val] };
+                              set("countries", updated);
+                              input.value = "";
+                            }
+                          }
+                        }}
+                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder-gray-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const input = document.getElementById(`uni-input-${ci}`) as HTMLInputElement;
+                          const val = input.value.trim();
+                          if (val && !country.universities.includes(val)) {
+                            const updated = [...settings.countries];
+                            updated[ci] = { ...updated[ci], universities: [...updated[ci].universities, val] };
+                            set("countries", updated);
+                            input.value = "";
+                          }
+                        }}
+                        className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-colors"
+                      >
+                        + Add
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Add new country */}
+            <div className="flex gap-2 mt-4">
+              <input
+                id="newCountryInput"
+                placeholder="Add a new country (e.g. 'Italy')"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    const input = e.target as HTMLInputElement;
+                    const val = input.value.trim();
+                    if (val && !settings.countries.some((c) => c.name === val)) {
+                      set("countries", [...settings.countries, { name: val, universities: [] }]);
+                      input.value = "";
+                    }
+                  }
+                }}
+                className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder-gray-400"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const input = document.getElementById("newCountryInput") as HTMLInputElement;
+                  const val = input.value.trim();
+                  if (val && !settings.countries.some((c) => c.name === val)) {
+                    set("countries", [...settings.countries, { name: val, universities: [] }]);
+                    input.value = "";
+                  }
+                }}
+                className="px-4 py-2.5 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-sm font-semibold transition-colors flex items-center gap-1.5"
+              >
+                <Plus size={13} /> Add Country
+              </button>
+            </div>
           </SectionCard>
 
           <SectionCard title="Services Offered" description="Services your consultancy provides.">
@@ -722,113 +1181,177 @@ export default function SettingsPage() {
 
       {/* ── Tab: Document Checklists ── */}
       {tab === "checklists" && (
-        <div className="space-y-5">
+        <div className="space-y-6">
           <div className="flex items-center gap-3">
-            <FileText size={15} className="text-gray-500" />
+            <div className="p-2.5 bg-indigo-50 border border-indigo-100 rounded-xl">
+              <FileText size={18} className="text-indigo-500" />
+            </div>
             <div>
-              <h2 className="text-sm font-semibold text-gray-900">Document Checklists by Country</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Define required documents for each destination country</p>
+              <h2 className="text-base font-bold text-gray-900">Document Checklists by Country</h2>
+              <p className="text-sm text-gray-500 mt-0.5">Define required documents for each destination country. Students and counsellors will see these when uploading.</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            {/* Country List */}
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Countries</p>
+          <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6">
+            {/* Country sidebar */}
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden flex flex-col shadow-sm">
+              <div className="px-5 py-3.5 border-b border-gray-100 bg-gray-50/60">
+                <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Select Country</p>
               </div>
-              <div className="overflow-y-auto max-h-[480px] p-2 space-y-0.5">
+              <div className="overflow-y-auto max-h-[540px] p-2 space-y-1 flex-1">
                 {settings.countries.map((c) => {
-                  const has = checklists.some((cl) => cl.country === c);
-                  const active = selectedCountry === c;
+                  const cl = checklists.find((cl) => cl.country === c.name);
+                  const docCount = cl?.documents?.length || 0;
+                  const active = selectedCountry === c.name;
                   return (
                     <button
-                      key={c}
-                      onClick={() => loadCountry(c)}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center justify-between ${
-                        active ? "bg-gray-900 text-white" : "hover:bg-gray-50 text-gray-700"
+                      key={c.name}
+                      onClick={() => loadCountry(c.name)}
+                      className={`w-full text-left px-4 py-3 rounded-lg transition-all flex items-center gap-3 group ${
+                        active
+                          ? "bg-gray-900 text-white shadow-sm"
+                          : "hover:bg-gray-50 text-gray-700"
                       }`}
                     >
-                      <span>{c}</span>
-                      {has && <span className={`text-xs ${active ? "text-gray-400" : "text-green-500"}`}>●</span>}
+                      <Globe size={15} className={active ? "text-gray-400 shrink-0" : "text-gray-300 group-hover:text-blue-400 shrink-0"} />
+                      <span className="flex-1 truncate text-sm font-semibold">{c.name}</span>
+                      {docCount > 0 && (
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                          active
+                            ? "bg-white/15 text-gray-300"
+                            : "bg-emerald-50 text-emerald-600 border border-emerald-100"
+                        }`}>
+                          {docCount}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* Checklist Editor */}
-            <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl overflow-hidden">
+            {/* Checklist editor */}
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden flex flex-col shadow-sm">
               {!selectedChecklist ? (
-                <div className="flex flex-col items-center justify-center h-64 gap-2 text-gray-400">
-                  <ChevronRight size={28} className="text-gray-300" />
-                  <p className="text-sm">Select a country to manage its checklist</p>
+                <div className="flex flex-col items-center justify-center h-80 gap-4 text-gray-400">
+                  <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100">
+                    <FileText size={32} className="text-gray-300" />
+                  </div>
+                  <p className="text-base font-semibold text-gray-500">No country selected</p>
+                  <p className="text-sm text-gray-400">Choose a country from the left to manage its document checklist</p>
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">Documents for {selectedChecklist.country}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {selectedChecklist.documents.length} document{selectedChecklist.documents.length !== 1 ? "s" : ""} configured
-                      </p>
+                  {/* Editor header */}
+                  <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/40">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-blue-50 rounded-lg border border-blue-100">
+                        <Globe size={15} className="text-blue-500" />
+                      </div>
+                      <div>
+                        <p className="text-base font-bold text-gray-900">{selectedChecklist.country}</p>
+                        <p className="text-xs text-gray-400 mt-0.5 font-medium">
+                          {selectedChecklist.documents.length} document{selectedChecklist.documents.length !== 1 ? "s" : ""} &middot; {selectedChecklist.documents.filter(d => d.isRequired).length} required
+                        </p>
+                      </div>
                     </div>
                     <div className="flex gap-2">
                       <button
                         onClick={addDoc}
-                        className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 hover:border-gray-500 rounded-lg text-xs font-medium text-gray-700 transition-colors"
+                        className="flex items-center gap-1.5 px-4 py-2.5 bg-white border border-gray-200 hover:border-gray-400 rounded-lg text-sm font-semibold text-gray-700 transition-colors shadow-sm"
                       >
-                        <Plus size={13} /> Add Document
+                        <Plus size={14} /> Add Document
                       </button>
                       <button
                         onClick={saveChecklist}
                         disabled={clSaving}
-                        className={`px-4 py-2 rounded-lg text-xs font-medium transition-colors ${
-                          clSaved ? "bg-green-600 text-white" : "bg-gray-900 hover:bg-gray-700 text-white disabled:opacity-60"
+                        className={`flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm ${
+                          clSaved
+                            ? "bg-emerald-600 text-white"
+                            : "bg-gray-900 hover:bg-gray-700 text-white disabled:opacity-60"
                         }`}
                       >
-                        {clSaving ? "Saving…" : clSaved ? "Saved!" : "Save Changes"}
+                        {clSaved ? <CheckCircle size={14} /> : <Save size={14} />}
+                        {clSaving ? "Saving…" : clSaved ? "Saved!" : "Save"}
                       </button>
                     </div>
                   </div>
 
-                  <div className="p-5">
+                  {/* Document list */}
+                  <div className="p-6 flex-1 overflow-y-auto">
                     {selectedChecklist.documents.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-10 text-gray-400 gap-2">
-                        <p className="text-sm">No documents yet.</p>
-                        <button onClick={addDoc} className="text-xs text-gray-500 underline underline-offset-2 hover:text-gray-800">
-                          Add the first document
+                      <div className="flex flex-col items-center justify-center py-16 gap-4">
+                        <div className="p-4 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                          <Plus size={24} className="text-gray-300" />
+                        </div>
+                        <p className="text-base text-gray-500 font-semibold">No documents configured</p>
+                        <button onClick={addDoc} className="text-sm text-blue-600 hover:text-blue-700 font-semibold transition-colors">
+                          + Add the first document
                         </button>
                       </div>
                     ) : (
-                      <div className="space-y-2">
-                        <div className="grid grid-cols-[1fr_1fr_auto_auto] gap-2 px-2 mb-1">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Document Name</p>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Description</p>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Required</p>
-                          <span />
-                        </div>
+                      <div className="space-y-3">
                         {selectedChecklist.documents.map((doc, i) => (
-                          <div key={i} className="grid grid-cols-[1fr_1fr_auto_auto] gap-2 items-center p-3 bg-gray-50 border border-gray-100 rounded-lg">
-                            <input
-                              value={doc.name}
-                              placeholder="Document name *"
-                              onChange={(e) => updateDoc(i, "name", e.target.value)}
-                              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500"
-                            />
-                            <input
-                              value={doc.description || ""}
-                              placeholder="Description (optional)"
-                              onChange={(e) => updateDoc(i, "description", e.target.value)}
-                              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500"
-                            />
-                            <label className="flex items-center gap-1.5 text-xs text-gray-600 whitespace-nowrap cursor-pointer select-none">
-                              <input type="checkbox" checked={doc.isRequired} onChange={(e) => updateDoc(i, "isRequired", e.target.checked)} className="accent-gray-900" />
-                              Required
-                            </label>
-                            <button onClick={() => removeDoc(i)} className="p-1.5 hover:bg-gray-200 rounded-md transition-colors text-gray-400 hover:text-gray-700">
-                              <Trash2 size={13} />
-                            </button>
+                          <div
+                            key={i}
+                            className="group relative border border-gray-100 hover:border-gray-200 rounded-xl p-5 transition-all hover:shadow-sm bg-white"
+                          >
+                            <div className="flex items-start gap-4">
+                              {/* Number badge */}
+                              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gray-100 text-xs font-bold text-gray-500 shrink-0 mt-1">
+                                {i + 1}
+                              </div>
+
+                              {/* Fields */}
+                              <div className="flex-1 space-y-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                  <div>
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Document Name *</label>
+                                    <input
+                                      value={doc.name}
+                                      placeholder="e.g. Passport copy"
+                                      onChange={(e) => updateDoc(i, "name", e.target.value)}
+                                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-800 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-300 transition-colors placeholder-gray-300"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Description</label>
+                                    <input
+                                      value={doc.description || ""}
+                                      placeholder="Brief description (optional)"
+                                      onChange={(e) => updateDoc(i, "description", e.target.value)}
+                                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-800 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-300 transition-colors placeholder-gray-300"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Bottom row: required toggle + delete */}
+                                <div className="flex items-center justify-between pt-1">
+                                  <label className="flex items-center gap-2.5 cursor-pointer select-none group/req">
+                                    <button
+                                      type="button"
+                                      onClick={() => updateDoc(i, "isRequired", !doc.isRequired)}
+                                      className="relative"
+                                    >
+                                      {doc.isRequired ? (
+                                        <ToggleRight size={24} className="text-gray-900" />
+                                      ) : (
+                                        <ToggleLeft size={24} className="text-gray-300 group-hover/req:text-gray-400" />
+                                      )}
+                                    </button>
+                                    <span className={`text-sm font-semibold ${doc.isRequired ? "text-gray-700" : "text-gray-400"}`}>
+                                      {doc.isRequired ? "Required" : "Optional"}
+                                    </span>
+                                  </label>
+                                  <button
+                                    onClick={() => removeDoc(i)}
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                  >
+                                    <Trash2 size={13} /> Remove
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         ))}
                       </div>

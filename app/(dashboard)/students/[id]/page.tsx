@@ -20,7 +20,10 @@ import {
   MapPin,
 } from "lucide-react";
 import { formatDate, formatDateTime, getStatusColor, getRoleLabel, COUNTRIES } from "@/lib/utils";
+
+const DEFAULT_COUNTRIES = COUNTRIES;
 import Link from "next/link";
+import { useBranding } from "@/app/branding-context";
 
 interface AdmissionCourse {
   name: string;
@@ -90,6 +93,7 @@ const EMPTY_ADMISSION_FORM = {
 export default function StudentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data: session } = useSession();
+  const branding = useBranding();
   const [student, setStudent] = useState<StudentDetail | null>(null);
   const [docs, setDocs] = useState<Document[]>([]);
   const [note, setNote] = useState("");
@@ -104,6 +108,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   const [savingAdmission, setSavingAdmission] = useState(false);
   const [editingAdmission, setEditingAdmission] = useState<number | null>(null);
   const [editAdmissionForm, setEditAdmissionForm] = useState(EMPTY_ADMISSION_FORM);
+  const [appCountries, setAppCountries] = useState<string[]>(DEFAULT_COUNTRIES);
 
   const fetchData = async () => {
     const [studentRes, docsRes] = await Promise.all([
@@ -121,7 +126,16 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
 
   useEffect(() => {
     fetchData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useEffect(() => {
+    fetch("/api/settings/app").then(r => r.json()).then(d => {
+      if (d?.countries?.length) {
+        setAppCountries(d.countries.map((c: string | { name: string }) => typeof c === "string" ? c : c.name));
+      }
+    }).catch(() => {});
+  }, []);
 
   const addNote = async () => {
     if (!note.trim()) return;
@@ -138,13 +152,13 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
 
     if (student?.phone) {
       const waPhone = student.phone.replace(/[^\d]/g, "");
-      const waMsg = encodeURIComponent(`Hi ${student.name},\n\n${noteContent}\n\n- ETG Team`);
+      const waMsg = encodeURIComponent(`Hi ${student.name},\n\n${noteContent}\n\n- ${branding.shortCode} Team`);
       window.open(`https://wa.me/${waPhone}?text=${waMsg}`, "_blank");
     }
 
     if (student?.email) {
-      const subject = encodeURIComponent(`Update from ETG - ${student.name}`);
-      const body = encodeURIComponent(`Hi ${student.name},\n\n${noteContent}\n\nBest regards,\nETG Team`);
+      const subject = encodeURIComponent(`Update from ${branding.shortCode} - ${student.name}`);
+      const body = encodeURIComponent(`Hi ${student.name},\n\n${noteContent}\n\nBest regards,\n${branding.shortCode} Team`);
       window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(student.email)}&su=${subject}&body=${body}`, "_blank");
     }
   };
@@ -453,7 +467,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                   className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select country</option>
-                  {COUNTRIES.filter((country) => !student.countries.map((entry) => entry.country).includes(country)).map((country) => (
+                  {appCountries.filter((country) => !student.countries.map((entry) => entry.country).includes(country)).map((country) => (
                     <option key={country} value={country}>{country}</option>
                   ))}
                 </select>

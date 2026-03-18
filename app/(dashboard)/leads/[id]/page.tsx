@@ -6,54 +6,36 @@ import { formatDate, formatDateTime, getStatusColor, getRoleLabel, COUNTRIES, LE
 import { ILead } from "@/types";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useBranding } from "@/app/branding-context";
 
 interface CountryEntry {
   country: string;
   universityName: string;
 }
 
-const UNIVERSITIES_BY_COUNTRY: Record<string, string[]> = {
-  "Australia": ["University of Melbourne","Australian National University","University of Sydney","University of Queensland","Monash University","University of New South Wales","University of Adelaide","University of Western Australia","University of Technology Sydney","RMIT University","Deakin University","La Trobe University","Macquarie University","Griffith University","Queensland University of Technology","Curtin University","Bond University","Charles Darwin University","Federation University"],
-  "Canada": ["University of Toronto","University of British Columbia","McGill University","University of Alberta","McMaster University","University of Ottawa","University of Waterloo","Western University","Queen's University","Dalhousie University","University of Calgary","Simon Fraser University","York University","Concordia University","University of Manitoba","University of Saskatchewan","Carleton University","Ryerson University","Brock University","University of Victoria"],
-  "United Kingdom": ["University of Oxford","University of Cambridge","Imperial College London","University College London","London School of Economics","University of Edinburgh","University of Manchester","King's College London","University of Bristol","University of Warwick","University of Glasgow","University of Birmingham","University of Leeds","University of Sheffield","University of Nottingham","University of Liverpool","University of Southampton","Newcastle University","Durham University","University of Bath","Cardiff University","Heriot-Watt University","University of Exeter"],
-  "United States": ["Massachusetts Institute of Technology","Stanford University","Harvard University","California Institute of Technology","University of Chicago","Princeton University","Columbia University","Yale University","University of Pennsylvania","Cornell University","Johns Hopkins University","Duke University","Northwestern University","University of California Berkeley","University of California Los Angeles","Carnegie Mellon University","New York University","University of Michigan","University of Texas at Austin","University of Washington","Purdue University","Boston University"],
-  "New Zealand": ["University of Auckland","University of Otago","Victoria University of Wellington","University of Canterbury","Massey University","Lincoln University","Auckland University of Technology","Waikato University"],
-  "Germany": ["Technical University of Munich","Ludwig Maximilian University of Munich","Heidelberg University","Humboldt University of Berlin","Free University of Berlin","RWTH Aachen University","University of Hamburg","Goethe University Frankfurt","University of Stuttgart","University of Göttingen","University of Cologne","University of Bonn","Karlsruhe Institute of Technology"],
-  "France": ["Sorbonne University","École Polytechnique","Sciences Po","HEC Paris","INSEAD","University of Paris","École Normale Supérieure","Grenoble INP","University of Bordeaux","University of Lyon","University of Strasbourg","University of Montpellier"],
-  "Japan": ["University of Tokyo","Kyoto University","Osaka University","Tohoku University","Nagoya University","Tokyo Institute of Technology","Waseda University","Keio University","Hokkaido University","Kyushu University","Kobe University","Hiroshima University"],
-  "South Korea": ["Seoul National University","Korea Advanced Institute of Science & Technology","Yonsei University","Korea University","Sungkyunkwan University","Hanyang University","Sogang University","Ewha Womans University","Pohang University of Science and Technology","Ulsan National Institute of Science and Technology"],
-  "Netherlands": ["University of Amsterdam","Delft University of Technology","Leiden University","Utrecht University","Erasmus University Rotterdam","University of Groningen","Eindhoven University of Technology","Maastricht University","Tilburg University","Wageningen University"],
-  "Sweden": ["Karolinska Institute","Royal Institute of Technology","Lund University","Uppsala University","Stockholm University","Chalmers University of Technology","University of Gothenburg","Linköping University","Umeå University"],
-  "Denmark": ["University of Copenhagen","Technical University of Denmark","Aarhus University","Copenhagen Business School","Aalborg University","University of Southern Denmark"],
-  "Finland": ["University of Helsinki","Aalto University","University of Turku","University of Tampere","University of Oulu","University of Jyväskylä"],
-  "Norway": ["University of Oslo","Norwegian University of Science and Technology","University of Bergen","University of Tromsø","Norwegian School of Economics"],
-  "Switzerland": ["ETH Zurich","EPFL","University of Zurich","University of Geneva","University of Basel","University of Bern","University of Lausanne","University of St. Gallen"],
-  "Austria": ["University of Vienna","Vienna University of Technology","Graz University of Technology","University of Graz","Johannes Kepler University Linz","University of Innsbruck","Vienna University of Economics and Business"],
-  "Ireland": ["Trinity College Dublin","University College Dublin","University College Cork","National University of Ireland Galway","Dublin City University","University of Limerick","Maynooth University"],
-  "Singapore": ["National University of Singapore","Nanyang Technological University","Singapore Management University","Singapore University of Technology and Design","Singapore Institute of Technology"],
-  "Malaysia": ["University of Malaya","Universiti Putra Malaysia","Universiti Kebangsaan Malaysia","Universiti Teknologi Malaysia","Universiti Sains Malaysia","Taylor's University","Monash University Malaysia","Sunway University","INTI International University"],
-  "Dubai (UAE)": ["American University in Dubai","University of Dubai","Heriot-Watt University Dubai","Middlesex University Dubai","University of Birmingham Dubai","Rochester Institute of Technology Dubai","Murdoch University Dubai","Canadian University Dubai"],
-  "Cyprus": ["University of Cyprus","Cyprus International University","European University Cyprus","Frederick University","University of Nicosia"],
-  "Malta": ["University of Malta","Malta College of Arts, Science and Technology"],
-  "Hungary": ["Budapest University of Technology and Economics","Eötvös Loránd University","University of Debrecen","University of Pécs","Corvinus University of Budapest","Semmelweis University"],
-  "Poland": ["University of Warsaw","Jagiellonian University","Warsaw University of Technology","AGH University of Science and Technology","Adam Mickiewicz University","Wrocław University of Technology"],
-  "Czech Republic": ["Charles University","Czech Technical University in Prague","Brno University of Technology","Masaryk University","University of Economics Prague","Palacký University Olomouc"],
-};
-
-function getUniversities(country: string): string[] {
-  return UNIVERSITIES_BY_COUNTRY[country] || [];
+interface AppCountry {
+  name: string;
+  universities: string[];
 }
 
 export default function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data: session } = useSession();
   const router = useRouter();
+  const branding = useBranding();
   const [lead, setLead] = useState<ILead | null>(null);
   const [loading, setLoading] = useState(true);
   const [note, setNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
   const [converting, setConverting] = useState(false);
   const [studentId, setStudentId] = useState<string | null>(null);
+
+  // Dynamic settings state
+  const [appStandings, setAppStandings] = useState(["heated", "hot", "warm", "out_of_contact"]);
+  const [appFdStatuses, setAppFdStatuses] = useState(FD_STATUSES);
+  const [appLeadStages, setAppLeadStages] = useState(LEAD_STAGES);
+  const [appStageGroups, setAppStageGroups] = useState(LEAD_STAGE_GROUPS);
+  const [appCountries, setAppCountries] = useState<AppCountry[]>(COUNTRIES.map(c => ({ name: c, universities: [] })));
   const [enrolling, setEnrolling] = useState(false);
   const [enrolled, setEnrolled] = useState(false);
 
@@ -112,6 +94,41 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchLead(); }, [id]);
 
+  // Fetch dynamic settings
+  useEffect(() => {
+    fetch("/api/settings/app").then(r => r.json()).then(d => {
+      if (d?.leadStandings?.length) setAppStandings(d.leadStandings);
+      if (d?.countries?.length) {
+        setAppCountries(d.countries.map((c: string | { name: string; universities?: string[] }) =>
+          typeof c === "string" ? { name: c, universities: [] } : { name: c.name, universities: c.universities || [] }
+        ));
+      }
+      if (d?.fdStatuses?.length) {
+        setAppFdStatuses(d.fdStatuses.map((s: string) => {
+          const existing = FD_STATUSES.find(f => f.value === s);
+          return existing || { value: s, label: s, color: "bg-gray-500 text-white" };
+        }));
+      }
+      if (d?.leadStages?.length) {
+        setAppLeadStages(d.leadStages.map((s: { value: string; label: string; group: string }) => {
+          const existing = LEAD_STAGES.find(ls => ls.value === s.value);
+          return { value: s.value, label: s.label, color: existing?.color || "bg-gray-100 text-gray-700" };
+        }));
+      }
+      if (d?.leadStageGroups?.length && d?.leadStages?.length) {
+        const groupDots: Record<string, string> = {
+          Application: "bg-amber-400", Offer: "bg-blue-400", GTE: "bg-purple-400",
+          COE: "bg-emerald-400", Visa: "bg-teal-400",
+        };
+        setAppStageGroups(d.leadStageGroups.map((g: string) => ({
+          label: g,
+          dot: groupDots[g] || "bg-gray-400",
+          stages: d.leadStages.filter((s: { group: string }) => s.group === g).map((s: { value: string }) => s.value),
+        })));
+      }
+    }).catch(() => {});
+  }, []);
+
   // Auto-scroll to notes and focus textarea when navigating with #notes hash
   useEffect(() => {
     if (loading) return;
@@ -162,12 +179,12 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     // Auto-send via WhatsApp and Gmail
     if (lead?.phone) {
       const waPhone = lead.phone.replace(/[^\d]/g, "");
-      const waMsg = encodeURIComponent(`Hi ${lead.name},\n\n${noteContent}\n\n– ETG Team`);
+      const waMsg = encodeURIComponent(`Hi ${lead.name},\n\n${noteContent}\n\n– ${branding.shortCode} Team`);
       window.open(`https://wa.me/${waPhone}?text=${waMsg}`, "_blank");
     }
     if (lead?.email) {
-      const subject = encodeURIComponent(`Update from ETG – ${lead.name}`);
-      const body = encodeURIComponent(`Hi ${lead.name},\n\n${noteContent}\n\nBest regards,\nETG Team`);
+      const subject = encodeURIComponent(`Update from ${branding.shortCode} \u2013 ${lead.name}`);
+      const body = encodeURIComponent(`Hi ${lead.name},\n\n${noteContent}\n\nBest regards,\n${branding.shortCode} Team`);
       window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(lead.email)}&su=${subject}&body=${body}`, "_blank");
     }
   };
@@ -364,9 +381,14 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
       {/* ── Print-Only Letterhead ── */}
       <div className="print-only">
         <div className="flex items-start justify-between pb-5 mb-6 border-b-2 border-gray-900">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Education Tree Global</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Lead Profile Report</p>
+          <div className="flex items-center gap-3">
+            {branding.logoPath && (
+              <img src={branding.logoPath} alt={branding.shortCode} className="w-10 h-10 object-contain" />
+            )}
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">{branding.companyName}</h1>
+              <p className="text-sm text-gray-500 mt-0.5">Lead Profile Report</p>
+            </div>
           </div>
           <div className="text-right">
             <p className="text-xs text-gray-400 uppercase tracking-widest">Generated</p>
@@ -380,7 +402,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
           <div className="flex items-center gap-3 flex-wrap">
             <h2 className="text-xl font-bold text-gray-900">{lead.name}</h2>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold border border-gray-400 text-gray-600">
-              ETG-{lead._id.slice(-4).toUpperCase()}
+              {branding.shortCode}-{lead._id.slice(-4).toUpperCase()}
             </span>
             <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold capitalize ${getStatusColor(lead.standing)}`}>
               {lead.standing?.replace("_", " ")}
@@ -449,7 +471,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
             {(() => {
               if (session?.user?.role === "front_desk") {
                 const statusVal = (lead as unknown as { status?: string }).status;
-                const statusInfo = FD_STATUSES.find((s) => s.value === statusVal);
+                const statusInfo = appFdStatuses.find((s) => s.value === statusVal);
                 return statusVal ? (
                   <div>
                     <p className="text-xs text-gray-400 mb-1">Status</p>
@@ -460,7 +482,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                 ) : null;
               } else {
                 const stageVal = (lead as unknown as { stage?: string }).stage;
-                const stageInfo = LEAD_STAGES.find((s) => s.value === stageVal);
+                const stageInfo = appLeadStages.find((s) => s.value === stageVal);
                 return stageVal ? (
                   <div>
                     <p className="text-xs text-gray-400 mb-1">Stage</p>
@@ -558,7 +580,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
           <div className="space-y-2" onClick={() => { setLcOpenDropdown(null); setLcUniOpen(null); }}>
             {leadCountries.map((entry, i) => {
               const usedLc = new Set(leadCountries.map((e) => e.country));
-              const unis = getUniversities(entry.country);
+              const unis = (appCountries.find(ac => ac.name === entry.country)?.universities) || [];
               const filteredUnis = unis.filter((u) => u.toLowerCase().includes((lcUniSearch[i] ?? "").toLowerCase()));
               return (
                 <div key={i} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -578,7 +600,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                             <input autoFocus value={lcSearch[i] ?? ""} onChange={(e) => { setLcSearch((p) => p.map((v, idx) => idx === i ? e.target.value : v)); }} placeholder="Search countries…" className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400" onClick={(e) => e.stopPropagation()} />
                           </div>
                           <ul className="max-h-40 overflow-y-auto">
-                            {COUNTRIES.filter((c) => c.toLowerCase().includes((lcSearch[i] ?? "").toLowerCase())).map((c) => {
+                            {appCountries.map(ac => ac.name).filter((c) => c.toLowerCase().includes((lcSearch[i] ?? "").toLowerCase())).map((c) => {
                               const alreadyUsed = usedLc.has(c) && entry.country !== c;
                               return (
                                 <li key={c}>
@@ -651,7 +673,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
           <div className="no-print px-6 py-5">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Change Status</p>
             <div className="flex items-center gap-2 flex-wrap">
-              {["heated", "hot", "warm", "out_of_contact"].map((s) => (
+              {appStandings.map((s) => (
                 <button key={s} onClick={() => updateStatus(s)} disabled={lead.standing === s}
                   className={`px-4 py-1.5 rounded-full text-xs font-semibold capitalize transition-colors border ${
                     lead.standing === s ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-700"
@@ -675,7 +697,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
               >
                 {(() => {
                   const currentStatus = (lead as unknown as { status?: string }).status;
-                  const statusInfo = FD_STATUSES.find((s) => s.value === currentStatus);
+                  const statusInfo = appFdStatuses.find((s) => s.value === currentStatus);
                   return (
                     <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${statusInfo ? statusInfo.color : "text-gray-400"}`}>
                       {statusInfo ? statusInfo.label : "Select Status"}
@@ -691,7 +713,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                 <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
                   <div className="max-h-96 overflow-y-auto p-2">
                     <div className="grid grid-cols-1 gap-2">
-                      {FD_STATUSES.map((status) => {
+                      {appFdStatuses.map((status) => {
                         const currentStatus = (lead as unknown as { status?: string }).status;
                         const isActive = currentStatus === status.value;
                         return (
@@ -722,13 +744,13 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
           <div className="no-print px-6 py-5 border-t border-gray-100">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Application Stage</p>
             <div className="space-y-0.5">
-              {LEAD_STAGE_GROUPS.map((group) => (
+              {appStageGroups.map((group) => (
                 <div key={group.label} className="mb-3">
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className={`w-2 h-2 rounded-full shrink-0 ${group.dot}`} />
                     <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em]">{group.label}</span>
                   </div>
-                  {LEAD_STAGES.filter((s) => group.stages.includes(s.value)).map((s) => {
+                  {appLeadStages.filter((s) => group.stages.includes(s.value)).map((s) => {
                     const stageDates = (lead as unknown as { stageDates?: Record<string, string> }).stageDates;
                     const dateStr = stageDates?.[s.value];
                     const isSet = !!dateStr;

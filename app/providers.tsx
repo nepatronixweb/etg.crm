@@ -1,6 +1,11 @@
 "use client";
 import { SessionProvider } from "next-auth/react";
+import { BrandingProvider } from "./branding-context";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
-  return <SessionProvider>{children}</SessionProvider>;
+  return (
+    <SessionProvider>
+      <BrandingProvider>{children}</BrandingProvider>
+    </SessionProvider>
+  );
 }

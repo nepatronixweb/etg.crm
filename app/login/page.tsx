@@ -3,6 +3,8 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, Lock, Mail } from "lucide-react";
+import { useBranding } from "@/app/branding-context";
+import Image from "next/image";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -11,6 +13,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const branding = useBranding();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,11 +37,15 @@ export default function LoginPage() {
 
         {/* Logo / Brand */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-gray-900 rounded-xl mb-4 shadow-lg">
-            <span className="text-white text-lg font-bold tracking-tight">ETG</span>
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl mb-4 shadow-lg overflow-hidden" style={{ backgroundColor: branding.brandColor }}>
+            {branding.logoPath ? (
+              <Image src={branding.logoPath} alt={branding.shortCode} width={56} height={56} className="w-full h-full object-contain p-1" />
+            ) : (
+              <span className="text-white text-lg font-bold tracking-tight">{branding.shortCode}</span>
+            )}
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Education Tree Global</h1>
-          <p className="text-sm text-gray-500 mt-1">CRM Portal — Staff Access</p>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{branding.companyName}</h1>
+          <p className="text-sm text-gray-500 mt-1">{branding.tagline || "CRM Portal — Staff Access"}</p>
         </div>
 
         {/* Card */}
@@ -108,11 +115,10 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className={`w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-md text-sm font-semibold transition-colors mt-2 ${
-                loading
-                  ? "bg-gray-400 cursor-not-allowed text-white"
-                  : "bg-gray-900 hover:bg-gray-700 text-white"
+              className={`w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-md text-sm font-semibold transition-colors mt-2 text-white ${
+                loading ? "bg-gray-400 cursor-not-allowed" : "hover:opacity-90"
               }`}
+              style={!loading ? { backgroundColor: branding.brandColor } : undefined}
             >
               {loading ? (
                 <>

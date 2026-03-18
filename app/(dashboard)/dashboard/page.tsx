@@ -12,6 +12,7 @@ import {
 import { formatDateTime, getStatusColor, canAccessModule } from "@/lib/utils";
 import { IStudent, UserRole } from "@/types";
 import Link from "next/link";
+import { useBranding } from "@/app/branding-context";
 
 interface AnalyticsData {
   summary: {
@@ -136,6 +137,7 @@ function getDateRange(period: FilterPeriod): { from?: string; to?: string } {
 
 export default function DashboardPage() {
   const { data: session } = useSession();
+  const branding = useBranding();
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refetching, setRefetching] = useState(false);
@@ -270,7 +272,7 @@ export default function DashboardPage() {
             {isAdmin ? "Overview" : "Dashboard"}
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Welcome back, {session?.user?.name} &mdash; Education Tree Global
+            Welcome back, {session?.user?.name} &mdash; {branding.companyName}
           </p>
         </div>
         {isAdmin && (

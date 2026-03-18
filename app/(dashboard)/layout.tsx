@@ -11,8 +11,7 @@ import {
 import { useState, useEffect, useRef, useCallback } from "react";
 import { UserRole } from "@/types";
 import Image from "next/image";
-
-interface IBranding { companyName: string; shortCode: string; logoPath: string; brandColor: string; }
+import { useBranding } from "@/app/branding-context";
 
 interface INotif {
   _id: string;
@@ -52,30 +51,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const role = session?.user?.role as UserRole;
-
-  // Branding
-  const [branding, setBranding] = useState<IBranding>({
-    companyName: "Education Tree Global",
-    shortCode: "ETG",
-    logoPath: "",
-    brandColor: "#2563eb",
-  });
-
-  useEffect(() => {
-    fetch("/api/settings/app")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d?.companyName) {
-          setBranding({
-            companyName: d.companyName,
-            shortCode: d.shortCode || "ETG",
-            logoPath: d.logoPath || "",
-            brandColor: d.brandColor || "#2563eb",
-          });
-        }
-      })
-      .catch(() => {});
-  }, []);
+  const branding = useBranding();
 
   // Notifications
   const [notifs, setNotifs] = useState<INotif[]>([]);
@@ -313,7 +289,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Link key={item.href} href={item.href}
                 onClick={() => setSidebarOpen(false)}
                 className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors
-                  ${isActive ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}
+                  ${isActive ? "text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}
+                style={isActive ? { backgroundColor: branding.brandColor } : undefined}
               >
                 <Icon size={18} />
                 {item.label}
@@ -324,7 +301,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         <div className="p-3 border-t border-gray-700">
           <div className="flex items-center gap-3 px-3 py-2 mb-2">
-            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: branding.brandColor }}>
               {session?.user?.name?.[0]?.toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">

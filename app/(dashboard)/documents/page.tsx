@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import { formatDate, COUNTRIES } from "@/lib/utils";
 
+const DEFAULT_COUNTRIES = COUNTRIES;
+
 interface Document {
   _id: string;
   name: string;
@@ -49,6 +51,7 @@ export default function DocumentsPage() {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadForm, setUploadForm] = useState({ studentId: "", country: "", name: "", file: null as File | null });
+  const [appCountries, setAppCountries] = useState<string[]>(DEFAULT_COUNTRIES);
 
   const fetchDocuments = useCallback(async () => {
     setLoading(true);
@@ -63,6 +66,14 @@ export default function DocumentsPage() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void fetchDocuments(); }, [countryFilter, verifiedFilter]);
+
+  useEffect(() => {
+    fetch("/api/settings/app").then(r => r.json()).then(d => {
+      if (d?.countries?.length) {
+        setAppCountries(d.countries.map((c: string | { name: string }) => typeof c === "string" ? c : c.name));
+      }
+    }).catch(() => {});
+  }, []);
 
   const toggleVerify = async (docId: string, current: boolean) => {
     const res = await fetch(`/api/documents/${docId}`, {
@@ -208,7 +219,7 @@ export default function DocumentsPage() {
               className="px-3 py-2.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-colors"
             >
               <option value="">All Countries</option>
-              {COUNTRIES.map((c) => (
+              {appCountries.map((c) => (
                 <option key={c} value={c}>{c}</option>
               ))}
             </select>
@@ -489,7 +500,7 @@ export default function DocumentsPage() {
                     className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm text-gray-900 bg-white focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-colors"
                   >
                     <option value="">— Select country —</option>
-                    {COUNTRIES.map((c) => (
+                    {appCountries.map((c) => (
                       <option key={c} value={c}>{c}</option>
                     ))}
                   </select>
