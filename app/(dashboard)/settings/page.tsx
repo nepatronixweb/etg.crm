@@ -310,14 +310,6 @@ export default function SettingsPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-
-    // Also load b2bNames from dedicated endpoint to ensure fresh data
-    fetch("/api/settings/b2b")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d?.b2bNames) setSettings((prev) => ({ ...prev, b2bNames: d.b2bNames }));
-      })
-      .catch(() => {});
   }, []);
 
   // ── Load checklists when tab changes ──
@@ -835,21 +827,7 @@ export default function SettingsPage() {
                   <span key={item} className="group inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all">
                     <span className="w-2 h-2 rounded-full bg-teal-400" />
                     {item}
-                    <button type="button" onClick={async () => {
-                      try {
-                        const res = await fetch("/api/settings/b2b", {
-                          method: "DELETE",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ name: item }),
-                        });
-                        const data = await res.json();
-                        if (res.ok) {
-                          set("b2bNames", data.b2bNames);
-                        } else {
-                          alert("Failed to remove: " + (data.error || res.status));
-                        }
-                      } catch (err) { alert("Network error removing B2B name"); console.error(err); }
-                    }}
+                    <button type="button" onClick={() => set("b2bNames", (settings.b2bNames || []).filter(i => i !== item))}
                       className="ml-0.5 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
                       <X size={12} />
                     </button>
@@ -860,48 +838,25 @@ export default function SettingsPage() {
               <div className="flex gap-2">
                 <input id="b2bNameInput"
                   placeholder="e.g. ABC Education, XYZ Consultancy"
-                  onKeyDown={async (e) => {
+                  onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
-                      const input = e.target as HTMLInputElement;
-                      const val = input.value.trim();
-                      if (!val || (settings.b2bNames || []).includes(val)) return;
-                      try {
-                        const res = await fetch("/api/settings/b2b", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ name: val }),
-                        });
-                        const data = await res.json();
-                        if (res.ok) {
-                          set("b2bNames", data.b2bNames);
-                          input.value = "";
-                        } else {
-                          alert("Failed to add: " + (data.error || res.status));
-                        }
-                      } catch (err) { alert("Network error adding B2B name"); console.error(err); }
+                      const val = (e.target as HTMLInputElement).value.trim();
+                      if (val && !(settings.b2bNames || []).includes(val)) {
+                        set("b2bNames", [...(settings.b2bNames || []), val]);
+                        (e.target as HTMLInputElement).value = "";
+                      }
                     }
                   }}
                   className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder-gray-400"
                 />
-                <button type="button" onClick={async () => {
+                <button type="button" onClick={() => {
                   const input = document.getElementById("b2bNameInput") as HTMLInputElement;
                   const val = input.value.trim();
-                  if (!val || (settings.b2bNames || []).includes(val)) return;
-                  try {
-                    const res = await fetch("/api/settings/b2b", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ name: val }),
-                    });
-                    const data = await res.json();
-                    if (res.ok) {
-                      set("b2bNames", data.b2bNames);
-                      input.value = "";
-                    } else {
-                      alert("Failed to add: " + (data.error || res.status));
-                    }
-                  } catch (err) { alert("Network error adding B2B name"); console.error(err); }
+                  if (val && !(settings.b2bNames || []).includes(val)) {
+                    set("b2bNames", [...(settings.b2bNames || []), val]);
+                    input.value = "";
+                  }
                 }} className="px-4 py-2.5 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm">
                   <Plus size={13} /> Add
                 </button>
