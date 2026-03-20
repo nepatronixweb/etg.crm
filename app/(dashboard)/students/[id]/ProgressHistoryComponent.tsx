@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Plus, Trash2, Calendar } from "lucide-react";
+import { Plus, Trash2, Calendar, ChevronDown } from "lucide-react";
 import { formatDateTime } from "@/lib/utils";
+import { FormGroup, FormSection, INPUT_STYLES, SELECT_STYLES, BUTTON_STYLES } from "@/components/FormComponents";
 
 interface ProgressEntry {
   _id?: string;
@@ -106,81 +107,89 @@ export default function ProgressHistoryComponent({
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 p-5">
+    <FormSection title={title} className="relative overflow-hidden">
+      {/* Decorative gradient background */}
+      <div className="absolute top-0 right-0 w-40 h-40 bg-blue-100 rounded-full blur-3xl opacity-10 -z-10" />
+      
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-semibold text-gray-900">{title}</h2>
+        <div>
+          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">
+            {type === "admission"
+              ? "Per Country Tracking"
+              : type === "visa"
+              ? "Per Country Visa History"
+              : "Global Application Status"}
+          </p>
+        </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="text-blue-600 hover:text-blue-700 text-sm flex items-center gap-1 font-medium"
+          className={`${BUTTON_STYLES.small} flex items-center gap-2`}
         >
-          <Plus size={14} /> Add Entry
+          <Plus size={15} /> Add Entry
         </button>
       </div>
 
       {showForm && (
-        <div className="bg-gray-50 rounded-lg p-4 mb-4 border border-gray-200">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        <div className="bg-gradient-to-br from-blue-50 via-white to-blue-50 rounded-2xl p-6 mb-5 border-2 border-blue-200 shadow-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
             {showCountry && countries && countries.length > 0 && (
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">
-                  Country *
-                </label>
-                <select
-                  value={formData.country}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, country: e.target.value }))
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select country</option>
-                  {countries.map((country) => (
-                    <option key={country} value={country}>
-                      {country}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <FormGroup
+                label="Country"
+                required
+              >
+                <div className="relative">
+                  <select
+                    value={formData.country}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, country: e.target.value }))
+                    }
+                    className={`${SELECT_STYLES.full} ${SELECT_STYLES.arrow}`}
+                  >
+                    <option value="">Select country</option>
+                    {countries.map((country) => (
+                      <option key={country} value={country}>
+                        {country}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={16} className="absolute right-3 top-3 text-gray-600 pointer-events-none" />
+                </div>
+              </FormGroup>
             )}
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">
-                Stage *
-              </label>
+            <FormGroup label="Stage" required>
               <input
                 type="text"
                 value={formData.stage}
                 onChange={(e) =>
                   setFormData((prev) => ({ ...prev, stage: e.target.value }))
                 }
-                placeholder="e.g., Applied, Processing..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g., Applied, Processing, Approved..."
+                className={INPUT_STYLES.full}
               />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">
-                Standing
-              </label>
-              <select
-                value={formData.standing}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    standing: e.target.value,
-                  }))
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="">Select standing</option>
-                <option value="hot">Hot</option>
-                <option value="warm">Warm</option>
-                <option value="heated">Heated</option>
-                <option value="cold">Cold</option>
-                <option value="missed">Missed</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">
-                Status Date
-              </label>
+            </FormGroup>
+            <FormGroup label="Standing">
+              <div className="relative">
+                <select
+                  value={formData.standing}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      standing: e.target.value,
+                    }))
+                  }
+                  className={`${SELECT_STYLES.full} ${SELECT_STYLES.arrow}`}
+                >
+                  <option value="">Select standing</option>
+                  <option value="hot">🔥 Hot</option>
+                  <option value="warm">☀️ Warm</option>
+                  <option value="heated">🌡️ Heated</option>
+                  <option value="cold">❄️ Cold</option>
+                  <option value="missed">⏱️ Missed</option>
+                </select>
+                <ChevronDown size={16} className="absolute right-3 top-3 text-gray-600 pointer-events-none" />
+              </div>
+            </FormGroup>
+            <FormGroup label="Status Date">
               <div className="relative">
                 <input
                   type="date"
@@ -191,37 +200,34 @@ export default function ProgressHistoryComponent({
                       statusDate: e.target.value,
                     }))
                   }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={INPUT_STYLES.full}
                 />
-                <Calendar size={14} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
+                <Calendar size={16} className="absolute right-3 top-3 text-blue-600 pointer-events-none" />
               </div>
-            </div>
+            </FormGroup>
           </div>
-          <div className="mb-3">
-            <label className="block text-xs font-semibold text-gray-600 mb-1">
-              Remarks
-            </label>
+          <FormGroup label="Remarks" helper="Add any notes or context about this status change">
             <textarea
               value={formData.remarks}
               onChange={(e) =>
                 setFormData((prev) => ({ ...prev, remarks: e.target.value }))
               }
-              placeholder="Add any notes or remarks..."
-              rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              placeholder="E.g., Awaiting document submission, Visa interview scheduled..."
+              rows={3}
+              className={`${INPUT_STYLES.full.replace("py-2.5", "py-3")} resize-none`}
             />
-          </div>
-          <div className="flex gap-2 justify-end">
+          </FormGroup>
+          <div className="flex gap-2 justify-end pt-2">
             <button
               onClick={() => setShowForm(false)}
-              className="px-3 py-2 text-gray-700 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+              className={BUTTON_STYLES.secondary}
             >
               Cancel
             </button>
             <button
               onClick={handleSubmit}
               disabled={saving}
-              className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg text-sm font-medium"
+              className={BUTTON_STYLES.primary}
             >
               {saving ? "Saving..." : "Save Entry"}
             </button>
@@ -230,69 +236,94 @@ export default function ProgressHistoryComponent({
       )}
 
       {sortedHistory.length === 0 ? (
-        <div className="text-center py-8">
-          <p className="text-sm text-gray-400">No progress history yet</p>
+        <div className="text-center py-12">
+          <div className="inline-block p-3 bg-gradient-to-br from-blue-100 to-blue-50 rounded-full mb-3">
+            <Calendar size={24} className="text-blue-600" />
+          </div>
+          <p className="text-sm text-gray-500 font-medium">No progress history yet</p>
+          <p className="text-xs text-gray-400 mt-1">Start tracking changes by adding your first entry</p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3 relative">
+          {/* Timeline line */}
+          <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gradient-to-b from-blue-400 via-blue-300 to-gray-200" />
+
           {sortedHistory.map((entry, idx) => (
             <div
               key={entry._id || idx}
-              className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors"
+              className="relative pl-16 group"
             >
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
-                {showCountry && entry.country && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-gray-500 uppercase">
-                      Country:
-                    </span>
-                    <span className="text-sm text-gray-700">{entry.country}</span>
-                  </div>
-                )}
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-gray-500 uppercase">
-                    Stage:
-                  </span>
-                  <span className="text-sm font-medium text-gray-800">
-                    {entry.stage}
-                  </span>
-                </div>
-                {entry.standing && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-gray-500 uppercase">
-                      Standing:
-                    </span>
-                    <span
-                      className={`text-xs font-semibold px-2 py-1 rounded border ${getStandingColor(
-                        entry.standing
-                      )}`}
-                    >
-                      {entry.standing}
-                    </span>
-                  </div>
-                )}
-                <div className="flex items-center gap-2">
-                  <Calendar size={14} className="text-gray-400" />
-                  <span className="text-xs text-gray-600">
-                    {new Date(entry.statusDate).toLocaleDateString()}
-                  </span>
-                </div>
+              {/* Timeline dot */}
+              <div className="absolute left-2 top-2 w-8 h-8 bg-white rounded-full border-3 border-blue-500 shadow-md group-hover:shadow-lg group-hover:border-blue-600 transition-all duration-200 flex items-center justify-center">
+                <div className="w-3 h-3 rounded-full bg-gradient-to-r from-blue-500 to-blue-600" />
               </div>
-              {entry.remarks && (
-                <div className="mb-2">
-                  <p className="text-xs text-gray-600">{entry.remarks}</p>
+
+              {/* Content card */}
+              <div className="bg-gradient-to-r from-white to-gray-50 rounded-xl border border-gray-200 p-4 hover:border-blue-300 hover:shadow-md transition-all duration-200 group-hover:translate-x-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
+                  {showCountry && entry.country && (
+                    <div className="flex items-start gap-2">
+                      <span className="text-xs font-bold text-gray-600 uppercase tracking-wider bg-gray-200 rounded-full px-2 py-1 shrink-0 mt-0.5">
+                        Country
+                      </span>
+                      <span className="text-sm font-semibold text-gray-800 flex-1">{entry.country}</span>
+                    </div>
+                  )}
+                  <div className="flex items-start gap-2">
+                    <span className="text-xs font-bold text-gray-600 uppercase tracking-wider bg-blue-100 rounded-full px-2 py-1 shrink-0 mt-0.5">
+                      Stage
+                    </span>
+                    <span className="text-sm font-bold text-gray-900 flex-1">{entry.stage}</span>
+                  </div>
+                  {entry.standing && (
+                    <div className="flex items-start gap-2">
+                      <span className="text-xs font-bold text-gray-600 uppercase tracking-wider bg-gray-200 rounded-full px-2 py-1 shrink-0 mt-0.5">
+                        Standing
+                      </span>
+                      <span
+                        className={`text-xs font-bold px-3 py-1.5 rounded-full border-2 whitespace-nowrap ${getStandingColor(
+                          entry.standing
+                        )}`}
+                      >
+                        {entry.standing.toUpperCase()}
+                      </span>
+                    </div>
+                  )}
                 </div>
-              )}
-              <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                <span className="text-xs text-gray-400">
-                  Changed by {entry.changedByName || "System"} •{" "}
-                  {entry.createdAt ? formatDateTime(entry.createdAt) : ""}
-                </span>
+                {entry.remarks && (
+                  <div className="mb-3 pb-3 border-b border-gray-200">
+                    <p className="text-sm text-gray-700 italic bg-gray-100 rounded-lg p-2.5">
+                      💭 {entry.remarks}
+                    </p>
+                  </div>
+                )}
+                <div className="flex items-center justify-between pt-2">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1 text-xs text-gray-600">
+                      <Calendar size={13} className="text-blue-600" />
+                      <span className="font-semibold">
+                        {new Date(entry.statusDate).toLocaleDateString("en-US", {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-xs text-gray-500 bg-gray-100 rounded-full px-2.5 py-1">
+                    By {entry.changedByName || "System"}
+                  </span>
+                </div>
+                {entry.createdAt && (
+                  <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
+                    ⏱ {formatDateTime(entry.createdAt)}
+                  </p>
+                )}
               </div>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </FormSection>
   );
 }
