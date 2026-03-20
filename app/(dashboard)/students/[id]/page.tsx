@@ -551,12 +551,22 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                         {uniDropdownOpen === "new" && (() => {
                           const unis = countryUniversities[admissionForm.country] || [];
                           const filtered = unis.filter((u) => u.toLowerCase().includes(admissionForm.universityName.toLowerCase()));
+                          
+                          if (!admissionForm.country) {
+                            return (
+                              <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                                <li className="px-3 py-2 text-sm text-gray-500 italic">Select a country first</li>
+                              </ul>
+                            );
+                          }
+                          
                           if (filtered.length === 0) return null;
+                          
                           return (
                             <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                               {filtered.map((name) => (
                                 <li key={name} onMouseDown={() => { setAdmissionForm((form) => ({ ...form, universityName: name })); setUniDropdownOpen(null); }}
-                                  className="px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 cursor-pointer truncate">
+                                  className="px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-900 cursor-pointer transitions">
                                   {name}
                                 </li>
                               ))}
@@ -804,12 +814,22 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                             {uniDropdownOpen === "edit" && (() => {
                               const unis = countryUniversities[editAdmissionForm.country] || [];
                               const filtered = unis.filter((u) => u.toLowerCase().includes(editAdmissionForm.universityName.toLowerCase()));
+                              
+                              if (!editAdmissionForm.country) {
+                                return (
+                                  <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                                    <li className="px-3 py-2 text-sm text-gray-500 italic">Select a country first</li>
+                                  </ul>
+                                );
+                              }
+                              
                               if (filtered.length === 0) return null;
+                              
                               return (
                                 <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                                   {filtered.map((name) => (
                                     <li key={name} onMouseDown={() => { setEditAdmissionForm((form) => ({ ...form, universityName: name })); setUniDropdownOpen(null); }}
-                                      className="px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 cursor-pointer truncate">
+                                      className="px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-900 cursor-pointer truncate">
                                       {name}
                                     </li>
                                   ))}
