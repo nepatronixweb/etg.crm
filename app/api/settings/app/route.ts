@@ -27,6 +27,7 @@ export async function PUT(req: NextRequest) {
     }
 
     const body = await req.json();
+    console.log("PUT /api/settings/app body keys:", Object.keys(body));
 
     // Remove fields that should not be overwritten via this endpoint
     const {
@@ -59,7 +60,7 @@ export async function PUT(req: NextRequest) {
     if (fdStatuses    !== undefined) settings.fdStatuses    = fdStatuses;
     if (leadStageGroups !== undefined) settings.leadStageGroups = leadStageGroups;
     if (leadStages    !== undefined) settings.leadStages    = leadStages;
-    if (b2bNames      !== undefined) settings.b2bNames      = b2bNames;
+    if (b2bNames      !== undefined) { settings.b2bNames = b2bNames; console.log("Setting b2bNames to:", b2bNames); }
     if (countries     !== undefined) settings.countries     = countries;
     if (services      !== undefined) settings.services      = services;
     if (enabledModules !== undefined) settings.enabledModules = enabledModules;
