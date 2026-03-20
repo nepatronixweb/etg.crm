@@ -266,17 +266,6 @@ export default function DashboardPage() {
     }
   }, [isAdmin, isCounsellor, isFrontDesk, isAdmissionTeam, filterPeriod, filterDateFrom, filterDateTo]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-700 rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm text-gray-500">Loading dashboard</p>
-        </div>
-      </div>
-    );
-  }
-
   // Trigger celebration when unread assignment notifications arrive
   const handleNotifications = useCallback((notifsArr: INotif[]) => {
     if (celebrationShownRef.current) return;
@@ -307,6 +296,17 @@ export default function DashboardPage() {
       body: JSON.stringify({}),
     }).catch(() => {});
   }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-700 rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-gray-500">Loading dashboard</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
