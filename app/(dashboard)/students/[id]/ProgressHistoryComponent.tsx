@@ -149,21 +149,21 @@ export default function ProgressHistoryComponent({
       </div>
 
       {showForm && (
-        <div className="bg-gradient-to-br from-white via-blue-50 to-indigo-50 rounded-2xl p-8 mb-6 border-2 border-blue-300 shadow-xl">
+        <div className="bg-white rounded-2xl p-8 mb-6 border border-blue-200 shadow-lg">
           {/* Country Selection (if applicable) */}
           {showCountry && countries && countries.length > 0 && (
-            <div className="mb-8 pb-8 border-b-2 border-gradient-to-r from-blue-200 to-indigo-200">
-              <label className="block text-sm font-bold text-gray-900 mb-4 uppercase tracking-wider bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                <span className="inline-block text-gray-900">🌍 Country *</span>
+            <div className="mb-7 pb-7 border-b border-blue-100">
+              <label className="block text-sm font-semibold text-gray-800 mb-4">
+                🌍 Country
               </label>
               <select
                 value={formData.country}
                 onChange={(e) =>
                   setFormData((prev) => ({ ...prev, country: e.target.value }))
                 }
-                className="w-full px-4 py-3 border-2 border-blue-300 rounded-xl text-sm focus:outline-none focus:border-blue-600 focus:ring-3 focus:ring-blue-200 bg-white font-semibold hover:border-blue-400 transition-all cursor-pointer shadow-sm"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white font-medium hover:border-gray-400 transition-all"
               >
-                <option value="">🌐 Select country</option>
+                <option value="">Select country</option>
                 {countries.map((country) => (
                   <option key={country} value={country}>
                     {country}
@@ -174,18 +174,18 @@ export default function ProgressHistoryComponent({
           )}
 
           {/* Stage Radio Buttons */}
-          <div className="mb-8 pb-8 border-b-2 border-gradient-to-r from-blue-200 to-indigo-200">
-            <label className="block text-sm font-bold text-gray-900 mb-5 uppercase tracking-wider">
-              📍 Stage * (Select Your Progress)
+          <div className="mb-7 pb-7 border-b border-blue-100">
+            <label className="block text-sm font-semibold text-gray-800 mb-4">
+              📌 Stage
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {STAGE_OPTIONS.map((option) => (
                 <label
                   key={option}
-                  className={`flex items-center p-4 rounded-xl border-2 cursor-pointer transition-all duration-300 hover:scale-105 ${
+                  className={`flex items-center p-3 rounded-lg border-2 cursor-pointer transition-all ${
                     formData.stage === option
-                      ? "border-blue-600 bg-gradient-to-br from-blue-100 to-blue-50 shadow-lg ring-2 ring-blue-300"
-                      : "border-gray-300 hover:border-blue-400 bg-white hover:bg-blue-50 shadow-sm"
+                      ? "border-blue-500 bg-blue-50"
+                      : "border-gray-200 hover:border-blue-300 bg-white hover:bg-gray-50"
                   }`}
                 >
                   <input
@@ -196,9 +196,9 @@ export default function ProgressHistoryComponent({
                     onChange={(e) =>
                       setFormData((prev) => ({ ...prev, stage: e.target.value }))
                     }
-                    className="w-5 h-5 text-blue-600 cursor-pointer accent-blue-600"
+                    className="w-4 h-4 text-blue-500 cursor-pointer"
                   />
-                  <span className={`ml-3 font-semibold transition-colors ${
+                  <span className={`ml-2 text-sm font-medium ${
                     formData.stage === option ? "text-blue-700" : "text-gray-700"
                   }`}>{option}</span>
                 </label>
@@ -211,26 +211,26 @@ export default function ProgressHistoryComponent({
                 onChange={(e) =>
                   setFormData((prev) => ({ ...prev, otherStage: e.target.value }))
                 }
-                placeholder="✏️ Please specify the stage..."
-                className="w-full mt-4 px-4 py-3 border-2 border-blue-300 rounded-xl text-sm focus:outline-none focus:border-blue-600 focus:ring-3 focus:ring-blue-200 bg-blue-50 font-medium transition-all shadow-sm"
+                placeholder="Specify stage..."
+                className="w-full mt-3 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white font-medium transition-all"
                 autoFocus
               />
             )}
           </div>
 
           {/* Standing Radio Buttons */}
-          <div className="mb-8 pb-8 border-b-2 border-gradient-to-r from-blue-200 to-indigo-200">
-            <label className="block text-sm font-bold text-gray-900 mb-5 uppercase tracking-wider">
-              🎯 Standing (Lead Quality)
+          <div className="mb-7 pb-7 border-b border-blue-100">
+            <label className="block text-sm font-semibold text-gray-800 mb-4">
+              🎯 Standing
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {STANDING_OPTIONS.map((option) => (
                 <label
                   key={option.value}
-                  className={`flex items-center justify-center p-4 rounded-xl border-2 cursor-pointer transition-all duration-300 hover:scale-105 ${
+                  className={`flex items-center justify-center p-3 rounded-lg border-2 cursor-pointer transition-all ${
                     formData.standing === option.value
-                      ? `border-white ${option.color} text-white shadow-xl ring-2 ring-offset-1`
-                      : "border-gray-300 hover:border-gray-400 bg-white hover:bg-gray-50 shadow-sm"
+                      ? `border-blue-500 ${option.color} text-white`
+                      : "border-gray-200 hover:border-blue-300 bg-white hover:bg-gray-50"
                   }`}
                 >
                   <input
@@ -241,9 +241,9 @@ export default function ProgressHistoryComponent({
                     onChange={(e) =>
                       setFormData((prev) => ({ ...prev, standing: e.target.value }))
                     }
-                    className="w-5 h-5 cursor-pointer"
+                    className="w-4 h-4 cursor-pointer"
                   />
-                  <span className={`ml-3 font-bold text-sm ${
+                  <span className={`ml-2 text-xs font-semibold ${
                     formData.standing === option.value ? "text-white" : "text-gray-700"
                   }`}>{option.label}</span>
                 </label>
@@ -252,9 +252,9 @@ export default function ProgressHistoryComponent({
           </div>
 
           {/* Date Picker */}
-          <div className="mb-8 pb-8 border-b-2 border-gradient-to-r from-blue-200 to-indigo-200">
-            <label className="block text-sm font-bold text-gray-900 mb-4 uppercase tracking-wider">
-              📅 Status Date
+          <div className="mb-7 pb-7 border-b border-blue-100">
+            <label className="block text-sm font-semibold text-gray-800 mb-4">
+              📅 Date
             </label>
             <div className="relative">
               <input
@@ -266,25 +266,25 @@ export default function ProgressHistoryComponent({
                     statusDate: e.target.value,
                   }))
                 }
-                className="w-full px-4 py-3 pl-5 border-2 border-blue-300 rounded-xl text-sm focus:outline-none focus:border-blue-600 focus:ring-3 focus:ring-blue-200 bg-white font-semibold hover:border-blue-400 transition-all shadow-sm cursor-pointer"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white font-medium hover:border-gray-400 transition-all"
               />
-              <Calendar size={20} className="absolute right-4 top-2.5 text-blue-500 pointer-events-none" />
+              <Calendar size={18} className="absolute right-3 top-3.5 text-gray-400 pointer-events-none" />
             </div>
           </div>
 
           {/* Remarks Radio Buttons */}
-          <div className="mb-8">
-            <label className="block text-sm font-bold text-gray-900 mb-5 uppercase tracking-wider">
-              💬 Remarks (Status Update)
+          <div className="mb-7">
+            <label className="block text-sm font-semibold text-gray-800 mb-4">
+              💬 Remarks
             </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
               {REMARKS_OPTIONS.map((option) => (
                 <label
                   key={option}
-                  className={`flex items-center p-4 rounded-xl border-2 cursor-pointer transition-all duration-300 hover:scale-105 ${
+                  className={`flex items-center p-3 rounded-lg border-2 cursor-pointer transition-all ${
                     formData.remarks === option
-                      ? "border-blue-600 bg-gradient-to-br from-blue-100 to-blue-50 shadow-lg ring-2 ring-blue-300"
-                      : "border-gray-300 hover:border-blue-400 bg-white hover:bg-blue-50 shadow-sm"
+                      ? "border-blue-500 bg-blue-50"
+                      : "border-gray-200 hover:border-blue-300 bg-white hover:bg-gray-50"
                   }`}
                 >
                   <input
@@ -295,9 +295,9 @@ export default function ProgressHistoryComponent({
                     onChange={(e) =>
                       setFormData((prev) => ({ ...prev, remarks: e.target.value }))
                     }
-                    className="w-5 h-5 text-blue-600 cursor-pointer accent-blue-600"
+                    className="w-4 h-4 text-blue-500 cursor-pointer"
                   />
-                  <span className={`ml-3 font-semibold transition-colors ${
+                  <span className={`ml-2 text-sm font-medium ${
                     formData.remarks === option ? "text-blue-700" : "text-gray-700"
                   }`}>{option}</span>
                 </label>
@@ -309,28 +309,28 @@ export default function ProgressHistoryComponent({
                 onChange={(e) =>
                   setFormData((prev) => ({ ...prev, otherRemarks: e.target.value }))
                 }
-                placeholder="✏️ Please provide additional remarks..."
+                placeholder="Add more details..."
                 rows={3}
-                className="w-full px-4 py-3 border-2 border-blue-300 rounded-xl text-sm focus:outline-none focus:border-blue-600 focus:ring-3 focus:ring-blue-200 bg-blue-50 font-medium transition-all shadow-sm resize-none"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white font-medium transition-all resize-none"
                 autoFocus
               />
             )}
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-3 justify-end pt-6">
+          <div className="flex gap-3 justify-end pt-4">
             <button
               onClick={() => setShowForm(false)}
-              className="px-8 py-3 text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-xl font-bold transition-all border-2 border-transparent hover:border-gray-400 shadow-md hover:shadow-lg"
+              className="px-6 py-2.5 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-all border border-gray-300"
             >
-              ✕ Cancel
+              Cancel
             </button>
             <button
               onClick={handleSubmit}
               disabled={saving}
-              className="px-8 py-3 bg-gradient-to-r from-blue-600 via-blue-600 to-indigo-600 hover:from-blue-700 hover:via-blue-700 hover:to-indigo-700 disabled:from-blue-400 disabled:via-blue-400 disabled:to-indigo-400 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-xl hover:scale-105 disabled:scale-100 disabled:shadow-md"
+              className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg font-medium transition-all shadow-sm hover:shadow-md"
             >
-              {saving ? "💾 Saving..." : "✓ Save Entry"}
+              {saving ? "Saving..." : "Save"}
             </button>
           </div>
         </div>
@@ -338,65 +338,59 @@ export default function ProgressHistoryComponent({
 
       {/* History Timeline */}
       {sortedHistory.length === 0 ? (
-        <div className="text-center py-16">
-          <p className="text-2xl text-gray-400 font-bold mb-2">📋 No progress history yet</p>
-          <p className="text-md text-gray-400 font-medium">Add your first entry to start tracking progress</p>
+        <div className="text-center py-12">
+          <p className="text-lg text-gray-400 font-medium">No progress history yet</p>
+          <p className="text-sm text-gray-400 mt-1">Add your first entry to track progress</p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {sortedHistory.map((entry, idx) => (
             <div
               key={entry._id || idx}
-              className="bg-gradient-to-br from-white to-blue-50 rounded-xl border-2 border-blue-200 p-6 hover:border-blue-400 hover:shadow-xl transition-all duration-300 group"
+              className="bg-white rounded-lg border border-blue-100 p-4 hover:border-blue-300 hover:shadow-md transition-all"
             >
               {/* Header with Date and User */}
-              <div className="flex items-center justify-between mb-5 pb-4 border-b-2 border-blue-100">
-                <div className="flex items-center gap-4">
-                  <div className="w-4 h-4 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 group-hover:scale-150 transition-transform shadow-lg"></div>
+              <div className="flex items-center justify-between mb-3 pb-3 border-b border-gray-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 rounded-full bg-blue-500"></div>
                   <div>
-                    <p className="text-sm font-bold text-blue-700 uppercase tracking-wider">
-                      📅 {new Date(entry.statusDate).toLocaleDateString("en-US", {
+                    <p className="text-xs font-semibold text-gray-700">
+                      {new Date(entry.statusDate).toLocaleDateString("en-US", {
                         month: "short",
                         day: "numeric",
                         year: "numeric",
                       })}
                     </p>
-                    <p className="text-xs text-gray-500 font-semibold mt-1">
-                      By {entry.changedByName || "System"}
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {entry.changedByName || "System"}
                     </p>
                   </div>
                 </div>
               </div>
 
               {/* Content Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                 {showCountry && entry.country && (
-                  <div className="bg-white rounded-lg p-3 border border-blue-100">
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
-                      🌍 Country
-                    </p>
-                    <p className="text-sm font-bold text-gray-900">{entry.country}</p>
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 mb-1">Country</p>
+                    <p className="text-sm text-gray-800">{entry.country}</p>
                   </div>
                 )}
-                <div className="bg-white rounded-lg p-3 border border-blue-100">
-                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
-                    📌 Stage
-                  </p>
-                  <p className="text-sm font-bold text-blue-700 bg-blue-100 w-fit px-3 py-1 rounded-lg">
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 mb-1">Stage</p>
+                  <p className="text-sm font-semibold text-blue-600 bg-blue-50 w-fit px-2 py-0.5 rounded">
                     {entry.stage}
                   </p>
                 </div>
                 {entry.standing && (
-                  <div className="bg-white rounded-lg p-3 border border-blue-100">
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
-                      🎯 Standing
-                    </p>
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 mb-1">Standing</p>
                     <span
-                      className={`inline-block text-xs font-bold px-3 py-1.5 rounded-lg border-2 ${getStandingColor(
+                      className={`inline-block text-xs font-semibold px-2 py-0.5 rounded border ${getStandingColor(
                         entry.standing
                       )}`}
                     >
-                      {entry.standing.toUpperCase()}
+                      {entry.standing.charAt(0).toUpperCase() + entry.standing.slice(1)}
                     </span>
                   </div>
                 )}
@@ -404,11 +398,9 @@ export default function ProgressHistoryComponent({
 
               {/* Remarks */}
               {entry.remarks && (
-                <div className="mt-5 pt-4 border-t-2 border-blue-100 bg-blue-50 rounded-lg p-4">
-                  <p className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">
-                    💬 Remarks
-                  </p>
-                  <p className="text-sm text-gray-800 font-semibold italic">"{entry.remarks}"</p>
+                <div className="mt-3 pt-3 border-t border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 mb-1">Remarks</p>
+                  <p className="text-sm text-gray-700">{entry.remarks}</p>
                 </div>
               )}
             </div>
