@@ -48,7 +48,8 @@ export async function GET(req: NextRequest) {
         "senderName", "academicYear", "applyLevel", "course", "intakeYear", "intakeQuarter",
         "comments",
       ].join(" "))
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
     return NextResponse.json(students);
   } catch {

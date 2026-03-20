@@ -184,12 +184,21 @@ export default function StudentsPage() {
 
   const quickUpdateRemarks = async (studentId: string, newRemarks: string) => {
     setRemarksDropdownId(null);
+    // Capture previous value for rollback
+    const prevRemarks = students.find((s) => s._id === studentId)?.remarks ?? "";
+    // Optimistic update
     setStudents((prev) => prev.map((s) => s._id === studentId ? { ...s, remarks: newRemarks } : s));
-    await fetch(`/api/students/${studentId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ remarks: newRemarks }),
-    });
+    try {
+      const res = await fetch(`/api/students/${studentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ remarks: newRemarks }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+    } catch {
+      // Rollback on failure
+      setStudents((prev) => prev.map((s) => s._id === studentId ? { ...s, remarks: prevRemarks } : s));
+    }
   };
 
   const openRemarksPortal = (e: React.MouseEvent, studentId: string) => {
