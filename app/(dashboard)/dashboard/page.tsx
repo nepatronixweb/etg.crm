@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import {
   Users, UserCheck, FileText, TrendingUp,
@@ -13,6 +13,7 @@ import { formatDateTime, getStatusColor, canAccessModule } from "@/lib/utils";
 import { IStudent, UserRole } from "@/types";
 import Link from "next/link";
 import { useBranding } from "@/app/branding-context";
+import CelebrationOverlay from "./CelebrationOverlay";
 
 interface AnalyticsData {
   summary: {
@@ -59,6 +60,7 @@ interface AnalyticsData {
 
 interface INotif {
   _id: string;
+  type?: string;
   title: string;
   message: string;
   link?: string;
@@ -178,6 +180,11 @@ export default function DashboardPage() {
   // Admin + Counsellor: recent notifications on dashboard
   const [notifs, setNotifs] = useState<INotif[]>([]);
 
+  // Celebration overlay for new assignments
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [celebrationMsg, setCelebrationMsg] = useState({ title: "", sub: "" });
+  const celebrationShownRef = useRef(false);
+
   // Close filter dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -229,8 +236,9 @@ export default function DashboardPage() {
       Promise.all([
         fetch("/api/leads").then((r) => r.json()),
         fetch("/api/students").then((r) => r.json()),
+        fetch("/api/notifications?limit=5").then((r) => r.json()).catch(() => ({ notifications: [] })),
       ])
-        .then(([leads, students]) => {
+        .then(([leads, students, notifications]) => {
           const leadsArr = Array.isArray(leads) ? leads : [];
           const studentsArr = Array.isArray(students) ? students : [];
           setFdStats({
@@ -238,13 +246,20 @@ export default function DashboardPage() {
             convertedToStudent: leadsArr.filter((l: { convertedToStudent?: boolean }) => l.convertedToStudent).length,
             enrolledStudents: studentsArr.filter((s: { enrolled?: boolean }) => s.enrolled).length,
           });
+          setNotifs(notifications.notifications ?? []);
           setLoading(false);
         })
         .catch(() => setLoading(false));
     } else if (isAdmissionTeam) {
-      fetch("/api/analytics/admission")
-        .then((r) => r.json())
-        .then((d) => { setAdmissionStats(d); setLoading(false); })
+      Promise.all([
+        fetch("/api/analytics/admission").then((r) => r.json()),
+        fetch("/api/notifications?limit=5").then((r) => r.json()).catch(() => ({ notifications: [] })),
+      ])
+        .then(([admData, notifications]) => {
+          setAdmissionStats(admData);
+          setNotifs(notifications.notifications ?? []);
+          setLoading(false);
+        })
         .catch(() => setLoading(false));
     } else {
       setTimeout(() => setLoading(false), 0);
@@ -262,8 +277,48 @@ export default function DashboardPage() {
     );
   }
 
+  // Trigger celebration when unread assignment notifications arrive
+  const handleNotifications = useCallback((notifsArr: INotif[]) => {
+    if (celebrationShownRef.current) return;
+    const unreadAssignments = notifsArr.filter((n) => !n.read && n.type === "lead_assigned");
+    if (unreadAssignments.length > 0) {
+      celebrationShownRef.current = true;
+      const count = unreadAssignments.length;
+      setCelebrationMsg({
+        title: "Hurray! 🎊",
+        sub: count === 1
+          ? "You have been assigned a new task!"
+          : `You have been assigned ${count} new tasks!`,
+      });
+      setShowCelebration(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (notifs.length > 0) handleNotifications(notifs);
+  }, [notifs, handleNotifications]);
+
+  const dismissCelebration = useCallback(() => {
+    setShowCelebration(false);
+    // Mark assignment notifications as read
+    fetch("/api/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    }).catch(() => {});
+  }, []);
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+
+      {/* Celebration overlay */}
+      {showCelebration && (
+        <CelebrationOverlay
+          message={celebrationMsg.title}
+          subMessage={celebrationMsg.sub}
+          onDismiss={dismissCelebration}
+        />
+      )}
 
       {/* Page Header */}
       <div className="flex items-center justify-between">

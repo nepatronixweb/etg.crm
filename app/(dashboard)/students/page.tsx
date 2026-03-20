@@ -36,6 +36,7 @@ export default function StudentsPage() {
   const [filterLeadStage, setFilterLeadStage] = useState("");
   const [appLeadStages, setAppLeadStages] = useState(LEAD_STAGES);
   const [appStageGroups, setAppStageGroups] = useState(LEAD_STAGE_GROUPS);
+  const [appRemarkOptions, setAppRemarkOptions] = useState<string[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [branches, setBranches] = useState<{ _id: string; name: string }[]>([]);
   const [counsellors, setCounsellors] = useState<{ _id: string; name: string }[]>([]);
@@ -89,13 +90,17 @@ export default function StudentsPage() {
           stages: d.leadStages.filter((s: { group: string }) => s.group === g).map((s: { value: string }) => s.value),
         })));
       }
-    });
+      if (Array.isArray(d?.remarkOptions) && d.remarkOptions.length > 0) {
+        setAppRemarkOptions(d.remarkOptions);
+      }
+    }).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const [stageDropdownId, setStageDropdownId] = useState<string | null>(null);
   const [crmStageDropdownId, setCrmStageDropdownId] = useState<string | null>(null);
   const [standingDropdownId, setStandingDropdownId] = useState<string | null>(null);
+  const [remarksDropdownId, setRemarksDropdownId] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [crmStagePanelPos, setCrmStagePanelPos] = useState({ insetBlockStart: 0, insetInlineStart: 0 });
   const crmStagePanelRef = useRef<HTMLDivElement>(null);
@@ -104,6 +109,8 @@ export default function StudentsPage() {
   const pipelinePanelRef = useRef<HTMLDivElement>(null);
   const [standingPanelPos, setStandingPanelPos] = useState({ insetBlockStart: 0, insetInlineStart: 0 });
   const standingPanelRef = useRef<HTMLDivElement>(null);
+  const [remarksPanelPos, setRemarksPanelPos] = useState({ insetBlockStart: 0, insetInlineStart: 0 });
+  const remarksPanelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -135,6 +142,16 @@ export default function StudentsPage() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (remarksPanelRef.current && !remarksPanelRef.current.contains(e.target as Node)) {
+        setRemarksDropdownId(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   const quickUpdateStanding = async (studentId: string, newStanding: string) => {
     setStandingDropdownId(null);
     setStudents((prev) => prev.map((s) => s._id === studentId ? { ...s, standing: newStanding } as typeof s : s));
@@ -152,6 +169,25 @@ export default function StudentsPage() {
     const left = Math.min(rect.left, window.innerWidth - popoverWidth - 8);
     setStandingPanelPos({ insetBlockStart: rect.bottom + window.scrollY + 8, insetInlineStart: left });
     setStandingDropdownId(studentId);
+  };
+
+  const quickUpdateRemarks = async (studentId: string, newRemarks: string) => {
+    setRemarksDropdownId(null);
+    setStudents((prev) => prev.map((s) => s._id === studentId ? { ...s, remarks: newRemarks } : s));
+    await fetch(`/api/students/${studentId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ remarks: newRemarks }),
+    });
+  };
+
+  const openRemarksPortal = (e: React.MouseEvent, studentId: string) => {
+    if (remarksDropdownId === studentId) { setRemarksDropdownId(null); return; }
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const popoverWidth = 240;
+    const left = Math.min(rect.left, window.innerWidth - popoverWidth - 8);
+    setRemarksPanelPos({ insetBlockStart: rect.bottom + window.scrollY + 8, insetInlineStart: left });
+    setRemarksDropdownId(studentId);
   };
 
   const quickUpdateCrmStage = async (studentId: string, newStage: string) => {
@@ -514,7 +550,7 @@ export default function StudentsPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden" onClick={() => { setStageDropdownId(null); setCrmStageDropdownId(null); setMenuOpenId(null); }}>
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden" onClick={() => { setStageDropdownId(null); setCrmStageDropdownId(null); setRemarksDropdownId(null); setMenuOpenId(null); }}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -524,7 +560,7 @@ export default function StudentsPage() {
                     <input type="checkbox" checked={filtered.length > 0 && selectedStudents.size === filtered.length} onChange={toggleSelectAll} className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-500 cursor-pointer" />
                   </th>
                 )}
-                {["Student", "Client", "Services", "Stage", "Standing", "Pipeline", "Follow-Up"].map((h) => (
+                {["Student", "Client", "Services", "Stage", "Remarks", "Standing", "Pipeline", "Follow-Up"].map((h) => (
                   <th key={h} className="text-left px-2.5 py-2 text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">
                     {h}
                   </th>
@@ -534,7 +570,7 @@ export default function StudentsPage() {
             <tbody className="divide-y divide-gray-100">
               {loading && (
                 <tr>
-                  <td colSpan={isAdmin ? 8 : 7} className="text-center py-14">
+                  <td colSpan={isAdmin ? 9 : 8} className="text-center py-14">
                     <div className="inline-flex flex-col items-center gap-2 text-gray-400">
                       <div className="w-5 h-5 border-2 border-gray-200 border-t-gray-500 rounded-full animate-spin" />
                       <span className="text-sm">Loading students…</span>
@@ -544,7 +580,7 @@ export default function StudentsPage() {
               )}
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={isAdmin ? 8 : 7} className="text-center py-14">
+                  <td colSpan={isAdmin ? 9 : 8} className="text-center py-14">
                     <div className="inline-flex flex-col items-center gap-2 text-gray-400">
                       <UserCheck size={28} className="text-gray-300" />
                       <span className="text-sm">No students found</span>
@@ -668,6 +704,29 @@ export default function StudentsPage() {
                         })()}
                       </td>
 
+                      {/* REMARKS column */}
+                      <td className="px-2.5 py-2 min-w-36">
+                        {canUpdateStage ? (
+                          <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={(e) => openRemarksPortal(e, student._id)}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border transition-colors cursor-pointer hover:opacity-80 ${
+                                student.remarks
+                                  ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                                  : "bg-gray-50 text-gray-400 border-gray-200"
+                              }`}
+                            >
+                              <span className="max-w-28 truncate">{student.remarks || "Set"}</span>
+                              <ChevronDown size={10} className={`shrink-0 opacity-50 transition-transform duration-200 ${remarksDropdownId === student._id ? "rotate-180" : ""}`} />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className={`inline-block px-3 py-1.5 rounded-md text-xs font-semibold border ${
+                            student.remarks ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "text-gray-400"
+                          }`}>{student.remarks || "—"}</span>
+                        )}
+                      </td>
+
                       {/* STANDING column */}
                       <td className="px-2.5 py-2 min-w-28">
                         <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
@@ -741,7 +800,7 @@ export default function StudentsPage() {
                     {/* Notes sub-row */}
                     {latestNote && (
                       <tr key={`${student._id}-note`} className="bg-gray-50/50">
-                        <td colSpan={isAdmin ? 8 : 7} className="px-2.5 py-1.5 border-b border-gray-100">
+                        <td colSpan={isAdmin ? 9 : 8} className="px-2.5 py-1.5 border-b border-gray-100">
                           <div className="flex items-start gap-1.5 text-[11px] text-gray-500">
                             <MessageSquare size={11} className="text-gray-400 mt-0.5 shrink-0" />
                             <span className="font-semibold text-gray-600">Notes:</span>
@@ -1067,6 +1126,50 @@ export default function StudentsPage() {
                 <button onClick={() => quickUpdateStanding(standingDropdownId, "")}
                   className="text-[11px] text-gray-400 hover:text-red-500 font-medium transition-colors flex items-center gap-1.5">
                   <X size={10} /> Clear standing
+                </button>
+              </div>
+            )}
+          </div>,
+          document.body
+        );
+      })()}
+
+      {/* Remarks dropdown portal */}
+      {remarksDropdownId && typeof document !== "undefined" && (() => {
+        const dropStudent = students.find((s) => s._id === remarksDropdownId);
+        if (!dropStudent) return null;
+        const currentRemarks = dropStudent.remarks || "";
+        return createPortal(
+          <div
+            ref={remarksPanelRef}
+            style={{ position: "fixed", insetBlockStart: remarksPanelPos.insetBlockStart, insetInlineStart: remarksPanelPos.insetInlineStart, zIndex: 9999 }}
+            className="bg-white rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-gray-100 w-60 overflow-hidden"
+          >
+            <div className="px-4 pt-3 pb-2 border-b border-gray-100">
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.12em]">Select Remark</span>
+            </div>
+            <div className="py-1.5 max-h-64 overflow-y-auto">
+              {appRemarkOptions.map((opt) => {
+                const isActive = currentRemarks === opt;
+                return (
+                  <button key={opt} onClick={() => quickUpdateRemarks(remarksDropdownId, opt)}
+                    className={`w-full text-left px-4 py-2.5 text-xs font-medium transition-colors flex items-center justify-between gap-2 ${
+                      isActive ? "bg-indigo-50 text-indigo-900 font-semibold" : "text-gray-600 hover:bg-gray-50"
+                    }`}>
+                    <span className="truncate">{opt}</span>
+                    {isActive && <svg width="8" height="6" viewBox="0 0 8 6" fill="none" className="shrink-0"><path d="M1 3L3 5L7 1" stroke="#111" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                  </button>
+                );
+              })}
+              {appRemarkOptions.length === 0 && (
+                <p className="px-4 py-3 text-xs text-gray-400">No remark options configured. Add them in Settings.</p>
+              )}
+            </div>
+            {currentRemarks && (
+              <div className="border-t border-gray-100 px-3.5 py-2">
+                <button onClick={() => quickUpdateRemarks(remarksDropdownId, "")}
+                  className="text-[11px] text-gray-400 hover:text-red-500 font-medium transition-colors flex items-center gap-1.5">
+                  <X size={10} /> Clear remark
                 </button>
               </div>
             )}

@@ -21,6 +21,7 @@ export interface IAppSettings extends Document {
   leadStageGroups: string[];
   leadStages: { value: string; label: string; group: string }[];
   b2bNames: string[];
+  remarkOptions: string[];
   // Lists
   countries: { name: string; universities: string[] }[];
   services: string[];
@@ -113,6 +114,18 @@ const AppSettingsSchema = new Schema<IAppSettings>(
     b2bNames: {
       type: [String],
       default: [],
+    },
+    // Remark Options
+    remarkOptions: {
+      type: [String],
+      default: [
+        "Additional Documents Requested", "Additional Documents Sent",
+        "Interview \u2013 GS/Cr./Visa", "Interview Cleared", "Payment Made",
+        "Medical Requested/Booked", "Passport Submitted",
+        "DS-160/VFS/Embassy Appointment", "Pink Slip", "NOC",
+        "Defer Offer Requested", "Defer CoE Requested",
+        "Refund Requested", "Offer Withdrawn", "Done",
+      ],
     },
     // Lists
     countries: {

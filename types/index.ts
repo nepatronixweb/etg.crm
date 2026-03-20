@@ -186,6 +186,7 @@ export interface IStudent {
   currentStage: StudentStage;
   stage?: string;
   standing?: LeadStanding;
+  remarks?: string;
   enrolled?: boolean;
   enrolledAt?: Date;
   countries: IStudentCountry[];

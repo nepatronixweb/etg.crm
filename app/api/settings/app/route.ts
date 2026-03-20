@@ -11,7 +11,30 @@ export async function GET() {
     if (!settings) {
       settings = await AppSettings.create({});
     }
-    return NextResponse.json(settings);
+
+    const DEFAULT_REMARK_OPTIONS = [
+      "Additional Documents Requested", "Additional Documents Sent",
+      "Interview \u2013 GS/Cr./Visa", "Interview Cleared", "Payment Made",
+      "Medical Requested/Booked", "Passport Submitted",
+      "DS-160/VFS/Embassy Appointment", "Pink Slip", "NOC",
+      "Defer Offer Requested", "Defer CoE Requested",
+      "Refund Requested", "Offer Withdrawn", "Done",
+    ];
+
+    // Backfill remarkOptions for documents created before the field existed
+    if (!settings.remarkOptions?.length) {
+      settings.remarkOptions = DEFAULT_REMARK_OPTIONS;
+      await settings.save();
+    }
+
+    // Build a plain JSON response so Mongoose internals don't interfere
+    const json = settings.toObject ? settings.toObject() : settings;
+    // Always guarantee remarkOptions is present as an array
+    if (!Array.isArray(json.remarkOptions) || json.remarkOptions.length === 0) {
+      json.remarkOptions = DEFAULT_REMARK_OPTIONS;
+    }
+
+    return NextResponse.json(json);
   } catch (err) {
     console.error("GET /api/settings/app error:", err);
     return NextResponse.json({ error: "Failed to load settings" }, { status: 500 });
@@ -35,6 +58,7 @@ export async function PUT(req: NextRequest) {
       address, phone, email, website,
       leadStatuses, leadSources, leadStandings, fdStatuses, leadStageGroups, leadStages,
       b2bNames,
+      remarkOptions,
       countries, services,
       enabledModules,
       smtpHost, smtpPort, smtpUser, smtpPass, emailFromName,
@@ -61,6 +85,7 @@ export async function PUT(req: NextRequest) {
     if (leadStageGroups !== undefined) settings.leadStageGroups = leadStageGroups;
     if (leadStages    !== undefined) settings.leadStages    = leadStages;
     if (b2bNames      !== undefined) { settings.b2bNames = b2bNames; console.log("Setting b2bNames to:", b2bNames); }
+    if (remarkOptions !== undefined) settings.remarkOptions = remarkOptions;
     if (countries     !== undefined) settings.countries     = countries;
     if (services      !== undefined) settings.services      = services;
     if (enabledModules !== undefined) settings.enabledModules = enabledModules;

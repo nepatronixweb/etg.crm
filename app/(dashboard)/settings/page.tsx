@@ -29,6 +29,7 @@ interface AppSettings {
   leadStageGroups: string[];
   leadStages: { value: string; label: string; group: string }[];
   b2bNames: string[];
+  remarkOptions: string[];
   countries: { name: string; universities: string[] }[];
   services: string[];
   enabledModules: string[];
@@ -119,6 +120,14 @@ const DEFAULT_SETTINGS: AppSettings = {
     { value: "visa_withdrawn", label: "Visa Withdrawn", group: "Visa" },
   ],
   b2bNames: [],
+  remarkOptions: [
+    "Additional Documents Requested", "Additional Documents Sent",
+    "Interview \u2013 GS/Cr./Visa", "Interview Cleared", "Payment Made",
+    "Medical Requested/Booked", "Passport Submitted",
+    "DS-160/VFS/Embassy Appointment", "Pink Slip", "NOC",
+    "Defer Offer Requested", "Defer CoE Requested",
+    "Refund Requested", "Offer Withdrawn", "Done",
+  ],
   countries: [
     { name: "Australia", universities: ["University of Melbourne","Australian National University","University of Sydney","Monash University","University of New South Wales"] },
     { name: "Canada", universities: ["University of Toronto","University of British Columbia","McGill University","University of Alberta","McMaster University"] },
@@ -865,6 +874,54 @@ export default function SettingsPage() {
               </div>
               <p className="text-[11px] text-gray-400 flex items-center gap-1">
                 <Zap size={10} /> {(settings.b2bNames || []).length} names configured. These appear as suggestions in the B2B Name field on admission details.
+              </p>
+            </div>
+          </SectionCard>
+
+          {/* ── Remark Options ── */}
+          <SectionCard title="Remark Options" description="Pre-defined remarks for the student remarks column. These will appear as dropdown options in the students list.">
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2 p-3 bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200 rounded-xl min-h-[48px] max-h-52 overflow-y-auto">
+                {(settings.remarkOptions || []).map((item) => (
+                  <span key={item} className="group inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all">
+                    <span className="w-2 h-2 rounded-full bg-indigo-400" />
+                    {item}
+                    <button type="button" onClick={() => set("remarkOptions", (settings.remarkOptions || []).filter(i => i !== item))}
+                      className="ml-0.5 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+                {(settings.remarkOptions || []).length === 0 && <span className="text-xs text-gray-400 self-center">No remark options defined</span>}
+              </div>
+              <div className="flex gap-2">
+                <input id="remarkOptionInput"
+                  placeholder="e.g. Additional Documents Requested"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const val = (e.target as HTMLInputElement).value.trim();
+                      if (val && !(settings.remarkOptions || []).includes(val)) {
+                        set("remarkOptions", [...(settings.remarkOptions || []), val]);
+                        (e.target as HTMLInputElement).value = "";
+                      }
+                    }
+                  }}
+                  className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder-gray-400"
+                />
+                <button type="button" onClick={() => {
+                  const input = document.getElementById("remarkOptionInput") as HTMLInputElement;
+                  const val = input.value.trim();
+                  if (val && !(settings.remarkOptions || []).includes(val)) {
+                    set("remarkOptions", [...(settings.remarkOptions || []), val]);
+                    input.value = "";
+                  }
+                }} className="px-4 py-2.5 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm">
+                  <Plus size={13} /> Add
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-400 flex items-center gap-1">
+                <Zap size={10} /> {(settings.remarkOptions || []).length} options configured. These appear in the Remarks dropdown on the students list.
               </p>
             </div>
           </SectionCard>

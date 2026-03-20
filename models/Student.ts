@@ -71,6 +71,7 @@ interface IStudentDocument extends Document {
   currentStage: string;
   stage?: string;
   standing?: string;
+  remarks?: string;
   enrolled?: boolean;
   enrolledAt?: Date;
   countries: mongoose.Types.DocumentArray<mongoose.Document>;
@@ -97,6 +98,7 @@ const StudentSchema = new Schema<IStudentDocument>(
     },
     stage: { type: String, default: "" },
     standing: { type: String, enum: ["warm", "heated", "cold", "missed", ""], default: "" },
+    remarks: { type: String, default: "" },
     enrolled: { type: Boolean, default: false },
     enrolledAt: { type: Date },
     countries: [CountrySchema],
