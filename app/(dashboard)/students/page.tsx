@@ -163,6 +163,24 @@ export default function StudentsPage() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  // Helper: Calculate smart position for portals (above or below button based on available space)
+  const getSmartPortalPos = (rect: DOMRect, popoverHeight: number, popoverWidth: number, minBuffer: number = 8) => {
+    // Calculate horizontal position (same for all)
+    const left = Math.min(rect.left, window.innerWidth - popoverWidth - minBuffer);
+    
+    // Calculate vertical position: try below first, if not enough space, go above
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    
+    const positionBelow = rect.bottom + window.scrollY + minBuffer;
+    const positionAbove = rect.top + window.scrollY - popoverHeight - minBuffer;
+    
+    // Use below if there's enough space, otherwise use above
+    const top = spaceBelow >= popoverHeight + minBuffer ? positionBelow : positionAbove;
+    
+    return { insetBlockStart: top, insetInlineStart: left };
+  };
+
   const quickUpdateStanding = async (studentId: string, newStanding: string) => {
     setStandingDropdownId(null);
     setStudents((prev) => prev.map((s) => s._id === studentId ? { ...s, standing: newStanding } as typeof s : s));
@@ -177,8 +195,8 @@ export default function StudentsPage() {
     if (standingDropdownId === studentId) { setStandingDropdownId(null); return; }
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const popoverWidth = 192;
-    const left = Math.min(rect.left, window.innerWidth - popoverWidth - 8);
-    setStandingPanelPos({ insetBlockStart: rect.bottom + window.scrollY + 8, insetInlineStart: left });
+    const popoverHeight = 200; // Standing has ~4 options
+    setStandingPanelPos(getSmartPortalPos(rect, popoverHeight, popoverWidth));
     setStandingDropdownId(studentId);
   };
 
@@ -205,8 +223,8 @@ export default function StudentsPage() {
     if (remarksDropdownId === studentId) { setRemarksDropdownId(null); return; }
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const popoverWidth = 240;
-    const left = Math.min(rect.left, window.innerWidth - popoverWidth - 8);
-    setRemarksPanelPos({ insetBlockStart: rect.bottom + window.scrollY + 8, insetInlineStart: left });
+    const popoverHeight = 300; // Remarks has max-h-60 + header
+    setRemarksPanelPos(getSmartPortalPos(rect, popoverHeight, popoverWidth));
     setRemarksDropdownId(studentId);
   };
 
@@ -235,8 +253,8 @@ export default function StudentsPage() {
     setCrmStageSearch("");
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const popoverWidth = 320;
-    const left = Math.min(rect.left, window.innerWidth - popoverWidth - 8);
-    setCrmStagePanelPos({ insetBlockStart: rect.bottom + window.scrollY + 8, insetInlineStart: left });
+    const popoverHeight = 400; // CRM Stage has max-h-[50vh]
+    setCrmStagePanelPos(getSmartPortalPos(rect, popoverHeight, popoverWidth));
     setCrmStageDropdownId(studentId);
   };
 
@@ -244,8 +262,8 @@ export default function StudentsPage() {
     if (stageDropdownId === studentId) { setStageDropdownId(null); return; }
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const popoverWidth = 192;
-    const left = Math.min(rect.left, window.innerWidth - popoverWidth - 8);
-    setPipelinePanelPos({ insetBlockStart: rect.bottom + window.scrollY + 8, insetInlineStart: left });
+    const popoverHeight = 220; // Pipeline has 6 options
+    setPipelinePanelPos(getSmartPortalPos(rect, popoverHeight, popoverWidth));
     setStageDropdownId(studentId);
   };
 
