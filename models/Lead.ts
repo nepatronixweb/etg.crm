@@ -71,17 +71,17 @@ export interface ILeadDocument extends Document {
 
 const LeadSchema = new Schema<ILeadDocument>(
   {
-    name: { type: String, required: true, trim: true },
-    phone: { type: String, required: true },
-    email: { type: String, required: true, lowercase: true },
-    dateOfBirth: { type: String, required: true },
+    name: { type: String, trim: true, default: "" },
+    phone: { type: String, default: "" },
+    email: { type: String, lowercase: true, default: "" },
+    dateOfBirth: { type: String, default: "" },
     source: {
       type: String,
-      required: true,
+      default: "walk_in",
     },
-    interestedService: { type: String, required: true },
-    interestedCountry: { type: String, required: true },
-    branch: { type: Schema.Types.ObjectId, ref: "Branch", required: true },
+    interestedService: { type: String, default: "" },
+    interestedCountry: { type: String, default: "" },
+    branch: { type: Schema.Types.ObjectId, ref: "Branch" },
     standing: {
       type: String,
       default: "warm",

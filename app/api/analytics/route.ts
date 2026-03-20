@@ -58,6 +58,7 @@ export async function GET(req: NextRequest) {
       conditionalOffers,
       unconditionalOffers,
       coeReceived,
+      gsApplied,
     ] = await Promise.all([
       Lead.countDocuments(leadFilter),
       Student.countDocuments(studentFilter),
@@ -74,6 +75,7 @@ export async function GET(req: NextRequest) {
       Student.countDocuments({ ...studentFilter, "countries.admissionStatus": "conditional" }),
       Student.countDocuments({ ...studentFilter, "countries.admissionStatus": "unconditional" }),
       Student.countDocuments({ ...studentFilter, "countries.applicationStatus": "coe_received" }),
+      Student.countDocuments({ ...studentFilter, stage: "gs_applied" }),
     ]);
 
     const conversionRate = totalLeads > 0 ? Math.round((convertedLeads / totalLeads) * 100) : 0;
@@ -83,7 +85,7 @@ export async function GET(req: NextRequest) {
       summary: {
         totalLeads, totalStudents, totalApplications, convertedLeads, conversionRate,
         conditionalOffers, unconditionalOffers, coeReceived,
-        gsApplied: stageMap["application"] ?? 0,
+        gsApplied,
         visaLodged: stageMap["visa"] ?? 0,
         granted: stageMap["completed"] ?? 0,
         rejected: stageMap["rejected"] ?? 0,

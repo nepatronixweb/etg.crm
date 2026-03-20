@@ -113,8 +113,10 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   const [editingAdmission, setEditingAdmission] = useState<number | null>(null);
   const [editAdmissionForm, setEditAdmissionForm] = useState(EMPTY_ADMISSION_FORM);
   const [appCountries, setAppCountries] = useState<string[]>(DEFAULT_COUNTRIES);
+  const [countryUniversities, setCountryUniversities] = useState<Record<string, string[]>>({});
   const [b2bNames, setB2bNames] = useState<string[]>([]);
   const [b2bDropdownOpen, setB2bDropdownOpen] = useState<"new" | "edit" | null>(null);
+  const [uniDropdownOpen, setUniDropdownOpen] = useState<"new" | "edit" | null>(null);
 
   const fetchData = async () => {
     const [studentRes, docsRes] = await Promise.all([
@@ -139,6 +141,13 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     fetch("/api/settings/app").then(r => r.json()).then(d => {
       if (d?.countries?.length) {
         setAppCountries(d.countries.map((c: string | { name: string }) => typeof c === "string" ? c : c.name));
+        const uniMap: Record<string, string[]> = {};
+        d.countries.forEach((c: { name: string; universities: string[] } | string) => {
+          if (typeof c !== "string" && c.universities?.length) {
+            uniMap[c.name] = c.universities;
+          }
+        });
+        setCountryUniversities(uniMap);
       }
       if (d?.b2bNames?.length) {
         setB2bNames(d.b2bNames);
@@ -520,14 +529,35 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                           ))}
                         </select>
                       </div>
-                      <div>
+                      <div className="relative">
                         <label className="block text-sm font-medium text-gray-700 mb-1.5">University Name</label>
                         <input
                           value={admissionForm.universityName}
-                          onChange={(e) => setAdmissionForm((form) => ({ ...form, universityName: e.target.value }))}
-                          placeholder="e.g. University of Melbourne"
+                          onChange={(e) => {
+                            setAdmissionForm((form) => ({ ...form, universityName: e.target.value }));
+                            setUniDropdownOpen("new");
+                          }}
+                          onFocus={() => setUniDropdownOpen("new")}
+                          onBlur={() => setTimeout(() => setUniDropdownOpen(null), 150)}
+                          placeholder="Type or select university"
+                          autoComplete="off"
                           className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
+                        {uniDropdownOpen === "new" && (() => {
+                          const unis = countryUniversities[admissionForm.country] || [];
+                          const filtered = unis.filter((u) => u.toLowerCase().includes(admissionForm.universityName.toLowerCase()));
+                          if (filtered.length === 0) return null;
+                          return (
+                            <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                              {filtered.map((name) => (
+                                <li key={name} onMouseDown={() => { setAdmissionForm((form) => ({ ...form, universityName: name })); setUniDropdownOpen(null); }}
+                                  className="px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 cursor-pointer truncate">
+                                  {name}
+                                </li>
+                              ))}
+                            </ul>
+                          );
+                        })()}
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1.5">Location / Campus</label>
@@ -731,13 +761,35 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                               ))}
                             </select>
                           </div>
-                          <div>
+                          <div className="relative">
                             <label className="block text-xs font-semibold text-gray-600 mb-1">University Name</label>
                             <input
                               value={editAdmissionForm.universityName}
-                              onChange={(e) => setEditAdmissionForm((form) => ({ ...form, universityName: e.target.value }))}
+                              onChange={(e) => {
+                                setEditAdmissionForm((form) => ({ ...form, universityName: e.target.value }));
+                                setUniDropdownOpen("edit");
+                              }}
+                              onFocus={() => setUniDropdownOpen("edit")}
+                              onBlur={() => setTimeout(() => setUniDropdownOpen(null), 150)}
+                              placeholder="Type or select university"
+                              autoComplete="off"
                               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
+                            {uniDropdownOpen === "edit" && (() => {
+                              const unis = countryUniversities[editAdmissionForm.country] || [];
+                              const filtered = unis.filter((u) => u.toLowerCase().includes(editAdmissionForm.universityName.toLowerCase()));
+                              if (filtered.length === 0) return null;
+                              return (
+                                <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                  {filtered.map((name) => (
+                                    <li key={name} onMouseDown={() => { setEditAdmissionForm((form) => ({ ...form, universityName: name })); setUniDropdownOpen(null); }}
+                                      className="px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 cursor-pointer truncate">
+                                      {name}
+                                    </li>
+                                  ))}
+                                </ul>
+                              );
+                            })()}
                           </div>
                           <div>
                             <label className="block text-xs font-semibold text-gray-600 mb-1">Location / Campus</label>

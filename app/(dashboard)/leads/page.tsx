@@ -1234,18 +1234,17 @@ export default function LeadsPage() {
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Personal Information</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {[
-                    { label: "Full Name", key: "name", type: "text", required: true },
-                    { label: "Phone Number", key: "phone", type: "tel", required: true },
-                    { label: "Email Address", key: "email", type: "email", required: true },
-                    { label: "Date of Birth", key: "dateOfBirth", type: "date", required: true },
-                  ].map(({ label, key, type, required }) => (
+                    { label: "Full Name", key: "name", type: "text" },
+                    { label: "Phone Number", key: "phone", type: "tel" },
+                    { label: "Email Address", key: "email", type: "email" },
+                    { label: "Date of Birth", key: "dateOfBirth", type: "date" },
+                  ].map(({ label, key, type }) => (
                     <div key={key}>
                       <label className={LABEL_CLASS}>
-                        {label} {required && <span className="text-gray-400 normal-case font-normal tracking-normal">*</span>}
+                        {label}
                       </label>
                       <input
                         type={type}
-                        required={required}
                         value={(form as Record<string, string>)[key]}
                         onChange={(e) => setForm({ ...form, [key]: e.target.value })}
                         className={FIELD_CLASS}
@@ -1322,9 +1321,8 @@ export default function LeadsPage() {
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Interest Details</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className={LABEL_CLASS}>Source <span className="text-gray-400 normal-case font-normal tracking-normal">*</span></label>
+                    <label className={LABEL_CLASS}>Source</label>
                     <select
-                      required
                       value={form.source}
                       onChange={(e) => setForm({ ...form, source: e.target.value as LeadSource })}
                       className={FIELD_CLASS}
@@ -1346,9 +1344,8 @@ export default function LeadsPage() {
                   </div>
 
                   <div>
-                    <label className={LABEL_CLASS}>Standing <span className="text-gray-400 normal-case font-normal tracking-normal">*</span></label>
+                    <label className={LABEL_CLASS}>Standing</label>
                     <select
-                      required
                       value={form.standing}
                       onChange={(e) => setForm({ ...form, standing: e.target.value as LeadStanding })}
                       className={FIELD_CLASS}
@@ -1360,9 +1357,8 @@ export default function LeadsPage() {
                   </div>
 
                   <div>
-                    <label className={LABEL_CLASS}>Interested Country <span className="text-gray-400 normal-case font-normal tracking-normal">*</span></label>
+                    <label className={LABEL_CLASS}>Interested Country</label>
                     <select
-                      required
                       value={form.interestedCountry}
                       onChange={(e) => setForm({ ...form, interestedCountry: e.target.value })}
                       className={FIELD_CLASS}
@@ -1373,9 +1369,8 @@ export default function LeadsPage() {
                   </div>
 
                   <div>
-                    <label className={LABEL_CLASS}>Interested Service <span className="text-gray-400 normal-case font-normal tracking-normal">*</span></label>
+                    <label className={LABEL_CLASS}>Interested Service</label>
                     <select
-                      required
                       value={form.interestedService}
                       onChange={(e) => setForm({ ...form, interestedService: e.target.value })}
                       className={FIELD_CLASS}
@@ -1464,9 +1459,8 @@ export default function LeadsPage() {
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Assignment</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className={LABEL_CLASS}>Branch <span className="text-gray-400 normal-case font-normal tracking-normal">*</span></label>
+                    <label className={LABEL_CLASS}>Branch</label>
                     <select
-                      required
                       value={form.branch}
                       onChange={(e) => setForm({ ...form, branch: e.target.value })}
                       className={FIELD_CLASS}
@@ -1515,25 +1509,23 @@ export default function LeadsPage() {
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Parent Information</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="sm:col-span-2">
-                    <label className={LABEL_CLASS}>Parent&apos;s Full Name {session?.user?.role !== "front_desk" && <span className="text-gray-400 normal-case font-normal tracking-normal">*</span>}</label>
+                    <label className={LABEL_CLASS}>Parent&apos;s Full Name</label>
                     <input
                       type="text"
                       value={form.parentName}
                       onChange={(e) => setForm({ ...form, parentName: e.target.value })}
                       placeholder="Parent or guardian name"
                       className={FIELD_CLASS}
-                      required={session?.user?.role !== "front_desk"}
                     />
                   </div>
                   <div>
-                    <label className={LABEL_CLASS}>Parent Phone Number 1 {session?.user?.role !== "front_desk" && <span className="text-gray-400 normal-case font-normal tracking-normal">*</span>}</label>
+                    <label className={LABEL_CLASS}>Parent Phone Number 1</label>
                     <input
                       type="tel"
                       value={form.parentPhone1}
                       onChange={(e) => setForm({ ...form, parentPhone1: e.target.value })}
                       placeholder="Primary contact"
                       className={FIELD_CLASS}
-                      required={session?.user?.role !== "front_desk"}
                     />
                   </div>
                   <div>
@@ -1566,36 +1558,33 @@ export default function LeadsPage() {
                     />
                   </div>
                   <div>
-                    <label className={LABEL_CLASS}>Academic School / College Name {session?.user?.role !== "front_desk" && <span className="text-gray-400 normal-case font-normal tracking-normal">*</span>}</label>
+                    <label className={LABEL_CLASS}>Academic School / College Name</label>
                     <input
                       type="text"
                       value={form.academicInstitution}
                       onChange={(e) => setForm({ ...form, academicInstitution: e.target.value })}
                       placeholder="Institution name"
                       className={FIELD_CLASS}
-                      required={session?.user?.role !== "front_desk"}
                     />
                   </div>
                   <div>
-                    <label className={LABEL_CLASS}>Temporary Address {session?.user?.role !== "front_desk" && <span className="text-gray-400 normal-case font-normal tracking-normal">*</span>}</label>
+                    <label className={LABEL_CLASS}>Temporary Address</label>
                     <input
                       type="text"
                       value={form.temporaryAddress}
                       onChange={(e) => setForm({ ...form, temporaryAddress: e.target.value })}
                       placeholder="Current / temporary address"
                       className={FIELD_CLASS}
-                      required={session?.user?.role !== "front_desk"}
                     />
                   </div>
                   <div>
-                    <label className={LABEL_CLASS}>Permanent Address {session?.user?.role !== "front_desk" && <span className="text-gray-400 normal-case font-normal tracking-normal">*</span>}</label>
+                    <label className={LABEL_CLASS}>Permanent Address</label>
                     <input
                       type="text"
                       value={form.permanentAddress}
                       onChange={(e) => setForm({ ...form, permanentAddress: e.target.value })}
                       placeholder="Permanent home address"
                       className={FIELD_CLASS}
-                      required={session?.user?.role !== "front_desk"}
                     />
                   </div>
                 </div>

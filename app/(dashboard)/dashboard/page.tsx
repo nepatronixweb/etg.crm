@@ -167,8 +167,8 @@ export default function DashboardPage() {
     offerApplied: number;
     conditionalOffers: number;
     unconditionalOffers: number;
-    gteApplied: number;
-    gteApproved: number;
+    gsApplied: number;
+    gsApproved: number;
     coeApplied: number;
     coeReceived: number;
     remarks: Array<{ studentId: string; studentName: string; content: string; addedBy: string; createdAt: string }>;
@@ -1096,7 +1096,7 @@ export default function DashboardPage() {
                 {[
                   {
                     label: "GS Applied",
-                    value: admissionStats.gteApplied,
+                    value: admissionStats.gsApplied,
                     sub: "GS applications",
                     icon: FileInput,
                     color: "text-purple-600",
@@ -1105,7 +1105,7 @@ export default function DashboardPage() {
                   },
                   {
                     label: "GS Approved",
-                    value: admissionStats.gteApproved,
+                    value: admissionStats.gsApproved,
                     sub: "GS approved",
                     icon: ShieldCheck,
                     color: "text-violet-600",

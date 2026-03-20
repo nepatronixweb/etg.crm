@@ -6,7 +6,7 @@ import {
   Palette, Building2, Phone, Mail, Globe, MapPin,
   Users, Tag, List, ToggleLeft, ToggleRight, Server,
   FileText, Image as ImageIcon, ChevronRight, X,
-  Flame, Zap, Target, Layers, GitBranch, GraduationCap, ChevronDown,
+  Flame, Zap, Target, Layers, GitBranch, GraduationCap, ChevronDown, Pencil,
 } from "lucide-react";
 import { useBrandingRefresh } from "@/app/branding-context";
 
@@ -273,6 +273,8 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [editingStage, setEditingStage] = useState<string | null>(null);
+  const [editingStageLabel, setEditingStageLabel] = useState("");
 
   // Logo upload
   const [logoPreview, setLogoPreview] = useState<string>("");
@@ -923,7 +925,40 @@ export default function SettingsPage() {
                       <div className="flex flex-wrap gap-1.5 mb-3">
                         {groupStages.map((stage) => (
                           <span key={stage.value} className="group inline-flex items-center gap-1.5 px-2.5 py-1 bg-white/80 backdrop-blur border border-white rounded-md text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all">
-                            {stage.label}
+                            {editingStage === stage.value ? (
+                              <input
+                                autoFocus
+                                value={editingStageLabel}
+                                onChange={(e) => setEditingStageLabel(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    const newLabel = editingStageLabel.trim();
+                                    if (newLabel) {
+                                      set("leadStages", settings.leadStages.map(s => s.value === stage.value ? { ...s, label: newLabel } : s));
+                                    }
+                                    setEditingStage(null);
+                                  } else if (e.key === "Escape") {
+                                    setEditingStage(null);
+                                  }
+                                }}
+                                onBlur={() => {
+                                  const newLabel = editingStageLabel.trim();
+                                  if (newLabel) {
+                                    set("leadStages", settings.leadStages.map(s => s.value === stage.value ? { ...s, label: newLabel } : s));
+                                  }
+                                  setEditingStage(null);
+                                }}
+                                className="w-28 px-1.5 py-0.5 text-xs border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
+                              />
+                            ) : (
+                              <>
+                                {stage.label}
+                                <button type="button" onClick={() => { setEditingStage(stage.value); setEditingStageLabel(stage.label); }}
+                                  className="text-gray-300 hover:text-blue-500 transition-colors opacity-0 group-hover:opacity-100">
+                                  <Pencil size={10} />
+                                </button>
+                              </>
+                            )}
                             <button type="button" onClick={() => set("leadStages", settings.leadStages.filter(s => s.value !== stage.value))}
                               className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
                               <X size={10} />
