@@ -1142,34 +1142,75 @@ export default function StudentsPage() {
         return createPortal(
           <div
             ref={remarksPanelRef}
-            style={{ position: "fixed", insetBlockStart: remarksPanelPos.insetBlockStart, insetInlineStart: remarksPanelPos.insetInlineStart, zIndex: 9999 }}
-            className="bg-white rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-gray-100 w-60 overflow-hidden"
+            style={{ position: "fixed", top: remarksPanelPos.insetBlockStart, left: remarksPanelPos.insetInlineStart, zIndex: 9999 }}
+            className="bg-white rounded-2xl shadow-[0_20px_60px_-8px_rgba(0,0,0,0.18),0_4px_16px_-4px_rgba(0,0,0,0.08)] border border-gray-100/80 w-64 overflow-hidden backdrop-blur-sm"
           >
-            <div className="px-4 pt-3 pb-2 border-b border-gray-100">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.12em]">Select Remark</span>
+            {/* Header */}
+            <div className="px-4 py-3 bg-gradient-to-r from-indigo-600 to-violet-600 flex items-center gap-2.5">
+              <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 2.5h7M1.5 5h5M1.5 7.5h3.5" stroke="white" strokeWidth="1.4" strokeLinecap="round"/></svg>
+              </div>
+              <span className="text-[11px] font-bold text-white uppercase tracking-widest">Select Remark</span>
             </div>
-            <div className="py-1.5 max-h-64 overflow-y-auto">
+
+            {/* Current remark badge */}
+            {currentRemarks && (
+              <div className="px-4 py-2.5 bg-indigo-50 border-b border-indigo-100 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />
+                <span className="text-[11px] font-semibold text-indigo-700 truncate">{currentRemarks}</span>
+              </div>
+            )}
+
+            {/* Options list */}
+            <div className="py-1.5 max-h-60 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full">
               {appRemarkOptions.map((opt) => {
                 const isActive = currentRemarks === opt;
                 return (
-                  <button key={opt} onClick={() => quickUpdateRemarks(remarksDropdownId, opt)}
-                    className={`w-full text-left px-4 py-2.5 text-xs font-medium transition-colors flex items-center justify-between gap-2 ${
-                      isActive ? "bg-indigo-50 text-indigo-900 font-semibold" : "text-gray-600 hover:bg-gray-50"
-                    }`}>
-                    <span className="truncate">{opt}</span>
-                    {isActive && <svg width="8" height="6" viewBox="0 0 8 6" fill="none" className="shrink-0"><path d="M1 3L3 5L7 1" stroke="#111" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                  <button
+                    key={opt}
+                    onClick={() => quickUpdateRemarks(remarksDropdownId, opt)}
+                    className={`w-full text-left px-4 py-2.5 text-[12px] transition-all duration-100 flex items-center justify-between gap-2 group ${
+                      isActive
+                        ? "bg-indigo-50 text-indigo-800 font-semibold"
+                        : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 font-medium"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 transition-colors ${
+                        isActive ? "bg-indigo-500" : "bg-gray-200 group-hover:bg-indigo-300"
+                      }`} />
+                      <span className="truncate">{opt}</span>
+                    </div>
+                    {isActive && (
+                      <div className="w-4 h-4 rounded-full bg-indigo-600 flex items-center justify-center shrink-0">
+                        <svg width="7" height="5" viewBox="0 0 7 5" fill="none"><path d="M1 2.5L2.8 4.2L6 1" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      </div>
+                    )}
                   </button>
                 );
               })}
               {appRemarkOptions.length === 0 && (
-                <p className="px-4 py-3 text-xs text-gray-400">No remark options configured. Add them in Settings.</p>
+                <div className="px-4 py-6 text-center">
+                  <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-2">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                  </div>
+                  <p className="text-xs text-gray-400 font-medium">No options configured</p>
+                  <p className="text-[10px] text-gray-300 mt-0.5">Add them in Settings</p>
+                </div>
               )}
             </div>
+
+            {/* Footer — clear button */}
             {currentRemarks && (
-              <div className="border-t border-gray-100 px-3.5 py-2">
-                <button onClick={() => quickUpdateRemarks(remarksDropdownId, "")}
-                  className="text-[11px] text-gray-400 hover:text-red-500 font-medium transition-colors flex items-center gap-1.5">
-                  <X size={10} /> Clear remark
+              <div className="border-t border-gray-100 px-4 py-2.5 bg-gray-50/60">
+                <button
+                  onClick={() => quickUpdateRemarks(remarksDropdownId, "")}
+                  className="text-[11px] text-gray-400 hover:text-red-500 font-semibold transition-colors flex items-center gap-1.5 group"
+                >
+                  <div className="w-3.5 h-3.5 rounded-full border border-current flex items-center justify-center group-hover:border-red-400">
+                    <X size={7} />
+                  </div>
+                  Clear remark
                 </button>
               </div>
             )}
