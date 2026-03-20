@@ -831,7 +831,7 @@ export default function SettingsPage() {
           <SectionCard title="B2B Agent Names" description="Pre-defined B2B agent/sub-agent names. These will appear as autocomplete suggestions when adding admission details.">
             <div className="space-y-3">
               <div className="flex flex-wrap gap-2 p-3 bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200 rounded-xl min-h-[48px] max-h-52 overflow-y-auto">
-                {settings.b2bNames.map((item) => (
+                {(settings.b2bNames || []).map((item) => (
                   <span key={item} className="group inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all">
                     <span className="w-2 h-2 rounded-full bg-teal-400" />
                     {item}
@@ -855,7 +855,7 @@ export default function SettingsPage() {
                     </button>
                   </span>
                 ))}
-                {settings.b2bNames.length === 0 && <span className="text-xs text-gray-400 self-center">No B2B names defined</span>}
+                {(settings.b2bNames || []).length === 0 && <span className="text-xs text-gray-400 self-center">No B2B names defined</span>}
               </div>
               <div className="flex gap-2">
                 <input id="b2bNameInput"
@@ -865,7 +865,7 @@ export default function SettingsPage() {
                       e.preventDefault();
                       const input = e.target as HTMLInputElement;
                       const val = input.value.trim();
-                      if (!val || settings.b2bNames.includes(val)) return;
+                      if (!val || (settings.b2bNames || []).includes(val)) return;
                       try {
                         const res = await fetch("/api/settings/b2b", {
                           method: "POST",
@@ -887,7 +887,7 @@ export default function SettingsPage() {
                 <button type="button" onClick={async () => {
                   const input = document.getElementById("b2bNameInput") as HTMLInputElement;
                   const val = input.value.trim();
-                  if (!val || settings.b2bNames.includes(val)) return;
+                  if (!val || (settings.b2bNames || []).includes(val)) return;
                   try {
                     const res = await fetch("/api/settings/b2b", {
                       method: "POST",
@@ -907,7 +907,7 @@ export default function SettingsPage() {
                 </button>
               </div>
               <p className="text-[11px] text-gray-400 flex items-center gap-1">
-                <Zap size={10} /> {settings.b2bNames.length} names configured. These appear as suggestions in the B2B Name field on admission details.
+                <Zap size={10} /> {(settings.b2bNames || []).length} names configured. These appear as suggestions in the B2B Name field on admission details.
               </p>
             </div>
           </SectionCard>
