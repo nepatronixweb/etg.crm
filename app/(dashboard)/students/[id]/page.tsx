@@ -114,6 +114,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   const [editAdmissionForm, setEditAdmissionForm] = useState(EMPTY_ADMISSION_FORM);
   const [appCountries, setAppCountries] = useState<string[]>(DEFAULT_COUNTRIES);
   const [b2bNames, setB2bNames] = useState<string[]>([]);
+  const [b2bDropdownOpen, setB2bDropdownOpen] = useState<"new" | "edit" | null>(null);
 
   const fetchData = async () => {
     const [studentRes, docsRes] = await Promise.all([
@@ -558,20 +559,36 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                           <option value="Sub-Agent">Sub-Agent</option>
                         </select>
                       </div>
-                      <div>
+                      <div className="relative">
                         <label className="block text-sm font-medium text-gray-700 mb-1.5">B2B Name</label>
                         <input
-                          list="b2bNamesList"
                           value={admissionForm.b2bName}
-                          onChange={(e) => setAdmissionForm((form) => ({ ...form, b2bName: e.target.value }))}
+                          onChange={(e) => {
+                            setAdmissionForm((form) => ({ ...form, b2bName: e.target.value }));
+                            setB2bDropdownOpen("new");
+                          }}
+                          onFocus={() => setB2bDropdownOpen("new")}
+                          onBlur={() => setTimeout(() => setB2bDropdownOpen(null), 150)}
                           placeholder="Type or select a B2B name"
                           className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          autoComplete="off"
                         />
-                        <datalist id="b2bNamesList">
-                          {b2bNames.map((name) => (
-                            <option key={name} value={name} />
-                          ))}
-                        </datalist>
+                        {b2bDropdownOpen === "new" && b2bNames.filter((n) => n.toLowerCase().includes(admissionForm.b2bName.toLowerCase())).length > 0 && (
+                          <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                            {b2bNames.filter((n) => n.toLowerCase().includes(admissionForm.b2bName.toLowerCase())).map((name) => (
+                              <li
+                                key={name}
+                                onMouseDown={() => {
+                                  setAdmissionForm((form) => ({ ...form, b2bName: name }));
+                                  setB2bDropdownOpen(null);
+                                }}
+                                className="px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer"
+                              >
+                                {name}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                       </div>
                     </div>
 
@@ -750,20 +767,36 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                               <option value="Sub-Agent">Sub-Agent</option>
                             </select>
                           </div>
-                          <div>
+                          <div className="relative">
                             <label className="block text-xs font-semibold text-gray-600 mb-1">B2B Name</label>
                             <input
-                              list="b2bNamesListEdit"
                               value={editAdmissionForm.b2bName}
-                              onChange={(e) => setEditAdmissionForm((form) => ({ ...form, b2bName: e.target.value }))}
+                              onChange={(e) => {
+                                setEditAdmissionForm((form) => ({ ...form, b2bName: e.target.value }));
+                                setB2bDropdownOpen("edit");
+                              }}
+                              onFocus={() => setB2bDropdownOpen("edit")}
+                              onBlur={() => setTimeout(() => setB2bDropdownOpen(null), 150)}
                               placeholder="Type or select a B2B name"
                               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              autoComplete="off"
                             />
-                            <datalist id="b2bNamesListEdit">
-                              {b2bNames.map((name) => (
-                                <option key={name} value={name} />
-                              ))}
-                            </datalist>
+                            {b2bDropdownOpen === "edit" && b2bNames.filter((n) => n.toLowerCase().includes(editAdmissionForm.b2bName.toLowerCase())).length > 0 && (
+                              <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                                {b2bNames.filter((n) => n.toLowerCase().includes(editAdmissionForm.b2bName.toLowerCase())).map((name) => (
+                                  <li
+                                    key={name}
+                                    onMouseDown={() => {
+                                      setEditAdmissionForm((form) => ({ ...form, b2bName: name }));
+                                      setB2bDropdownOpen(null);
+                                    }}
+                                    className="px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer"
+                                  >
+                                    {name}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
                           </div>
                         </div>
 

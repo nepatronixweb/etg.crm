@@ -593,7 +593,7 @@ export default function StudentsPage() {
                         </div>
                         <div className="flex items-center gap-1 text-[11px] text-gray-500 mb-0.5">
                           <Phone size={9} className="text-gray-400 shrink-0" />
-                          <span className="tabular-nums text-[10px]">{student.phone}</span>
+                          <a href={`tel:${student.phone}`} className="tabular-nums text-[10px] hover:text-blue-600 hover:underline transition-colors">{student.phone}</a>
                           {student.phone && (
                             <a
                               href={`https://wa.me/${student.phone.replace(/[^\d]/g, "")}`}
@@ -609,7 +609,7 @@ export default function StudentsPage() {
                         </div>
                         <div className="flex items-center gap-1 text-[11px] text-gray-500">
                           <Mail size={9} className="text-gray-400 shrink-0" />
-                          <span className="truncate max-w-40 text-[10px]">{student.email}</span>
+                          <a href={`mailto:${student.email}`} className="truncate max-w-40 text-[10px] hover:text-blue-600 hover:underline transition-colors">{student.email}</a>
                           {student.email && (
                             <a
                               href={`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(student.email)}`}

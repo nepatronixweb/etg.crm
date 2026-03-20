@@ -847,7 +847,7 @@ export default function LeadsPage() {
                         </div>
                         <div className="flex items-center gap-1 text-[12px] text-gray-500 mb-0.5">
                           <Phone size={10} className="text-gray-400 shrink-0" />
-                          <span className="tabular-nums">{lead.phone}</span>
+                          <a href={`tel:${lead.phone}`} className="tabular-nums hover:text-blue-600 hover:underline transition-colors">{lead.phone}</a>
                           {lead.phone && (
                             <a
                               href={`https://wa.me/${lead.phone.replace(/[^\d]/g, "")}`}
@@ -863,7 +863,7 @@ export default function LeadsPage() {
                         </div>
                         <div className="flex items-center gap-1 text-[12px] text-gray-500 mb-1">
                           <Mail size={10} className="text-gray-400 shrink-0" />
-                          <span className="truncate max-w-36">{lead.email}</span>
+                          <a href={`mailto:${lead.email}`} className="truncate max-w-36 hover:text-blue-600 hover:underline transition-colors">{lead.email}</a>
                           {lead.email && (
                             <a
                               href={`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(lead.email)}`}
