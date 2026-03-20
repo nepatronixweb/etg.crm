@@ -39,7 +39,10 @@ interface AdmissionDetail {
   universityName: string;
   location?: string;
   annualTuitionFee: string;
+  stage?: string;
   standing: string;
+  remarks?: string;
+  statusDate?: string;
   closed?: boolean;
   b2bAgentType?: string;
   b2bName?: string;
@@ -89,7 +92,10 @@ const EMPTY_ADMISSION_FORM = {
   universityName: "",
   location: "",
   annualTuitionFee: "",
+  stage: "",
   standing: "",
+  remarks: "",
+  statusDate: new Date().toISOString().split("T")[0],
   b2bAgentType: "",
   b2bName: "",
   courses: [{ ...EMPTY_COURSE }],
@@ -652,6 +658,59 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                       </div>
                     </div>
 
+                    {/* Stage, Standing, Remarks, Status Date Section */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Stage</label>
+                        <select
+                          value={admissionForm.stage}
+                          onChange={(e) => setAdmissionForm((form) => ({ ...form, stage: e.target.value }))}
+                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        >
+                          <option value="">Select stage</option>
+                          <option value="Applied">Applied</option>
+                          <option value="Processing">Processing</option>
+                          <option value="Submitted">Submitted</option>
+                          <option value="Approved">Approved</option>
+                          <option value="Rejected">Rejected</option>
+                          <option value="Enrolled">Enrolled</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Standing</label>
+                        <select
+                          value={admissionForm.standing}
+                          onChange={(e) => setAdmissionForm((form) => ({ ...form, standing: e.target.value }))}
+                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        >
+                          <option value="">Select standing</option>
+                          <option value="hot">🔴 Hot</option>
+                          <option value="warm">🟠 Warm</option>
+                          <option value="heated">🟡 Heated</option>
+                          <option value="cold">🔵 Cold</option>
+                          <option value="missed">⚪ Missed</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Status Date</label>
+                        <input
+                          type="date"
+                          value={admissionForm.statusDate}
+                          onChange={(e) => setAdmissionForm((form) => ({ ...form, statusDate: e.target.value }))}
+                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Remarks</label>
+                        <input
+                          value={admissionForm.remarks}
+                          onChange={(e) => setAdmissionForm((form) => ({ ...form, remarks: e.target.value }))}
+                          placeholder="e.g. Awaiting Documents"
+                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
                     <div className="border-t border-gray-100 pt-5">
                       <div className="flex items-center justify-between mb-3">
                         <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Courses</p>
@@ -913,6 +972,59 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                           </div>
                         </div>
 
+                        {/* Stage, Standing, Remarks, Status Date Section - Edit */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3 mt-3">
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Stage</label>
+                            <select
+                              value={editAdmissionForm.stage}
+                              onChange={(e) => setEditAdmissionForm((form) => ({ ...form, stage: e.target.value }))}
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                            >
+                              <option value="">Select stage</option>
+                              <option value="Applied">Applied</option>
+                              <option value="Processing">Processing</option>
+                              <option value="Submitted">Submitted</option>
+                              <option value="Approved">Approved</option>
+                              <option value="Rejected">Rejected</option>
+                              <option value="Enrolled">Enrolled</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Standing</label>
+                            <select
+                              value={editAdmissionForm.standing}
+                              onChange={(e) => setEditAdmissionForm((form) => ({ ...form, standing: e.target.value }))}
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                            >
+                              <option value="">Select standing</option>
+                              <option value="hot">🔴 Hot</option>
+                              <option value="warm">🟠 Warm</option>
+                              <option value="heated">🟡 Heated</option>
+                              <option value="cold">🔵 Cold</option>
+                              <option value="missed">⚪ Missed</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Status Date</label>
+                            <input
+                              type="date"
+                              value={editAdmissionForm.statusDate}
+                              onChange={(e) => setEditAdmissionForm((form) => ({ ...form, statusDate: e.target.value }))}
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Remarks</label>
+                            <input
+                              value={editAdmissionForm.remarks}
+                              onChange={(e) => setEditAdmissionForm((form) => ({ ...form, remarks: e.target.value }))}
+                              placeholder="e.g. Awaiting Documents"
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                        </div>
+
                         <div className="border-t border-gray-300 pt-3 mt-3">
                           <div className="flex items-center justify-between mb-3">
                             <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Courses</p>
@@ -1078,6 +1190,34 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                   )}
                                 </div>
                               )}
+                              {(entry.stage || entry.standing || entry.remarks || entry.statusDate) && (
+                                <div className="flex items-center gap-3 flex-wrap">
+                                  {entry.stage && (
+                                    <span className="px-2.5 py-0.5 bg-blue-50 text-blue-700 text-xs font-semibold rounded-full border border-blue-200">
+                                      {entry.stage}
+                                    </span>
+                                  )}
+                                  {entry.standing && (
+                                    <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full border" style={{
+                                      backgroundColor: entry.standing === 'hot' ? '#fee2e2' : entry.standing === 'warm' ? '#fed7aa' : entry.standing === 'heated' ? '#fef3c7' : entry.standing === 'cold' ? '#dbeafe' : '#e5e7eb',
+                                      color: entry.standing === 'hot' ? '#991b1b' : entry.standing === 'warm' ? '#92400e' : entry.standing === 'heated' ? '#b45309' : entry.standing === 'cold' ? '#1e40af' : '#374151',
+                                      borderColor: entry.standing === 'hot' ? '#fca5a5' : entry.standing === 'warm' ? '#fed7aa' : entry.standing === 'heated' ? '#fcd34d' : entry.standing === 'cold' ? '#93c5fd' : '#d1d5db'
+                                    }}>
+                                      {entry.standing?.charAt(0).toUpperCase() + entry.standing?.slice(1)}
+                                    </span>
+                                  )}
+                                  {entry.statusDate && (
+                                    <span className="text-xs text-gray-600">
+                                      {formatDate(entry.statusDate)}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              {entry.remarks && (
+                                <div className="text-xs text-gray-600 italic mt-2">
+                                  Remarks: {entry.remarks}
+                                </div>
+                              )}
                               {entry.courses && entry.courses.length > 0 && (
                                 <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
                                   {entry.courses.map((course, courseIndex) => (
@@ -1117,7 +1257,10 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                       universityName: entry.universityName || "",
                                       location: entry.location || "",
                                       annualTuitionFee: entry.annualTuitionFee || "",
+                                      stage: entry.stage || "",
                                       standing: entry.standing || "",
+                                      remarks: entry.remarks || "",
+                                      statusDate: entry.statusDate || "",
                                       b2bAgentType: entry.b2bAgentType || "",
                                       b2bName: entry.b2bName || "",
                                       courses: entry.courses?.length ? entry.courses.map((course) => ({ ...course })) : [{ ...EMPTY_COURSE }],

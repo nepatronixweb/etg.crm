@@ -166,7 +166,10 @@ export interface IAdmissionDetail {
   universityName?: string;
   location?: string;
   annualTuitionFee?: string;
+  stage?: string;
   standing?: LeadStanding;
+  remarks?: string;
+  statusDate?: string;
   closed?: boolean;
   courses?: ICourse[];
   createdAt?: Date;
