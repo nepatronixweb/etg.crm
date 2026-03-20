@@ -24,6 +24,7 @@ import { formatDate, formatDateTime, getStatusColor, getRoleLabel, COUNTRIES } f
 const DEFAULT_COUNTRIES = COUNTRIES;
 import Link from "next/link";
 import { useBranding } from "@/app/branding-context";
+import ProgressHistoryComponent from "./ProgressHistoryComponent";
 
 interface AdmissionCourse {
   name: string;
@@ -119,16 +120,30 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   const [b2bDropdownOpen, setB2bDropdownOpen] = useState<"new" | "edit" | null>(null);
   const [uniDropdownOpen, setUniDropdownOpen] = useState<"new" | "edit" | null>(null);
   const [courseDropdownOpen, setCourseDropdownOpen] = useState<"new" | "edit" | null>(null);
+  const [admissionProgressHistory, setAdmissionProgressHistory] = useState<any[]>([]);
+  const [visaProgressHistory, setVisaProgressHistory] = useState<any[]>([]);
+  const [applicationProgressHistory, setApplicationProgressHistory] = useState<any[]>([]);
 
   const fetchData = async () => {
-    const [studentRes, docsRes] = await Promise.all([
+    const [studentRes, docsRes, admissionProgressRes, visaProgressRes, applicationProgressRes] = await Promise.all([
       fetch(`/api/students/${id}`),
       fetch(`/api/documents?student=${id}`),
+      fetch(`/api/students/${id}/admission-progress`),
+      fetch(`/api/students/${id}/visa-progress`),
+      fetch(`/api/students/${id}/application-progress`),
     ]);
     const studentData = await studentRes.json();
     const docsData = await docsRes.json();
+    const admissionProgressData = await admissionProgressRes.json();
+    const visaProgressData = await visaProgressRes.json();
+    const applicationProgressData = await applicationProgressRes.json();
+    
     setStudent(studentData);
     setDocs(docsData.documents || []);
+    setAdmissionProgressHistory(admissionProgressData.admissionProgressHistory || []);
+    setVisaProgressHistory(visaProgressData.visaProgressHistory || []);
+    setApplicationProgressHistory(applicationProgressData.applicationProgressHistory || []);
+    
     if (studentData.countries?.length > 0) {
       setSelectedCountry((current) => current || studentData.countries[0].country);
     }
@@ -1302,6 +1317,36 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
               </button>
             </div>
           )}
+
+          {/* Progress History Sections */}
+          <ProgressHistoryComponent
+            title="Admission Progress"
+            type="admission"
+            studentId={id}
+            history={admissionProgressHistory}
+            onHistoryUpdate={fetchData}
+            showCountry={true}
+            countries={student?.countries?.map((c) => c.country) || []}
+          />
+
+          <ProgressHistoryComponent
+            title="Visa Progress"
+            type="visa"
+            studentId={id}
+            history={visaProgressHistory}
+            onHistoryUpdate={fetchData}
+            showCountry={true}
+            countries={student?.countries?.map((c) => c.country) || []}
+          />
+
+          <ProgressHistoryComponent
+            title="Application Status"
+            type="application"
+            studentId={id}
+            history={applicationProgressHistory}
+            onHistoryUpdate={fetchData}
+            showCountry={false}
+          />
         </div>
       </div>
     </div>

@@ -52,6 +52,57 @@ const CountrySchema = new Schema({
   rejectionReason: { type: String },
 });
 
+const ProgressHistorySchema = new Schema(
+  {
+    country: { type: String, required: true },
+    stage: { type: String, default: "" },
+    remarks: { type: String, default: "" },
+    standing: { type: String, default: "" },
+    statusDate: { type: Date, default: () => new Date() },
+    changedBy: { type: String }, // User ID
+    changedByName: { type: String },
+  },
+  { timestamps: true }
+);
+
+const AdmissionProgressSchema = new Schema(
+  {
+    country: { type: String, required: true },
+    stage: { type: String, default: "" },
+    remarks: { type: String, default: "" },
+    standing: { type: String, default: "" },
+    statusDate: { type: Date, default: () => new Date() },
+    changedBy: { type: String },
+    changedByName: { type: String },
+  },
+  { timestamps: true }
+);
+
+const VisaProgressSchema = new Schema(
+  {
+    country: { type: String, required: true },
+    stage: { type: String, default: "" },
+    remarks: { type: String, default: "" },
+    standing: { type: String, default: "" },
+    statusDate: { type: Date, default: () => new Date() },
+    changedBy: { type: String },
+    changedByName: { type: String },
+  },
+  { timestamps: true }
+);
+
+const ApplicationProgressSchema = new Schema(
+  {
+    stage: { type: String, default: "" },
+    remarks: { type: String, default: "" },
+    standing: { type: String, default: "" },
+    statusDate: { type: Date, default: () => new Date() },
+    changedBy: { type: String },
+    changedByName: { type: String },
+  },
+  { timestamps: true }
+);
+
 export interface ICourse {
   name: string;
   intakeQuarter: string;
@@ -76,6 +127,32 @@ interface IStudentDocument extends Document {
   enrolledAt?: Date;
   countries: mongoose.Types.DocumentArray<mongoose.Document>;
   admissionDetails: mongoose.Types.DocumentArray<mongoose.Document>;
+  admissionProgressHistory?: Array<{
+    country: string;
+    stage: string;
+    remarks: string;
+    standing: string;
+    statusDate: Date;
+    changedBy?: string;
+    changedByName?: string;
+  }>;
+  visaProgressHistory?: Array<{
+    country: string;
+    stage: string;
+    remarks: string;
+    standing: string;
+    statusDate: Date;
+    changedBy?: string;
+    changedByName?: string;
+  }>;
+  applicationProgressHistory?: Array<{
+    stage: string;
+    remarks: string;
+    standing: string;
+    statusDate: Date;
+    changedBy?: string;
+    changedByName?: string;
+  }>;
   notes: INote[];
   createdAt: Date;
   updatedAt: Date;
@@ -103,6 +180,9 @@ const StudentSchema = new Schema<IStudentDocument>(
     enrolledAt: { type: Date },
     countries: [CountrySchema],
     admissionDetails: [AdmissionDetailSchema],
+    admissionProgressHistory: [AdmissionProgressSchema],
+    visaProgressHistory: [VisaProgressSchema],
+    applicationProgressHistory: [ApplicationProgressSchema],
     notes: [NoteSchema],
   },
   { timestamps: true }
