@@ -20,6 +20,7 @@ export interface IAppSettings extends Document {
   fdStatuses: string[];
   leadStageGroups: string[];
   leadStages: { value: string; label: string; group: string }[];
+  b2bNames: string[];
   // Lists
   countries: { name: string; universities: string[] }[];
   services: string[];
@@ -79,7 +80,7 @@ const AppSettingsSchema = new Schema<IAppSettings>(
     },
     leadStageGroups: {
       type: [String],
-      default: ["Application", "Offer", "GTE", "COE", "Visa"],
+      default: ["Application", "Offer", "GS", "COE", "Visa"],
     },
     leadStages: {
       type: [{ value: { type: String }, label: { type: String }, group: { type: String } }],
@@ -92,11 +93,11 @@ const AppSettingsSchema = new Schema<IAppSettings>(
         { value: "document_sent", label: "Document Sent", group: "Offer" },
         { value: "conditional_offer_received", label: "Conditional Offer Received", group: "Offer" },
         { value: "unconditional_offer_received", label: "Unconditional Offer Received", group: "Offer" },
-        { value: "gte_applied", label: "GTE Applied", group: "GTE" },
-        { value: "gte_additional_doc_requested", label: "GTE Additional Doc Requested", group: "GTE" },
-        { value: "gte_additional_doc_sent", label: "GTE Additional Doc Sent", group: "GTE" },
-        { value: "gte_approved", label: "GTE Approved", group: "GTE" },
-        { value: "gte_rejected", label: "GTE Rejected", group: "GTE" },
+        { value: "gs_applied", label: "GS Applied", group: "GS" },
+        { value: "gs_additional_doc_requested", label: "GS Additional Doc Requested", group: "GS" },
+        { value: "gs_additional_doc_sent", label: "GS Additional Doc Sent", group: "GS" },
+        { value: "gs_approved", label: "GS Approved", group: "GS" },
+        { value: "gs_rejected", label: "GS Rejected", group: "GS" },
         { value: "coe_applied", label: "COE Applied", group: "COE" },
         { value: "coe_additional_doc_requested", label: "COE Additional Doc Requested", group: "COE" },
         { value: "coe_additional_doc_sent", label: "COE Additional Doc Sent", group: "COE" },
@@ -107,6 +108,11 @@ const AppSettingsSchema = new Schema<IAppSettings>(
         { value: "visa_invalid", label: "Visa Invalid", group: "Visa" },
         { value: "visa_withdrawn", label: "Visa Withdrawn", group: "Visa" },
       ],
+    },
+    // B2B Names
+    b2bNames: {
+      type: [String],
+      default: [],
     },
     // Lists
     countries: {

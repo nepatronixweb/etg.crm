@@ -28,6 +28,7 @@ interface AppSettings {
   fdStatuses: string[];
   leadStageGroups: string[];
   leadStages: { value: string; label: string; group: string }[];
+  b2bNames: string[];
   countries: { name: string; universities: string[] }[];
   services: string[];
   enabledModules: string[];
@@ -92,7 +93,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     "Phone Counselling","Qualified Lead","Registered/Completed",
     "Interested","Closed Lost",
   ],
-  leadStageGroups: ["Application", "Offer", "GTE", "COE", "Visa"],
+  leadStageGroups: ["Application", "Offer", "GS", "COE", "Visa"],
   leadStages: [
     { value: "document_pending", label: "Document Pending", group: "Application" },
     { value: "document_submitted", label: "Document Submitted", group: "Application" },
@@ -102,11 +103,11 @@ const DEFAULT_SETTINGS: AppSettings = {
     { value: "document_sent", label: "Document Sent", group: "Offer" },
     { value: "conditional_offer_received", label: "Conditional Offer Received", group: "Offer" },
     { value: "unconditional_offer_received", label: "Unconditional Offer Received", group: "Offer" },
-    { value: "gte_applied", label: "GTE Applied", group: "GTE" },
-    { value: "gte_additional_doc_requested", label: "GTE Additional Doc Requested", group: "GTE" },
-    { value: "gte_additional_doc_sent", label: "GTE Additional Doc Sent", group: "GTE" },
-    { value: "gte_approved", label: "GTE Approved", group: "GTE" },
-    { value: "gte_rejected", label: "GTE Rejected", group: "GTE" },
+    { value: "gs_applied", label: "GS Applied", group: "GS" },
+    { value: "gs_additional_doc_requested", label: "GS Additional Doc Requested", group: "GS" },
+    { value: "gs_additional_doc_sent", label: "GS Additional Doc Sent", group: "GS" },
+    { value: "gs_approved", label: "GS Approved", group: "GS" },
+    { value: "gs_rejected", label: "GS Rejected", group: "GS" },
     { value: "coe_applied", label: "COE Applied", group: "COE" },
     { value: "coe_additional_doc_requested", label: "COE Additional Doc Requested", group: "COE" },
     { value: "coe_additional_doc_sent", label: "COE Additional Doc Sent", group: "COE" },
@@ -117,6 +118,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     { value: "visa_invalid", label: "Visa Invalid", group: "Visa" },
     { value: "visa_withdrawn", label: "Visa Withdrawn", group: "Visa" },
   ],
+  b2bNames: [],
   countries: [
     { name: "Australia", universities: ["University of Melbourne","Australian National University","University of Sydney","Monash University","University of New South Wales"] },
     { name: "Canada", universities: ["University of Toronto","University of British Columbia","McGill University","University of Alberta","McMaster University"] },
@@ -817,6 +819,54 @@ export default function SettingsPage() {
             </div>
           </SectionCard>
 
+          {/* ── B2B Agent Names ── */}
+          <SectionCard title="B2B Agent Names" description="Pre-defined B2B agent/sub-agent names. These will appear as autocomplete suggestions when adding admission details.">
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2 p-3 bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200 rounded-xl min-h-[48px] max-h-52 overflow-y-auto">
+                {settings.b2bNames.map((item) => (
+                  <span key={item} className="group inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all">
+                    <span className="w-2 h-2 rounded-full bg-teal-400" />
+                    {item}
+                    <button type="button" onClick={() => set("b2bNames", settings.b2bNames.filter(i => i !== item))}
+                      className="ml-0.5 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+                {settings.b2bNames.length === 0 && <span className="text-xs text-gray-400 self-center">No B2B names defined</span>}
+              </div>
+              <div className="flex gap-2">
+                <input id="b2bNameInput"
+                  placeholder="e.g. ABC Education, XYZ Consultancy"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const val = (e.target as HTMLInputElement).value.trim();
+                      if (val && !settings.b2bNames.includes(val)) {
+                        set("b2bNames", [...settings.b2bNames, val]);
+                        (e.target as HTMLInputElement).value = "";
+                      }
+                    }
+                  }}
+                  className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder-gray-400"
+                />
+                <button type="button" onClick={() => {
+                  const input = document.getElementById("b2bNameInput") as HTMLInputElement;
+                  const val = input.value.trim();
+                  if (val && !settings.b2bNames.includes(val)) {
+                    set("b2bNames", [...settings.b2bNames, val]);
+                    input.value = "";
+                  }
+                }} className="px-4 py-2.5 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm">
+                  <Plus size={13} /> Add
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-400 flex items-center gap-1">
+                <Zap size={10} /> {settings.b2bNames.length} names configured. These appear as suggestions in the B2B Name field on admission details.
+              </p>
+            </div>
+          </SectionCard>
+
           {/* ── Pipeline Stages ── */}
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
             <div className="px-6 py-5 border-b border-gray-100 bg-gradient-to-r from-white to-gray-50">
@@ -840,14 +890,14 @@ export default function SettingsPage() {
                 const groupColors: Record<string, string> = {
                   Application: "border-amber-200 bg-amber-50",
                   Offer: "border-blue-200 bg-blue-50",
-                  GTE: "border-purple-200 bg-purple-50",
+                  GS: "border-purple-200 bg-purple-50",
                   COE: "border-emerald-200 bg-emerald-50",
                   Visa: "border-teal-200 bg-teal-50",
                 };
                 const dotColors: Record<string, string> = {
                   Application: "bg-amber-400",
                   Offer: "bg-blue-400",
-                  GTE: "bg-purple-400",
+                  GS: "bg-purple-400",
                   COE: "bg-emerald-400",
                   Visa: "bg-teal-400",
                 };

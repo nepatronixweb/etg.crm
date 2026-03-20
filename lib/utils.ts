@@ -89,12 +89,12 @@ export const LEAD_STAGES: { value: string; label: string; color: string }[] = [
   { value: "document_sent",                label: "Document Sent",                   color: "bg-sky-200 text-sky-800" },
   { value: "conditional_offer_received",   label: "Conditional Offer Received",      color: "bg-cyan-100 text-cyan-700" },
   { value: "unconditional_offer_received", label: "Unconditional Offer Received",    color: "bg-cyan-200 text-cyan-800" },
-  // GTE
-  { value: "gte_applied",                  label: "GTE Applied",                     color: "bg-purple-50 text-purple-700" },
-  { value: "gte_additional_doc_requested", label: "GTE Additional Doc Requested",    color: "bg-purple-100 text-purple-700" },
-  { value: "gte_additional_doc_sent",      label: "GTE Additional Doc Sent",         color: "bg-purple-200 text-purple-800" },
-  { value: "gte_approved",                 label: "GTE Approved",                    color: "bg-violet-100 text-violet-700" },
-  { value: "gte_rejected",                 label: "GTE Rejected",                    color: "bg-red-100 text-red-700" },
+  // GS
+  { value: "gs_applied",                   label: "GS Applied",                      color: "bg-purple-50 text-purple-700" },
+  { value: "gs_additional_doc_requested",  label: "GS Additional Doc Requested",     color: "bg-purple-100 text-purple-700" },
+  { value: "gs_additional_doc_sent",       label: "GS Additional Doc Sent",          color: "bg-purple-200 text-purple-800" },
+  { value: "gs_approved",                  label: "GS Approved",                     color: "bg-violet-100 text-violet-700" },
+  { value: "gs_rejected",                  label: "GS Rejected",                     color: "bg-red-100 text-red-700" },
   // COE
   { value: "coe_applied",                  label: "COE Applied",                     color: "bg-emerald-50 text-emerald-700" },
   { value: "coe_additional_doc_requested", label: "COE Additional Doc Requested",    color: "bg-emerald-100 text-emerald-700" },
@@ -147,7 +147,7 @@ export function getLeadStageColor(value: string): string {
 export const LEAD_STAGE_GROUPS: { label: string; dot: string; stages: string[] }[] = [
   { label: "Application", dot: "bg-amber-400", stages: ["document_pending", "document_submitted"] },
   { label: "Offer",  dot: "bg-blue-400",    stages: ["offer_applied", "acknowledge", "document_requested", "document_sent", "conditional_offer_received", "unconditional_offer_received"] },
-  { label: "GTE",    dot: "bg-purple-400",  stages: ["gte_applied", "gte_additional_doc_requested", "gte_additional_doc_sent", "gte_approved", "gte_rejected"] },
+  { label: "GS",     dot: "bg-purple-400",  stages: ["gs_applied", "gs_additional_doc_requested", "gs_additional_doc_sent", "gs_approved", "gs_rejected"] },
   { label: "COE",    dot: "bg-emerald-400", stages: ["coe_applied", "coe_additional_doc_requested", "coe_additional_doc_sent", "coe_received"] },
   { label: "Visa",   dot: "bg-teal-400",    stages: ["visa_applied", "visa_grant", "visa_reject", "visa_invalid", "visa_withdrawn"] },
 ];

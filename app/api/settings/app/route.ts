@@ -33,6 +33,7 @@ export async function PUT(req: NextRequest) {
       companyName, shortCode, tagline, faviconPath, brandColor,
       address, phone, email, website,
       leadStatuses, leadSources, leadStandings, fdStatuses, leadStageGroups, leadStages,
+      b2bNames,
       countries, services,
       enabledModules,
       smtpHost, smtpPort, smtpUser, smtpPass, emailFromName,
@@ -58,6 +59,7 @@ export async function PUT(req: NextRequest) {
     if (fdStatuses    !== undefined) settings.fdStatuses    = fdStatuses;
     if (leadStageGroups !== undefined) settings.leadStageGroups = leadStageGroups;
     if (leadStages    !== undefined) settings.leadStages    = leadStages;
+    if (b2bNames      !== undefined) settings.b2bNames      = b2bNames;
     if (countries     !== undefined) settings.countries     = countries;
     if (services      !== undefined) settings.services      = services;
     if (enabledModules !== undefined) settings.enabledModules = enabledModules;

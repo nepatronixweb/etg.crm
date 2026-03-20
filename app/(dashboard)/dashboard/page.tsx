@@ -736,9 +736,9 @@ export default function DashboardPage() {
             const offerApplied = counsellorStudents.filter((student) => student.stage === "offer_applied").length;
             const conditionalOffers = counsellorStudents.filter((student) => student.stage === "conditional_offer_received").length;
             const unconditionalOffers = counsellorStudents.filter((student) => student.stage === "unconditional_offer_received").length;
-            const gsApplied = counsellorStudents.filter((student) => student.stage === "gte_applied").length;
-            const gsApproved = counsellorStudents.filter((student) => student.stage === "gte_approved").length;
-            const gsRejected = counsellorStudents.filter((student) => student.stage === "gte_rejected").length;
+            const gsApplied = counsellorStudents.filter((student) => student.stage === "gs_applied").length;
+            const gsApproved = counsellorStudents.filter((student) => student.stage === "gs_approved").length;
+            const gsRejected = counsellorStudents.filter((student) => student.stage === "gs_rejected").length;
             const coeApplied = counsellorStudents.filter((student) => student.stage === "coe_applied").length;
             const coeReceived = counsellorStudents.filter((student) => student.stage === "coe_received").length;
             const visaApplied = counsellorStudents.filter((student) => student.stage === "visa_applied").length;
@@ -762,7 +762,7 @@ export default function DashboardPage() {
               { label: "Offer Applied", value: offerApplied, sub: "Offer submissions", color: "bg-blue-50 border border-blue-100", text: "text-blue-700", subText: "text-blue-600/80" },
               { label: "Unconditional", value: unconditionalOffers, sub: "Unconditional offers", color: "bg-cyan-100 border border-cyan-200", text: "text-cyan-800", subText: "text-cyan-700/80" },
               { label: "Conditional", value: conditionalOffers, sub: "Conditional offers", color: "bg-cyan-50 border border-cyan-100", text: "text-cyan-700", subText: "text-cyan-600/80" },
-              { label: "GS Applied", value: gsApplied, sub: "GS/GTE submitted", color: "bg-purple-50 border border-purple-100", text: "text-purple-700", subText: "text-purple-600/80" },
+              { label: "GS Applied", value: gsApplied, sub: "GS submitted", color: "bg-purple-50 border border-purple-100", text: "text-purple-700", subText: "text-purple-600/80" },
               { label: "Approved", value: gsApproved, sub: "GS approved", color: "bg-violet-100 border border-violet-200", text: "text-violet-800", subText: "text-violet-700/80" },
               { label: "GS Reject", value: gsRejected, sub: "GS rejected", color: "bg-red-50 border border-red-100", text: "text-red-700", subText: "text-red-600/80" },
               { label: "COE Applied", value: coeApplied, sub: "COE submissions", color: "bg-emerald-50 border border-emerald-100", text: "text-emerald-700", subText: "text-emerald-600/80" },
@@ -1091,13 +1091,13 @@ export default function DashboardPage() {
                 })}
               </div>
 
-              {/* Second Row: GTE & COE */}
+              {/* Second Row: GS & COE */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {[
                   {
                     label: "GS Applied",
                     value: admissionStats.gteApplied,
-                    sub: "GTE/GS applications",
+                    sub: "GS applications",
                     icon: FileInput,
                     color: "text-purple-600",
                     bg: "bg-purple-50 border-purple-100",
@@ -1106,7 +1106,7 @@ export default function DashboardPage() {
                   {
                     label: "GS Approved",
                     value: admissionStats.gteApproved,
-                    sub: "GTE/GS approved",
+                    sub: "GS approved",
                     icon: ShieldCheck,
                     color: "text-violet-600",
                     bg: "bg-violet-50 border-violet-100",

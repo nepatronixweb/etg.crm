@@ -29,6 +29,8 @@ const AdmissionDetailSchema = new Schema(
     annualTuitionFee: { type: String, default: "" },
     standing: { type: String, enum: ["warm", "heated", "cold", "missed", ""], default: "" },
     closed: { type: Boolean, default: false },
+    b2bAgentType: { type: String, enum: ["Agent", "Sub-Agent", ""], default: "" },
+    b2bName: { type: String, default: "" },
     courses: [CourseSchema],
   },
   { timestamps: true }

@@ -28,8 +28,8 @@ export async function GET() {
       Student.countDocuments({ ...enrolledFilter, stage: "offer_applied" }),
       Student.countDocuments({ ...enrolledFilter, stage: "conditional_offer_received" }),
       Student.countDocuments({ ...enrolledFilter, stage: "unconditional_offer_received" }),
-      Student.countDocuments({ ...enrolledFilter, stage: "gte_applied" }),
-      Student.countDocuments({ ...enrolledFilter, stage: "gte_approved" }),
+      Student.countDocuments({ ...enrolledFilter, stage: "gs_applied" }),
+      Student.countDocuments({ ...enrolledFilter, stage: "gs_approved" }),
       Student.countDocuments({ ...enrolledFilter, stage: "coe_applied" }),
       Student.countDocuments({ ...enrolledFilter, stage: "coe_received" }),
       Student.find({ ...enrolledFilter, "notes.0": { $exists: true } })

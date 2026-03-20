@@ -34,6 +34,8 @@ export default function StudentsPage() {
   const [filterService, setFilterService] = useState("");
   const [filterCounsellor, setFilterCounsellor] = useState("");
   const [filterLeadStage, setFilterLeadStage] = useState("");
+  const [appLeadStages, setAppLeadStages] = useState(LEAD_STAGES);
+  const [appStageGroups, setAppStageGroups] = useState(LEAD_STAGE_GROUPS);
   const [showModal, setShowModal] = useState(false);
   const [branches, setBranches] = useState<{ _id: string; name: string }[]>([]);
   const [counsellors, setCounsellors] = useState<{ _id: string; name: string }[]>([]);
@@ -69,6 +71,25 @@ export default function StudentsPage() {
     fetch("/api/users").then((r) => r.json()).then((u) =>
       setCounsellors(Array.isArray(u) ? u.filter((x: { role: string }) => x.role === "counsellor") : [])
     );
+    fetch("/api/settings/app").then((r) => r.json()).then((d) => {
+      if (d?.leadStages?.length) {
+        setAppLeadStages(d.leadStages.map((s: { value: string; label: string; group: string }) => {
+          const existing = LEAD_STAGES.find(ls => ls.value === s.value);
+          return { value: s.value, label: s.label, color: existing?.color || "bg-gray-100 text-gray-700" };
+        }));
+      }
+      if (d?.leadStageGroups?.length && d?.leadStages?.length) {
+        const groupDots: Record<string, string> = {
+          Application: "bg-amber-400", Offer: "bg-blue-400", GS: "bg-purple-400",
+          COE: "bg-emerald-400", Visa: "bg-teal-400",
+        };
+        setAppStageGroups(d.leadStageGroups.map((g: string) => ({
+          label: g,
+          dot: groupDots[g] || "bg-gray-400",
+          stages: d.leadStages.filter((s: { group: string }) => s.group === g).map((s: { value: string }) => s.value),
+        })));
+      }
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -321,7 +342,7 @@ export default function StudentsPage() {
       const counsellor = (s.counsellor as unknown as { name?: string } | undefined)?.name ?? "";
       const br = (s.branch as unknown as { name?: string } | undefined)?.name ?? "";
       const ext = s as unknown as Record<string, string | undefined>;
-      const stageLabel = LEAD_STAGES.find((st) => st.value === ext.stage)?.label ?? ext.stage ?? "";
+      const stageLabel = appLeadStages.find((st) => st.value === ext.stage)?.label ?? ext.stage ?? "";
       return [
         `${branding.shortCode}-${s._id.slice(-4).toUpperCase()}`,
         s.name, s.phone, s.email,
@@ -460,7 +481,7 @@ export default function StudentsPage() {
             <select value={filterLeadStage} onChange={(e) => setFilterLeadStage(e.target.value)}
               className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8">
               <option value="">All Stages</option>
-              {LEAD_STAGES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              {appLeadStages.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
             <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
@@ -486,7 +507,7 @@ export default function StudentsPage() {
             {filterSource && <span className="flex items-center gap-1 text-xs bg-purple-50 text-purple-700 border border-purple-100 px-2.5 py-0.5 rounded-full font-medium capitalize">{filterSource.replace(/_/g, " ")}<button onClick={() => setFilterSource("")}><X size={10} /></button></span>}
             {filterService && <span className="flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-0.5 rounded-full font-medium">{filterService}<button onClick={() => setFilterService("")}><X size={10} /></button></span>}
             {filterCounsellor && <span className="flex items-center gap-1 text-xs bg-amber-50 text-amber-700 border border-amber-100 px-2.5 py-0.5 rounded-full font-medium">{counsellors.find((c) => c._id === filterCounsellor)?.name ?? "Counsellor"}<button onClick={() => setFilterCounsellor("")}><X size={10} /></button></span>}
-            {filterLeadStage && <span className={`flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-medium ${getLeadStageColor(filterLeadStage)}`}>{LEAD_STAGES.find((s) => s.value === filterLeadStage)?.label ?? filterLeadStage}<button onClick={() => setFilterLeadStage("")}><X size={10} /></button></span>}
+            {filterLeadStage && <span className={`flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-medium ${getLeadStageColor(filterLeadStage)}`}>{appLeadStages.find((s) => s.value === filterLeadStage)?.label ?? filterLeadStage}<button onClick={() => setFilterLeadStage("")}><X size={10} /></button></span>}
             <button onClick={() => { setFilterStage(""); setFilterSource(""); setFilterService(""); setFilterCounsellor(""); setFilterLeadStage(""); }} className="ml-auto text-xs text-red-500 hover:text-red-700 font-semibold flex items-center gap-1"><X size={11} /> Clear all</button>
           </div>
         )}
@@ -622,7 +643,7 @@ export default function StudentsPage() {
                       <td className="px-2.5 py-2 min-w-40">
                         {(() => {
                           const crmStage = (student as unknown as { stage?: string }).stage;
-                          const stageInfo = LEAD_STAGES.find((s) => s.value === crmStage);
+                          const stageInfo = appLeadStages.find((s) => s.value === crmStage);
                           const dotColor = crmStage ? getLeadStageDotColor(crmStage) : "";
                           return (
                             <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
@@ -892,9 +913,9 @@ export default function StudentsPage() {
         const dropStudent = students.find((s) => s._id === crmStageDropdownId);
         if (!dropStudent) return null;
         const dropCrmStage = (dropStudent as unknown as { stage?: string }).stage;
-        const dropStageInfo = LEAD_STAGES.find((s) => s.value === dropCrmStage);
+        const dropStageInfo = appLeadStages.find((s) => s.value === dropCrmStage);
         const searched = crmStageSearch.trim().toLowerCase();
-        const filteredStages = searched ? LEAD_STAGES.filter((s) => s.label.toLowerCase().includes(searched)) : null;
+        const filteredStages = searched ? appLeadStages.filter((s) => s.label.toLowerCase().includes(searched)) : null;
         return createPortal(
           <div
             ref={crmStagePanelRef}
@@ -938,8 +959,8 @@ export default function StudentsPage() {
                       );
                     })
               ) : (
-                LEAD_STAGE_GROUPS.map((group) => {
-                  const groupStages = LEAD_STAGES.filter((s) => group.stages.includes(s.value));
+                appStageGroups.map((group) => {
+                  const groupStages = appLeadStages.filter((s) => group.stages.includes(s.value));
                   return (
                     <div key={group.label}>
                       <div className="px-3.5 pt-3 pb-1 flex items-center gap-2">

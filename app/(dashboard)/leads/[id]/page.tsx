@@ -117,7 +117,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
       }
       if (d?.leadStageGroups?.length && d?.leadStages?.length) {
         const groupDots: Record<string, string> = {
-          Application: "bg-amber-400", Offer: "bg-blue-400", GTE: "bg-purple-400",
+          Application: "bg-amber-400", Offer: "bg-blue-400", GS: "bg-purple-400",
           COE: "bg-emerald-400", Visa: "bg-teal-400",
         };
         setAppStageGroups(d.leadStageGroups.map((g: string) => ({

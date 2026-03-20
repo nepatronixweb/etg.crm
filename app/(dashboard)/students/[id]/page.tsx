@@ -40,6 +40,8 @@ interface AdmissionDetail {
   annualTuitionFee: string;
   standing: string;
   closed?: boolean;
+  b2bAgentType?: string;
+  b2bName?: string;
   courses: AdmissionCourse[];
   createdAt: string;
 }
@@ -87,6 +89,8 @@ const EMPTY_ADMISSION_FORM = {
   location: "",
   annualTuitionFee: "",
   standing: "",
+  b2bAgentType: "",
+  b2bName: "",
   courses: [{ ...EMPTY_COURSE }],
 };
 
@@ -109,6 +113,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   const [editingAdmission, setEditingAdmission] = useState<number | null>(null);
   const [editAdmissionForm, setEditAdmissionForm] = useState(EMPTY_ADMISSION_FORM);
   const [appCountries, setAppCountries] = useState<string[]>(DEFAULT_COUNTRIES);
+  const [b2bNames, setB2bNames] = useState<string[]>([]);
 
   const fetchData = async () => {
     const [studentRes, docsRes] = await Promise.all([
@@ -133,6 +138,9 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     fetch("/api/settings/app").then(r => r.json()).then(d => {
       if (d?.countries?.length) {
         setAppCountries(d.countries.map((c: string | { name: string }) => typeof c === "string" ? c : c.name));
+      }
+      if (d?.b2bNames?.length) {
+        setB2bNames(d.b2bNames);
       }
     }).catch(() => {});
   }, []);
@@ -538,6 +546,33 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                           className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">B2B Agent</label>
+                        <select
+                          value={admissionForm.b2bAgentType}
+                          onChange={(e) => setAdmissionForm((form) => ({ ...form, b2bAgentType: e.target.value }))}
+                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        >
+                          <option value="">Select type</option>
+                          <option value="Agent">Agent</option>
+                          <option value="Sub-Agent">Sub-Agent</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">B2B Name</label>
+                        <input
+                          list="b2bNamesList"
+                          value={admissionForm.b2bName}
+                          onChange={(e) => setAdmissionForm((form) => ({ ...form, b2bName: e.target.value }))}
+                          placeholder="Type or select a B2B name"
+                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <datalist id="b2bNamesList">
+                          {b2bNames.map((name) => (
+                            <option key={name} value={name} />
+                          ))}
+                        </datalist>
+                      </div>
                     </div>
 
                     <div className="border-t border-gray-100 pt-5">
@@ -703,6 +738,33 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
                           </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">B2B Agent</label>
+                            <select
+                              value={editAdmissionForm.b2bAgentType}
+                              onChange={(e) => setEditAdmissionForm((form) => ({ ...form, b2bAgentType: e.target.value }))}
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                            >
+                              <option value="">Select type</option>
+                              <option value="Agent">Agent</option>
+                              <option value="Sub-Agent">Sub-Agent</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">B2B Name</label>
+                            <input
+                              list="b2bNamesListEdit"
+                              value={editAdmissionForm.b2bName}
+                              onChange={(e) => setEditAdmissionForm((form) => ({ ...form, b2bName: e.target.value }))}
+                              placeholder="Type or select a B2B name"
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <datalist id="b2bNamesListEdit">
+                              {b2bNames.map((name) => (
+                                <option key={name} value={name} />
+                              ))}
+                            </datalist>
+                          </div>
                         </div>
 
                         <div className="border-t border-gray-300 pt-3 mt-3">
@@ -836,6 +898,18 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                   </span>
                                 )}
                               </div>
+                              {(entry.b2bAgentType || entry.b2bName) && (
+                                <div className="flex items-center gap-3 flex-wrap">
+                                  {entry.b2bAgentType && (
+                                    <span className="px-2.5 py-0.5 bg-teal-50 text-teal-700 text-xs font-semibold rounded-full border border-teal-200">
+                                      {entry.b2bAgentType}
+                                    </span>
+                                  )}
+                                  {entry.b2bName && (
+                                    <span className="text-sm text-gray-700 font-medium">{entry.b2bName}</span>
+                                  )}
+                                </div>
+                              )}
                               {entry.courses && entry.courses.length > 0 && (
                                 <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
                                   {entry.courses.map((course, courseIndex) => (
@@ -876,6 +950,8 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                       location: entry.location || "",
                                       annualTuitionFee: entry.annualTuitionFee || "",
                                       standing: entry.standing || "",
+                                      b2bAgentType: entry.b2bAgentType || "",
+                                      b2bName: entry.b2bName || "",
                                       courses: entry.courses?.length ? entry.courses.map((course) => ({ ...course })) : [{ ...EMPTY_COURSE }],
                                     });
                                   }}
