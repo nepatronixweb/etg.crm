@@ -34,6 +34,9 @@ export default function StudentsPage() {
   const [filterService, setFilterService] = useState("");
   const [filterCounsellor, setFilterCounsellor] = useState("");
   const [filterLeadStage, setFilterLeadStage] = useState("");
+  const [filterIntake, setFilterIntake] = useState("");
+  const [filterUniversity, setFilterUniversity] = useState("");
+  const [allUniversities, setAllUniversities] = useState<string[]>([]);
   const [appLeadStages, setAppLeadStages] = useState(LEAD_STAGES);
   const [appStageGroups, setAppStageGroups] = useState(LEAD_STAGE_GROUPS);
   const [appRemarkOptions, setAppRemarkOptions] = useState<string[]>([]);
@@ -92,6 +95,14 @@ export default function StudentsPage() {
       }
       if (Array.isArray(d?.remarkOptions) && d.remarkOptions.length > 0) {
         setAppRemarkOptions(d.remarkOptions);
+      }
+      // Collect all universities from all countries (deduplicated)
+      if (Array.isArray(d?.countries)) {
+        const unis: string[] = [];
+        for (const c of d.countries) {
+          if (Array.isArray(c.universities)) unis.push(...c.universities);
+        }
+        setAllUniversities([...new Set(unis)].sort());
       }
     }).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -357,10 +368,18 @@ export default function StudentsPage() {
     const matchesService = !filterService || (s as unknown as { interestedService?: string }).interestedService === filterService;
     const matchesCounsellor = !filterCounsellor || (s.counsellor as unknown as { _id: string } | undefined)?._id === filterCounsellor;
     const matchesLeadStage = !filterLeadStage || (s as unknown as { stage?: string }).stage === filterLeadStage;
-    return matchesSearch && matchesStage && matchesSource && matchesService && matchesCounsellor && matchesLeadStage;
+    // Intake: match against admissionDetails courses intakeQuarter
+    const matchesIntake = !filterIntake || s.admissionDetails?.some((ad) =>
+      ad.courses?.some((c) => c.intakeQuarter === filterIntake)
+    ) || false;
+    // University: match against admissionDetails universityName
+    const matchesUniversity = !filterUniversity || s.admissionDetails?.some((ad) =>
+      ad.universityName === filterUniversity
+    ) || false;
+    return matchesSearch && matchesStage && matchesSource && matchesService && matchesCounsellor && matchesLeadStage && matchesIntake && matchesUniversity;
   });
 
-  const activeFilterCount = [filterStage, filterSource, filterService, filterCounsellor, filterLeadStage].filter(Boolean).length;
+  const activeFilterCount = [filterStage, filterSource, filterService, filterCounsellor, filterLeadStage, filterIntake, filterUniversity].filter(Boolean).length;
 
   // ── Export filtered students to Excel (CSV) ──
   const exportToExcel = () => {
@@ -522,6 +541,30 @@ export default function StudentsPage() {
             <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
 
+          {/* Intake */}
+          <div className="flex-1 min-w-32 relative">
+            <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Intake</label>
+            <select value={filterIntake} onChange={(e) => setFilterIntake(e.target.value)}
+              className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8">
+              <option value="">All Intakes</option>
+              {["Q1", "Q2", "Q3", "Q4"].map((q) => <option key={q} value={q}>{q}</option>)}
+            </select>
+            <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+
+          {/* University */}
+          {allUniversities.length > 0 && (
+            <div className="flex-1 min-w-44 relative">
+              <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">University</label>
+              <select value={filterUniversity} onChange={(e) => setFilterUniversity(e.target.value)}
+                className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8">
+                <option value="">All Universities</option>
+                {allUniversities.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            </div>
+          )}
+
           {/* Search */}
           <div className="flex-2 min-w-52 relative">
             <label className="absolute left-10 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Search</label>
@@ -544,7 +587,9 @@ export default function StudentsPage() {
             {filterService && <span className="flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-0.5 rounded-full font-medium">{filterService}<button onClick={() => setFilterService("")}><X size={10} /></button></span>}
             {filterCounsellor && <span className="flex items-center gap-1 text-xs bg-amber-50 text-amber-700 border border-amber-100 px-2.5 py-0.5 rounded-full font-medium">{counsellors.find((c) => c._id === filterCounsellor)?.name ?? "Counsellor"}<button onClick={() => setFilterCounsellor("")}><X size={10} /></button></span>}
             {filterLeadStage && <span className={`flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-medium ${getLeadStageColor(filterLeadStage)}`}>{appLeadStages.find((s) => s.value === filterLeadStage)?.label ?? filterLeadStage}<button onClick={() => setFilterLeadStage("")}><X size={10} /></button></span>}
-            <button onClick={() => { setFilterStage(""); setFilterSource(""); setFilterService(""); setFilterCounsellor(""); setFilterLeadStage(""); }} className="ml-auto text-xs text-red-500 hover:text-red-700 font-semibold flex items-center gap-1"><X size={11} /> Clear all</button>
+            {filterIntake && <span className="flex items-center gap-1 text-xs bg-sky-50 text-sky-700 border border-sky-100 px-2.5 py-0.5 rounded-full font-medium">{filterIntake}<button onClick={() => setFilterIntake("")}><X size={10} /></button></span>}
+            {filterUniversity && <span className="flex items-center gap-1 text-xs bg-rose-50 text-rose-700 border border-rose-100 px-2.5 py-0.5 rounded-full font-medium max-w-48 truncate">{filterUniversity}<button onClick={() => setFilterUniversity("")}><X size={10} /></button></span>}
+            <button onClick={() => { setFilterStage(""); setFilterSource(""); setFilterService(""); setFilterCounsellor(""); setFilterLeadStage(""); setFilterIntake(""); setFilterUniversity(""); }} className="ml-auto text-xs text-red-500 hover:text-red-700 font-semibold flex items-center gap-1"><X size={11} /> Clear all</button>
           </div>
         )}
       </div>

@@ -37,7 +37,17 @@ export async function GET(req: NextRequest) {
     const students = await Student.find(filter)
       .populate("branch", "name")
       .populate("counsellor", "name email")
-      .populate("lead", "source")
+      .populate("lead", [
+        "source", "interestedService", "interestedCountry", "interestedCountries",
+        "parentName", "parentPhone1", "parentPhone2",
+        "academicScore", "academicInstitution",
+        "temporaryAddress", "permanentAddress",
+        "examType", "examScore", "examJoinDate", "examStartDate", "examEndDate",
+        "examPaymentMethod", "examEstimatedDate",
+        "gender", "maritalStatus", "nationality", "passportNumber", "visaExpiryDate",
+        "senderName", "academicYear", "applyLevel", "course", "intakeYear", "intakeQuarter",
+        "comments",
+      ].join(" "))
       .sort({ createdAt: -1 });
 
     return NextResponse.json(students);
