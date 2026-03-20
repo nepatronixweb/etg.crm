@@ -115,8 +115,10 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   const [appCountries, setAppCountries] = useState<string[]>(DEFAULT_COUNTRIES);
   const [countryUniversities, setCountryUniversities] = useState<Record<string, string[]>>({});
   const [b2bNames, setB2bNames] = useState<string[]>([]);
+  const [appCourses, setAppCourses] = useState<string[]>([]);
   const [b2bDropdownOpen, setB2bDropdownOpen] = useState<"new" | "edit" | null>(null);
   const [uniDropdownOpen, setUniDropdownOpen] = useState<"new" | "edit" | null>(null);
+  const [courseDropdownOpen, setCourseDropdownOpen] = useState<"new" | "edit" | null>(null);
 
   const fetchData = async () => {
     const [studentRes, docsRes] = await Promise.all([
@@ -151,6 +153,9 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
       }
       if (d?.b2bNames?.length) {
         setB2bNames(d.b2bNames);
+      }
+      if (d?.courses?.length) {
+        setAppCourses(d.courses);
       }
     }).catch(() => {});
   }, []);
@@ -652,7 +657,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                               </div>
                             )}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                              <div className="sm:col-span-2">
+                              <div className="sm:col-span-2 relative">
                                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Course Name *</label>
                                 <input
                                   value={course.name}
@@ -661,9 +666,30 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                     updated[index] = { ...updated[index], name: e.target.value };
                                     setAdmissionForm((form) => ({ ...form, courses: updated }));
                                   }}
-                                  placeholder="e.g. Bachelor of Engineering"
+                                  onFocus={() => setCourseDropdownOpen("new")}
+                                  onBlur={() => setTimeout(() => setCourseDropdownOpen(null), 150)}
+                                  placeholder="e.g. Bachelor of IT"
                                   className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  autoComplete="off"
                                 />
+                                {courseDropdownOpen === "new" && appCourses.filter((c) => c.toLowerCase().includes(course.name.toLowerCase())).length > 0 && (
+                                  <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                                    {appCourses.filter((c) => c.toLowerCase().includes(course.name.toLowerCase())).map((courseName) => (
+                                      <li
+                                        key={courseName}
+                                        onMouseDown={() => {
+                                          const updated = [...admissionForm.courses];
+                                          updated[index] = { ...updated[index], name: courseName };
+                                          setAdmissionForm((form) => ({ ...form, courses: updated }));
+                                          setCourseDropdownOpen(null);
+                                        }}
+                                        className="px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer"
+                                      >
+                                        {courseName}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
                               </div>
                               <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Intake Quarter</label>
@@ -866,7 +892,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                             {editAdmissionForm.courses.map((course, courseIndex) => (
                               <div key={courseIndex} className="bg-white rounded-lg border border-gray-200 p-3 space-y-2">
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                  <div>
+                                  <div className="relative">
                                     <label className="block text-xs font-semibold text-gray-600 mb-1">Course Name *</label>
                                     <input
                                       value={course.name}
@@ -875,8 +901,30 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                         updated[courseIndex] = { ...updated[courseIndex], name: e.target.value };
                                         setEditAdmissionForm((form) => ({ ...form, courses: updated }));
                                       }}
+                                      onFocus={() => setCourseDropdownOpen("edit")}
+                                      onBlur={() => setTimeout(() => setCourseDropdownOpen(null), 150)}
+                                      placeholder="Select or type course"
                                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                      autoComplete="off"
                                     />
+                                    {courseDropdownOpen === "edit" && appCourses.filter((c) => c.toLowerCase().includes(course.name.toLowerCase())).length > 0 && (
+                                      <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-32 overflow-y-auto">
+                                        {appCourses.filter((c) => c.toLowerCase().includes(course.name.toLowerCase())).map((courseName) => (
+                                          <li
+                                            key={courseName}
+                                            onMouseDown={() => {
+                                              const updated = [...editAdmissionForm.courses];
+                                              updated[courseIndex] = { ...updated[courseIndex], name: courseName };
+                                              setEditAdmissionForm((form) => ({ ...form, courses: updated }));
+                                              setCourseDropdownOpen(null);
+                                            }}
+                                            className="px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer"
+                                          >
+                                            {courseName}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    )}
                                   </div>
                                   <div>
                                     <label className="block text-xs font-semibold text-gray-600 mb-1">Intake Quarter</label>

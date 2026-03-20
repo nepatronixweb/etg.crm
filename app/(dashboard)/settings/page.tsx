@@ -30,6 +30,7 @@ interface AppSettings {
   leadStages: { value: string; label: string; group: string }[];
   b2bNames: string[];
   remarkOptions: string[];
+  courses: string[];
   countries: { name: string; universities: string[] }[];
   services: string[];
   enabledModules: string[];
@@ -122,11 +123,20 @@ const DEFAULT_SETTINGS: AppSettings = {
   b2bNames: [],
   remarkOptions: [
     "Additional Documents Requested", "Additional Documents Sent",
-    "Interview \u2013 GS/Cr./Visa", "Interview Cleared", "Payment Made",
+    "Interview – GS/Cr./Visa", "Interview Cleared", "Payment Made",
     "Medical Requested/Booked", "Passport Submitted",
     "DS-160/VFS/Embassy Appointment", "Pink Slip", "NOC",
     "Defer Offer Requested", "Defer CoE Requested",
     "Refund Requested", "Offer Withdrawn", "Done",
+  ],
+  courses: [
+    "Bachelor of IT",
+    "Bachelor of Nursing",
+    "Bachelor of Business",
+    "Master of IT",
+    "Bachelor of Community Services",
+    "Master of Business Analyst",
+    "Master of Business Administration",
   ],
   countries: [
     { name: "Australia", universities: ["University of Melbourne","Australian National University","University of Sydney","Monash University","University of New South Wales"] },
@@ -1229,6 +1239,15 @@ export default function SettingsPage() {
               items={settings.services}
               onChange={(v) => set("services", v)}
               placeholder="Add a service (e.g. 'Coaching')"
+            />
+          </SectionCard>
+
+          <SectionCard title="Course Programs" description="List of course programs offered. These appear as suggestions when adding courses in admission details.">
+            <TagEditor
+              label="Courses"
+              items={settings.courses}
+              onChange={(v) => set("courses", v)}
+              placeholder="Add a course (e.g. 'Bachelor of IT')"
             />
           </SectionCard>
 

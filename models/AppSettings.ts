@@ -25,6 +25,7 @@ export interface IAppSettings extends Document {
   // Lists
   countries: { name: string; universities: string[] }[];
   services: string[];
+  courses: string[];
   // Module toggles (list of enabled module keys)
   enabledModules: string[];
   // Email / SMTP
@@ -164,6 +165,18 @@ const AppSettingsSchema = new Schema<IAppSettings>(
         "Study Abroad", "Language Courses", "University Application",
         "Visa Assistance", "Test Preparation (IELTS/TOEFL)", "Scholarship Guidance",
         "Career Counselling", "Document Verification",
+      ],
+    },
+    courses: {
+      type: [String],
+      default: [
+        "Bachelor of IT",
+        "Bachelor of Nursing",
+        "Bachelor of Business",
+        "Master of IT",
+        "Bachelor of Community Services",
+        "Master of Business Analyst",
+        "Master of Business Administration",
       ],
     },
     // All modules enabled by default
