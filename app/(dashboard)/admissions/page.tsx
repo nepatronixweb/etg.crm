@@ -143,7 +143,7 @@ export default function AdmissionsPage() {
                         </span>
                       </div>
                       <div className="min-w-0">
-                        <p className="font-medium text-gray-900">{s.name}</p>
+                        <Link href={`/students/${s._id}`} className="font-medium text-gray-900 hover:text-blue-600 hover:underline underline-offset-2 transition-colors">{s.name}</Link>
                         <p className="text-xs text-gray-400 truncate">{s.email}</p>
                       </div>
                     </div>

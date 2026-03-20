@@ -589,7 +589,7 @@ export default function StudentsPage() {
                       <td className="px-2.5 py-2 min-w-44">
                         <div className="flex items-center gap-1.5 mb-1">
                           <span className="text-amber-400 text-xs">★</span>
-                          <span className="font-semibold text-gray-900 text-xs">{student.name}</span>
+                          <Link href={`/students/${student._id}`} className="font-semibold text-gray-900 text-xs hover:text-blue-600 hover:underline underline-offset-2 transition-colors">{student.name}</Link>
                         </div>
                         <div className="flex items-center gap-1 text-[11px] text-gray-500 mb-0.5">
                           <Phone size={9} className="text-gray-400 shrink-0" />

@@ -3,10 +3,11 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { Plus, Search, X, FileText } from "lucide-react";
 import { formatDate, getStatusColor } from "@/lib/utils";
+import Link from "next/link";
 
 interface Application {
   _id: string;
-  student: { name: string; email: string };
+  student: { _id: string; name: string; email: string };
   country: string;
   universityName: string;
   course: string;
@@ -184,7 +185,7 @@ export default function ApplicationsPage() {
                           {app.student?.name?.charAt(0).toUpperCase()}
                         </span>
                       </div>
-                      <span className="font-medium text-gray-900">{app.student?.name}</span>
+                      <Link href={`/students/${app.student?._id}`} className="font-medium text-gray-900 hover:text-blue-600 hover:underline underline-offset-2 transition-colors">{app.student?.name}</Link>
                     </div>
                   </td>
                   <td className="px-4 py-3.5 text-gray-700 max-w-40 truncate">{app.universityName}</td>
