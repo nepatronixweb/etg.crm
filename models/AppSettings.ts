@@ -26,6 +26,7 @@ export interface IAppSettings extends Document {
   countries: { name: string; universities: string[] }[];
   services: string[];
   courses: string[];
+  educationLevels: string[];
   // Module toggles (list of enabled module keys)
   enabledModules: string[];
   // Email / SMTP
@@ -178,6 +179,10 @@ const AppSettingsSchema = new Schema<IAppSettings>(
         "Master of Business Analyst",
         "Master of Business Administration",
       ],
+    },
+    educationLevels: {
+      type: [String],
+      default: ["Diploma", "Bachelor", "Master"],
     },
     // All modules enabled by default
     enabledModules: {

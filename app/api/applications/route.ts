@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     if (country) filter.country = country;
 
     const applications = await Application.find(filter)
-      .populate("student", "name email phone")
+      .populate("student", "name email phone admissionDetails")
       .populate("submittedBy", "name")
       .sort({ createdAt: -1 });
 

@@ -5,9 +5,26 @@ import { Plus, Search, X, FileText, Phone, Mail } from "lucide-react";
 import { formatDate, getStatusColor } from "@/lib/utils";
 import Link from "next/link";
 
+interface AdmissionEntry {
+  _id: string;
+  country: string;
+  universityName?: string;
+  stage?: string;
+  pipeline?: string;
+  standing?: string;
+  remarks?: string;
+  closed?: boolean;
+}
+
 interface Application {
   _id: string;
-  student: { _id: string; name: string; email: string; phone: string };
+  student: {
+    _id: string;
+    name: string;
+    email: string;
+    phone: string;
+    admissionDetails?: AdmissionEntry[];
+  };
   country: string;
   universityName: string;
   course: string;
@@ -37,6 +54,9 @@ export default function ApplicationsPage() {
   const [showForm, setShowForm] = useState(false);
   const [students, setStudents] = useState<{ _id: string; name: string }[]>([]);
   const [form, setForm] = useState({ student: "", country: "", universityName: "", course: "", status: "pending" });
+  const [appLeadStages, setAppLeadStages] = useState<{ value: string; label: string; group: string }[]>([]);
+  const [appLeadStageGroups, setAppLeadStageGroups] = useState<string[]>([]);
+  const [appRemarkOptions, setAppRemarkOptions] = useState<string[]>([]);
 
   const fetchApps = async () => {
     setLoading(true);
@@ -51,6 +71,13 @@ export default function ApplicationsPage() {
   useEffect(() => {
     fetchApps();
     fetch("/api/students").then((r) => r.json()).then((s) => setStudents(Array.isArray(s) ? s : []));
+    fetch("/api/settings/app")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.leadStages?.length) setAppLeadStages(d.leadStages);
+        if (d?.leadStageGroups?.length) setAppLeadStageGroups(d.leadStageGroups);
+        if (d?.remarkOptions?.length) setAppRemarkOptions(d.remarkOptions);
+      }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterStatus]);
 
@@ -72,6 +99,23 @@ export default function ApplicationsPage() {
       body: JSON.stringify({ status }),
     });
     fetchApps();
+  };
+
+  const quickUpdateAdmission = async (studentId: string, allEntries: AdmissionEntry[], entryIndex: number, field: string, value: string) => {
+    const updatedDetails = allEntries.map((entry, i) =>
+      i === entryIndex ? { ...entry, [field]: value } : entry
+    );
+    setApps((prev) =>
+      prev.map((app) => {
+        if (app.student._id !== studentId) return app;
+        return { ...app, student: { ...app.student, admissionDetails: updatedDetails } };
+      })
+    );
+    await fetch(`/api/students/${studentId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ admissionDetails: updatedDetails }),
+    });
   };
 
   const filtered = apps.filter((a) =>
@@ -233,6 +277,96 @@ export default function ApplicationsPage() {
                     )}
                   </td>
                 </tr>
+                {/* Admission detail sub-row for this application's matching entry */}
+                {(() => {
+                  const entries = app.student.admissionDetails || [];
+                  const matchingEntries = entries.filter(
+                    (e) => e.country?.toLowerCase() === app.country?.toLowerCase() ||
+                      e.universityName?.toLowerCase() === app.universityName?.toLowerCase()
+                  );
+                  const entriesToShow = matchingEntries.length > 0 ? matchingEntries : entries;
+                  if (entriesToShow.length === 0) return null;
+                  return (
+                    <tr className="bg-gray-50/60 border-b border-gray-100">
+                      <td colSpan={7} className="px-4 py-0">
+                        <div className="border border-gray-100 rounded-lg overflow-hidden my-2">
+                          <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] border-b border-gray-100 bg-white">
+                            {["University", "Stage", "Remarks", "Standing", "Pipeline"].map((col) => (
+                              <div key={col} className="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">{col}</div>
+                            ))}
+                          </div>
+                          {entriesToShow.map((entry, ei) => {
+                            const globalIndex = entries.indexOf(entry);
+                            return (
+                              <div
+                                key={entry._id || ei}
+                                className={`grid grid-cols-[2fr_1fr_1fr_1fr_1fr] border-b border-gray-50 last:border-0 items-center bg-white ${entry.closed ? "opacity-50" : ""}`}
+                              >
+                                <div className="px-3 py-2 flex items-center gap-2 min-w-0">
+                                  <span className="shrink-0 px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-bold rounded-full border border-blue-100">{entry.country}</span>
+                                  {entry.universityName && <span className="text-xs text-gray-700 font-medium truncate">{entry.universityName}</span>}
+                                </div>
+                                <div className="px-2 py-1.5">
+                                  <select
+                                    value={entry.stage || ""}
+                                    disabled={entry.closed}
+                                    onChange={(e) => quickUpdateAdmission(app.student._id, entries, globalIndex, "stage", e.target.value)}
+                                    className="w-full text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-full px-2 py-1 focus:outline-none cursor-pointer disabled:cursor-default"
+                                  >
+                                    <option value="">—</option>
+                                    {appLeadStages.map((st) => <option key={st.value} value={st.value}>{st.label}</option>)}
+                                  </select>
+                                </div>
+                                <div className="px-2 py-1.5">
+                                  <select
+                                    value={entry.remarks || ""}
+                                    disabled={entry.closed}
+                                    onChange={(e) => quickUpdateAdmission(app.student._id, entries, globalIndex, "remarks", e.target.value)}
+                                    className="w-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-2 py-1 focus:outline-none cursor-pointer disabled:cursor-default"
+                                  >
+                                    <option value="">—</option>
+                                    {appRemarkOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+                                  </select>
+                                </div>
+                                <div className="px-2 py-1.5">
+                                  <select
+                                    value={entry.standing || ""}
+                                    disabled={entry.closed}
+                                    onChange={(e) => quickUpdateAdmission(app.student._id, entries, globalIndex, "standing", e.target.value)}
+                                    className="w-full text-xs font-medium rounded-full px-2 py-1 border focus:outline-none cursor-pointer disabled:cursor-default"
+                                    style={{
+                                      backgroundColor: entry.standing === "hot" ? "#fee2e2" : entry.standing === "warm" ? "#fed7aa" : entry.standing === "heated" ? "#fef3c7" : entry.standing === "cold" ? "#dbeafe" : "#f3f4f6",
+                                      color: entry.standing === "hot" ? "#991b1b" : entry.standing === "warm" ? "#92400e" : entry.standing === "heated" ? "#b45309" : entry.standing === "cold" ? "#1e40af" : "#374151",
+                                      borderColor: entry.standing === "hot" ? "#fca5a5" : entry.standing === "warm" ? "#fdba74" : entry.standing === "heated" ? "#fcd34d" : entry.standing === "cold" ? "#93c5fd" : "#e5e7eb",
+                                    }}
+                                  >
+                                    <option value="">—</option>
+                                    <option value="hot">🔴 Hot</option>
+                                    <option value="warm">🟠 Warm</option>
+                                    <option value="heated">🟡 Heated</option>
+                                    <option value="cold">🔵 Cold</option>
+                                    <option value="missed">⚪ Missed</option>
+                                  </select>
+                                </div>
+                                <div className="px-2 py-1.5">
+                                  <select
+                                    value={entry.pipeline || ""}
+                                    disabled={entry.closed}
+                                    onChange={(e) => quickUpdateAdmission(app.student._id, entries, globalIndex, "pipeline", e.target.value)}
+                                    className="w-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-2 py-1 focus:outline-none cursor-pointer disabled:cursor-default"
+                                  >
+                                    <option value="">—</option>
+                                    {appLeadStageGroups.map((g) => <option key={g} value={g}>{g}</option>)}
+                                  </select>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })()}
               ))}
             </tbody>
           </table>

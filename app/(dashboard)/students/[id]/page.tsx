@@ -24,10 +24,10 @@ import { formatDate, formatDateTime, getStatusColor, getRoleLabel, COUNTRIES } f
 const DEFAULT_COUNTRIES = COUNTRIES;
 import Link from "next/link";
 import { useBranding } from "@/app/branding-context";
-import ProgressHistoryComponent from "./ProgressHistoryComponent";
 
 interface AdmissionCourse {
   name: string;
+  level: string;
   intakeQuarter: string;
   intakeYear: string;
   commencementDate: string;
@@ -40,6 +40,7 @@ interface AdmissionDetail {
   location?: string;
   annualTuitionFee: string;
   stage?: string;
+  pipeline?: string;
   standing: string;
   remarks?: string;
   statusDate?: string;
@@ -82,6 +83,7 @@ interface Document {
 
 const EMPTY_COURSE: AdmissionCourse = {
   name: "",
+  level: "",
   intakeQuarter: "",
   intakeYear: "",
   commencementDate: "",
@@ -93,6 +95,7 @@ const EMPTY_ADMISSION_FORM = {
   location: "",
   annualTuitionFee: "",
   stage: "",
+  pipeline: "",
   standing: "",
   remarks: "",
   statusDate: new Date().toISOString().split("T")[0],
@@ -123,32 +126,24 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   const [countryUniversities, setCountryUniversities] = useState<Record<string, string[]>>({});
   const [b2bNames, setB2bNames] = useState<string[]>([]);
   const [appCourses, setAppCourses] = useState<string[]>([]);
+  const [appEducationLevels, setAppEducationLevels] = useState<string[]>(["Diploma", "Bachelor", "Master"]);
   const [b2bDropdownOpen, setB2bDropdownOpen] = useState<"new" | "edit" | null>(null);
   const [uniDropdownOpen, setUniDropdownOpen] = useState<"new" | "edit" | null>(null);
   const [courseDropdownOpen, setCourseDropdownOpen] = useState<"new" | "edit" | null>(null);
-  const [admissionProgressHistory, setAdmissionProgressHistory] = useState<any[]>([]);
-  const [visaProgressHistory, setVisaProgressHistory] = useState<any[]>([]);
-  const [applicationProgressHistory, setApplicationProgressHistory] = useState<any[]>([]);
+  const [appLeadStages, setAppLeadStages] = useState<{ value: string; label: string; group: string }[]>([]);
+  const [appLeadStageGroups, setAppLeadStageGroups] = useState<string[]>([]);
+  const [appRemarkOptions, setAppRemarkOptions] = useState<string[]>([]);
 
   const fetchData = async () => {
-    const [studentRes, docsRes, admissionProgressRes, visaProgressRes, applicationProgressRes] = await Promise.all([
+    const [studentRes, docsRes] = await Promise.all([
       fetch(`/api/students/${id}`),
       fetch(`/api/documents?student=${id}`),
-      fetch(`/api/students/${id}/admission-progress`),
-      fetch(`/api/students/${id}/visa-progress`),
-      fetch(`/api/students/${id}/application-progress`),
     ]);
     const studentData = await studentRes.json();
     const docsData = await docsRes.json();
-    const admissionProgressData = await admissionProgressRes.json();
-    const visaProgressData = await visaProgressRes.json();
-    const applicationProgressData = await applicationProgressRes.json();
     
     setStudent(studentData);
     setDocs(docsData.documents || []);
-    setAdmissionProgressHistory(admissionProgressData.admissionProgressHistory || []);
-    setVisaProgressHistory(visaProgressData.visaProgressHistory || []);
-    setApplicationProgressHistory(applicationProgressData.applicationProgressHistory || []);
     
     if (studentData.countries?.length > 0) {
       setSelectedCountry((current) => current || studentData.countries[0].country);
@@ -177,6 +172,18 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
       }
       if (d?.courses?.length) {
         setAppCourses(d.courses);
+      }
+      if (d?.educationLevels?.length) {
+        setAppEducationLevels(d.educationLevels);
+      }
+      if (d?.leadStages?.length) {
+        setAppLeadStages(d.leadStages);
+      }
+      if (d?.leadStageGroups?.length) {
+        setAppLeadStageGroups(d.leadStageGroups);
+      }
+      if (d?.remarkOptions?.length) {
+        setAppRemarkOptions(d.remarkOptions);
       }
     }).catch(() => {});
   }, []);
@@ -353,6 +360,19 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     setShowAdmissionForm(false);
     setAdmissionForm(EMPTY_ADMISSION_FORM);
     fetchData();
+  };
+
+  const quickUpdateAdmission = async (index: number, field: string, value: string) => {
+    if (!student) return;
+    const updated = student.admissionDetails.map((entry, i) =>
+      i === index ? { ...entry, [field]: value } : entry
+    );
+    setStudent({ ...student, admissionDetails: updated });
+    await fetch(`/api/students/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ admissionDetails: updated }),
+    });
   };
 
   const deleteAdmissionDetail = async (index: number) => {
@@ -658,7 +678,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                       </div>
                     </div>
 
-                    {/* Stage, Standing, Remarks, Status Date Section */}
+                    {/* Stage, Standing, Remarks, Status Date, Pipeline Section */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1.5">Stage</label>
@@ -668,12 +688,9 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                           className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                         >
                           <option value="">Select stage</option>
-                          <option value="Applied">Applied</option>
-                          <option value="Processing">Processing</option>
-                          <option value="Submitted">Submitted</option>
-                          <option value="Approved">Approved</option>
-                          <option value="Rejected">Rejected</option>
-                          <option value="Enrolled">Enrolled</option>
+                          {appLeadStages.map((s) => (
+                            <option key={s.value} value={s.value}>{s.label}</option>
+                          ))}
                         </select>
                       </div>
                       <div>
@@ -702,12 +719,29 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1.5">Remarks</label>
-                        <input
+                        <select
                           value={admissionForm.remarks}
                           onChange={(e) => setAdmissionForm((form) => ({ ...form, remarks: e.target.value }))}
-                          placeholder="e.g. Awaiting Documents"
-                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
+                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        >
+                          <option value="">Select remark</option>
+                          {appRemarkOptions.map((r) => (
+                            <option key={r} value={r}>{r}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Pipeline</label>
+                        <select
+                          value={admissionForm.pipeline}
+                          onChange={(e) => setAdmissionForm((form) => ({ ...form, pipeline: e.target.value }))}
+                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        >
+                          <option value="">Select pipeline</option>
+                          {appLeadStageGroups.map((g) => (
+                            <option key={g} value={g}>{g}</option>
+                          ))}
+                        </select>
                       </div>
                     </div>
 
@@ -774,6 +808,21 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                     ))}
                                   </ul>
                                 )}
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Level</label>
+                                <select
+                                  value={course.level}
+                                  onChange={(e) => {
+                                    const updated = [...admissionForm.courses];
+                                    updated[index] = { ...updated[index], level: e.target.value };
+                                    setAdmissionForm((form) => ({ ...form, courses: updated }));
+                                  }}
+                                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                >
+                                  <option value="">Select level</option>
+                                  {appEducationLevels.map((l) => <option key={l} value={l}>{l}</option>)}
+                                </select>
                               </div>
                               <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Intake Quarter</label>
@@ -972,7 +1021,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                           </div>
                         </div>
 
-                        {/* Stage, Standing, Remarks, Status Date Section - Edit */}
+                        {/* Stage, Standing, Remarks, Status Date, Pipeline Section - Edit */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3 mt-3">
                           <div>
                             <label className="block text-xs font-semibold text-gray-600 mb-1">Stage</label>
@@ -982,12 +1031,9 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                             >
                               <option value="">Select stage</option>
-                              <option value="Applied">Applied</option>
-                              <option value="Processing">Processing</option>
-                              <option value="Submitted">Submitted</option>
-                              <option value="Approved">Approved</option>
-                              <option value="Rejected">Rejected</option>
-                              <option value="Enrolled">Enrolled</option>
+                              {appLeadStages.map((s) => (
+                                <option key={s.value} value={s.value}>{s.label}</option>
+                              ))}
                             </select>
                           </div>
                           <div>
@@ -1016,12 +1062,29 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                           </div>
                           <div>
                             <label className="block text-xs font-semibold text-gray-600 mb-1">Remarks</label>
-                            <input
+                            <select
                               value={editAdmissionForm.remarks}
                               onChange={(e) => setEditAdmissionForm((form) => ({ ...form, remarks: e.target.value }))}
-                              placeholder="e.g. Awaiting Documents"
-                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                            >
+                              <option value="">Select remark</option>
+                              {appRemarkOptions.map((r) => (
+                                <option key={r} value={r}>{r}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="sm:col-span-2">
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Pipeline</label>
+                            <select
+                              value={editAdmissionForm.pipeline ?? ""}
+                              onChange={(e) => setEditAdmissionForm((form) => ({ ...form, pipeline: e.target.value }))}
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                            >
+                              <option value="">Select pipeline</option>
+                              {appLeadStageGroups.map((g) => (
+                                <option key={g} value={g}>{g}</option>
+                              ))}
+                            </select>
                           </div>
                         </div>
 
@@ -1072,6 +1135,21 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                         ))}
                                       </ul>
                                     )}
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Level</label>
+                                    <select
+                                      value={course.level}
+                                      onChange={(e) => {
+                                        const updated = [...editAdmissionForm.courses];
+                                        updated[courseIndex] = { ...updated[courseIndex], level: e.target.value };
+                                        setEditAdmissionForm((form) => ({ ...form, courses: updated }));
+                                      }}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                      <option value="">Select level</option>
+                                      {appEducationLevels.map((l) => <option key={l} value={l}>{l}</option>)}
+                                    </select>
                                   </div>
                                   <div>
                                     <label className="block text-xs font-semibold text-gray-600 mb-1">Intake Quarter</label>
@@ -1152,7 +1230,8 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                     ) : (
                       <div>
                         <div className="flex items-start justify-between gap-3">
-                          <div className="space-y-1 min-w-0 flex-1">
+                          <div className="space-y-2 min-w-0 flex-1">
+                            {/* Header row */}
                             <div className="flex items-center gap-2 flex-wrap" style={entry.closed ? { opacity: 0.55 } : undefined}>
                               <span className="px-2.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full">{entry.country}</span>
                               {entry.universityName && <span className="text-sm font-semibold text-gray-800">{entry.universityName}</span>}
@@ -1160,64 +1239,109 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                 <span className="px-2 py-0.5 bg-red-50 text-red-500 text-[10px] font-bold rounded-full uppercase tracking-wide border border-red-200">Closed</span>
                               )}
                             </div>
-                            <div className={`space-y-3 ${entry.closed ? "opacity-45 blur-sm pointer-events-none select-none" : ""}`}>
-                              <div className="flex items-center gap-4 flex-wrap mt-2">
-                                {entry.location && (
-                                  <span className="text-sm text-gray-600 flex items-center gap-1">
-                                    <MapPin size={12} /> {entry.location}
-                                  </span>
-                                )}
-                                {entry.annualTuitionFee && (
-                                  <span className="text-sm text-gray-600 flex items-center gap-1">
-                                    <DollarSign size={12} /> {entry.annualTuitionFee} / yr
-                                  </span>
-                                )}
-                                {entry.createdAt && (
-                                  <span className="text-sm text-gray-500 flex items-center gap-1">
-                                    <Calendar size={12} /> {formatDate(entry.createdAt)}
-                                  </span>
-                                )}
+                            <div className={entry.closed ? "opacity-45 blur-sm pointer-events-none select-none" : ""}>
+                              {/* Sub-info */}
+                              <div className="flex items-center gap-4 flex-wrap text-xs text-gray-500 mb-3">
+                                {entry.location && <span className="flex items-center gap-1"><MapPin size={11} /> {entry.location}</span>}
+                                {entry.annualTuitionFee && <span className="flex items-center gap-1"><DollarSign size={11} /> {entry.annualTuitionFee} / yr</span>}
+                                {entry.createdAt && <span className="flex items-center gap-1"><Calendar size={11} /> {formatDate(entry.createdAt)}</span>}
+                                {entry.b2bAgentType && <span className="px-2 py-0.5 bg-teal-50 text-teal-700 font-semibold rounded-full border border-teal-200">{entry.b2bAgentType}</span>}
+                                {entry.b2bName && <span className="font-medium text-gray-700">{entry.b2bName}</span>}
+                                {entry.statusDate && <span>{formatDate(entry.statusDate)}</span>}
                               </div>
-                              {(entry.b2bAgentType || entry.b2bName) && (
-                                <div className="flex items-center gap-3 flex-wrap">
-                                  {entry.b2bAgentType && (
-                                    <span className="px-2.5 py-0.5 bg-teal-50 text-teal-700 text-xs font-semibold rounded-full border border-teal-200">
-                                      {entry.b2bAgentType}
-                                    </span>
-                                  )}
-                                  {entry.b2bName && (
-                                    <span className="text-sm text-gray-700 font-medium">{entry.b2bName}</span>
-                                  )}
+
+                              {/* STAGE | REMARKS | STANDING | PIPELINE table */}
+                              <div className="border border-gray-100 rounded-lg overflow-hidden">
+                                <div className="grid grid-cols-4 bg-gray-50 border-b border-gray-100">
+                                  {["STAGE", "REMARKS", "STANDING", "PIPELINE"].map((col) => (
+                                    <div key={col} className="px-2 py-1.5 text-[10px] font-bold text-gray-400 tracking-widest uppercase text-center">{col}</div>
+                                  ))}
                                 </div>
-                              )}
-                              {(entry.stage || entry.standing || entry.remarks || entry.statusDate) && (
-                                <div className="flex items-center gap-3 flex-wrap">
-                                  {entry.stage && (
-                                    <span className="px-2.5 py-0.5 bg-blue-50 text-blue-700 text-xs font-semibold rounded-full border border-blue-200">
-                                      {entry.stage}
-                                    </span>
-                                  )}
-                                  {entry.standing && (
-                                    <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full border" style={{
-                                      backgroundColor: entry.standing === 'hot' ? '#fee2e2' : entry.standing === 'warm' ? '#fed7aa' : entry.standing === 'heated' ? '#fef3c7' : entry.standing === 'cold' ? '#dbeafe' : '#e5e7eb',
-                                      color: entry.standing === 'hot' ? '#991b1b' : entry.standing === 'warm' ? '#92400e' : entry.standing === 'heated' ? '#b45309' : entry.standing === 'cold' ? '#1e40af' : '#374151',
-                                      borderColor: entry.standing === 'hot' ? '#fca5a5' : entry.standing === 'warm' ? '#fed7aa' : entry.standing === 'heated' ? '#fcd34d' : entry.standing === 'cold' ? '#93c5fd' : '#d1d5db'
-                                    }}>
-                                      {entry.standing?.charAt(0).toUpperCase() + entry.standing?.slice(1)}
-                                    </span>
-                                  )}
-                                  {entry.statusDate && (
-                                    <span className="text-xs text-gray-600">
-                                      {formatDate(entry.statusDate)}
-                                    </span>
-                                  )}
+                                <div className="grid grid-cols-4">
+                                  {/* STAGE */}
+                                  <div className="px-2 py-2 border-r border-gray-100">
+                                    {canAdmission && !entry.closed ? (
+                                      <select
+                                        value={entry.stage || ""}
+                                        onChange={(e) => quickUpdateAdmission(index, "stage", e.target.value)}
+                                        className="w-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2 py-1 focus:outline-none cursor-pointer"
+                                      >
+                                        <option value="">—</option>
+                                        {appLeadStages.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                                      </select>
+                                    ) : (
+                                      <span className="block text-center text-xs font-medium px-2 py-1 bg-blue-50 text-blue-700 rounded-full truncate">
+                                        {appLeadStages.find((s) => s.value === entry.stage)?.label || entry.stage || "—"}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {/* REMARKS */}
+                                  <div className="px-2 py-2 border-r border-gray-100">
+                                    {canAdmission && !entry.closed ? (
+                                      <select
+                                        value={entry.remarks || ""}
+                                        onChange={(e) => quickUpdateAdmission(index, "remarks", e.target.value)}
+                                        className="w-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-2 py-1 focus:outline-none cursor-pointer"
+                                      >
+                                        <option value="">—</option>
+                                        {appRemarkOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+                                      </select>
+                                    ) : (
+                                      <span className="block text-center text-xs font-medium px-2 py-1 bg-amber-50 text-amber-700 rounded-full truncate">
+                                        {entry.remarks || "—"}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {/* STANDING */}
+                                  <div className="px-2 py-2 border-r border-gray-100">
+                                    {canAdmission && !entry.closed ? (
+                                      <select
+                                        value={entry.standing || ""}
+                                        onChange={(e) => quickUpdateAdmission(index, "standing", e.target.value)}
+                                        className="w-full text-xs font-medium rounded-full px-2 py-1 border focus:outline-none cursor-pointer"
+                                        style={{
+                                          backgroundColor: entry.standing === "hot" ? "#fee2e2" : entry.standing === "warm" ? "#fed7aa" : entry.standing === "heated" ? "#fef3c7" : entry.standing === "cold" ? "#dbeafe" : "#f3f4f6",
+                                          color: entry.standing === "hot" ? "#991b1b" : entry.standing === "warm" ? "#92400e" : entry.standing === "heated" ? "#b45309" : entry.standing === "cold" ? "#1e40af" : "#374151",
+                                          borderColor: entry.standing === "hot" ? "#fca5a5" : entry.standing === "warm" ? "#fdba74" : entry.standing === "heated" ? "#fcd34d" : entry.standing === "cold" ? "#93c5fd" : "#e5e7eb",
+                                        }}
+                                      >
+                                        <option value="">—</option>
+                                        <option value="hot">🔴 Hot</option>
+                                        <option value="warm">🟠 Warm</option>
+                                        <option value="heated">🟡 Heated</option>
+                                        <option value="cold">🔵 Cold</option>
+                                        <option value="missed">⚪ Missed</option>
+                                      </select>
+                                    ) : (
+                                      <span className="block text-center text-xs font-medium px-2 py-1 rounded-full" style={{
+                                        backgroundColor: entry.standing === "hot" ? "#fee2e2" : entry.standing === "warm" ? "#fed7aa" : entry.standing === "heated" ? "#fef3c7" : entry.standing === "cold" ? "#dbeafe" : "#f3f4f6",
+                                        color: entry.standing === "hot" ? "#991b1b" : entry.standing === "warm" ? "#92400e" : entry.standing === "heated" ? "#b45309" : entry.standing === "cold" ? "#1e40af" : "#374151",
+                                      }}>
+                                        {entry.standing ? entry.standing.charAt(0).toUpperCase() + entry.standing.slice(1) : "—"}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {/* PIPELINE */}
+                                  <div className="px-2 py-2">
+                                    {canAdmission && !entry.closed ? (
+                                      <select
+                                        value={entry.pipeline || ""}
+                                        onChange={(e) => quickUpdateAdmission(index, "pipeline", e.target.value)}
+                                        className="w-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-2 py-1 focus:outline-none cursor-pointer"
+                                      >
+                                        <option value="">—</option>
+                                        {appLeadStageGroups.map((g) => <option key={g} value={g}>{g}</option>)}
+                                      </select>
+                                    ) : (
+                                      <span className="block text-center text-xs font-medium px-2 py-1 bg-purple-50 text-purple-700 rounded-full truncate">
+                                        {entry.pipeline || "—"}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
-                              )}
-                              {entry.remarks && (
-                                <div className="text-xs text-gray-600 italic mt-2">
-                                  Remarks: {entry.remarks}
-                                </div>
-                              )}
+                              </div>
+
+                              {/* Courses */}
                               {entry.courses && entry.courses.length > 0 && (
                                 <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
                                   {entry.courses.map((course, courseIndex) => (
@@ -1225,6 +1349,11 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                       <div className="font-medium text-gray-900 flex items-center gap-1">
                                         <BookOpen size={11} /> {course.name}
                                       </div>
+                                      {course.level && (
+                                        <div className="mt-1">
+                                          <span className="inline-block px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-medium">{course.level}</span>
+                                        </div>
+                                      )}
                                       <div className="text-gray-600 mt-1">
                                         {[course.intakeQuarter, course.intakeYear].filter(Boolean).join(" ") || "No intake set"}
                                       </div>
@@ -1263,6 +1392,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                       statusDate: entry.statusDate || "",
                                       b2bAgentType: entry.b2bAgentType || "",
                                       b2bName: entry.b2bName || "",
+                                      pipeline: entry.pipeline || "",
                                       courses: entry.courses?.length ? entry.courses.map((course) => ({ ...course })) : [{ ...EMPTY_COURSE }],
                                     });
                                   }}
@@ -1461,35 +1591,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
             </div>
           )}
 
-          {/* Progress History Sections */}
-          <ProgressHistoryComponent
-            title="Admission Progress"
-            type="admission"
-            studentId={id}
-            history={admissionProgressHistory}
-            onHistoryUpdate={fetchData}
-            showCountry={true}
-            countries={student?.countries?.map((c) => c.country) || []}
-          />
 
-          <ProgressHistoryComponent
-            title="Visa Progress"
-            type="visa"
-            studentId={id}
-            history={visaProgressHistory}
-            onHistoryUpdate={fetchData}
-            showCountry={true}
-            countries={student?.countries?.map((c) => c.country) || []}
-          />
-
-          <ProgressHistoryComponent
-            title="Application Status"
-            type="application"
-            studentId={id}
-            history={applicationProgressHistory}
-            onHistoryUpdate={fetchData}
-            showCountry={false}
-          />
         </div>
       </div>
     </div>

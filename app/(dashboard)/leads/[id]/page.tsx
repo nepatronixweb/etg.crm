@@ -242,16 +242,23 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
 
   const convertToStudent = async () => {
     setConverting(true);
-    const res = await fetch("/api/students", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ leadId: id }),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch("/api/students", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadId: id }),
+      });
       const data = await res.json();
-      router.push(`/students/${data.student._id}`);
+      if (res.ok) {
+        router.push(`/students/${data.student._id}`);
+      } else {
+        alert(`Conversion failed: ${data.error || "Unknown error"}`);
+      }
+    } catch {
+      alert("Failed to convert lead to student. Please try again.");
+    } finally {
+      setConverting(false);
     }
-    setConverting(false);
   };
 
   const enrollStudent = async () => {

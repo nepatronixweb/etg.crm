@@ -14,6 +14,7 @@ const NoteSchema = new Schema<INote>(
 const CourseSchema = new Schema(
   {
     name: { type: String, required: true },
+    level: { type: String, default: "" },
     intakeQuarter: { type: String, enum: ["Q1", "Q2", "Q3", "Q4"], default: "" },
     intakeYear: { type: String, default: "" },
     commencementDate: { type: String, default: "" },
@@ -28,6 +29,7 @@ const AdmissionDetailSchema = new Schema(
     location: { type: String, default: "" },
     annualTuitionFee: { type: String, default: "" },
     stage: { type: String, default: "" },
+    pipeline: { type: String, default: "" },
     standing: { type: String, enum: ["hot", "warm", "heated", "cold", "missed", ""], default: "" },
     remarks: { type: String, default: "" },
     statusDate: { type: String, default: "" },
@@ -54,19 +56,6 @@ const CountrySchema = new Schema({
   rejectedAt: { type: Date },
   rejectionReason: { type: String },
 });
-
-const ProgressHistorySchema = new Schema(
-  {
-    country: { type: String, required: true },
-    stage: { type: String, default: "" },
-    remarks: { type: String, default: "" },
-    standing: { type: String, default: "" },
-    statusDate: { type: Date, default: () => new Date() },
-    changedBy: { type: String }, // User ID
-    changedByName: { type: String },
-  },
-  { timestamps: true }
-);
 
 const AdmissionProgressSchema = new Schema(
   {

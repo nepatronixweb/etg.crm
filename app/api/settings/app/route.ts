@@ -43,15 +43,26 @@ export async function GET() {
       await settings.save();
     }
 
-    // Build a plain JSON response so Mongoose internals don't interfere
-    const json = settings.toObject ? settings.toObject() : settings;
-    // Always guarantee remarkOptions is present as an array
+    // Backfill educationLevels if missing
+    if (!settings.educationLevels?.length) {
+      settings.educationLevels = ["Diploma", "Bachelor", "Master"];
+      await settings.save();
+    }
+
+    // Use lean() for the JSON response to bypass Mongoose schema projection.
+    // This ensures fields added after the model was first compiled (e.g. after a
+    // hot-reload) are always included — toObject() only returns schema-known fields.
+    const json = (await AppSettings.findOne({}).lean()) ?? settings.toObject();
+
+    // Safety fallbacks in case the DB document is somehow missing a field
     if (!Array.isArray(json.remarkOptions) || json.remarkOptions.length === 0) {
       json.remarkOptions = DEFAULT_REMARK_OPTIONS;
     }
-    // Always guarantee courses is present as an array
     if (!Array.isArray(json.courses) || json.courses.length === 0) {
       json.courses = DEFAULT_COURSES;
+    }
+    if (!Array.isArray(json.educationLevels) || json.educationLevels.length === 0) {
+      json.educationLevels = ["Diploma", "Bachelor", "Master"];
     }
 
     return NextResponse.json(json);
@@ -81,7 +92,7 @@ export async function PUT(req: NextRequest) {
       "leadStatuses", "leadSources", "leadStandings", "fdStatuses",
       "leadStageGroups", "leadStages",
       "b2bNames", "remarkOptions",
-      "countries", "services", "courses",
+      "countries", "services", "courses", "educationLevels",
       "enabledModules",
       "smtpHost", "smtpPort", "smtpUser", "smtpPass", "emailFromName",
       "paymentQrPath",

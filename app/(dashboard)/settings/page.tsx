@@ -31,6 +31,7 @@ interface AppSettings {
   b2bNames: string[];
   remarkOptions: string[];
   courses: string[];
+  educationLevels: string[];
   countries: { name: string; universities: string[] }[];
   services: string[];
   enabledModules: string[];
@@ -138,6 +139,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     "Master of Business Analyst",
     "Master of Business Administration",
   ],
+  educationLevels: ["Diploma", "Bachelor", "Master"],
   countries: [
     { name: "Australia", universities: ["University of Melbourne","Australian National University","University of Sydney","Monash University","University of New South Wales"] },
     { name: "Canada", universities: ["University of Toronto","University of British Columbia","McGill University","University of Alberta","McMaster University"] },
@@ -353,7 +355,16 @@ export default function SettingsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings),
       });
-      if (res.ok) { setSaved(true); setTimeout(() => setSaved(false), 3000); refreshBranding(); }
+      if (res.ok) {
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
+        refreshBranding();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Failed to save settings: ${err.error || res.status}`);
+      }
+    } catch (e) {
+      alert(`Network error saving settings: ${e}`);
     } finally { setSaving(false); }
   };
 
@@ -1248,6 +1259,15 @@ export default function SettingsPage() {
               items={settings.courses}
               onChange={(v) => set("courses", v)}
               placeholder="Add a course (e.g. 'Bachelor of IT')"
+            />
+          </SectionCard>
+
+          <SectionCard title="Education Levels" description="Levels of education offered. These appear as a dropdown when adding courses in admission details.">
+            <TagEditor
+              label="Education Levels"
+              items={settings.educationLevels}
+              onChange={(v) => set("educationLevels", v)}
+              placeholder="Add a level (e.g. 'Diploma')"
             />
           </SectionCard>
 

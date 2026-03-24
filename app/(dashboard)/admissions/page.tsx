@@ -1,7 +1,18 @@
-"use client";
+﻿"use client";
 import { useEffect, useState } from "react";
 import { GraduationCap, Search, Phone, Mail } from "lucide-react";
 import Link from "next/link";
+
+interface AdmissionEntry {
+  _id: string;
+  country: string;
+  universityName?: string;
+  stage?: string;
+  pipeline?: string;
+  standing?: string;
+  remarks?: string;
+  closed?: boolean;
+}
 
 interface Student {
   _id: string;
@@ -12,12 +23,7 @@ interface Student {
   standing: string;
   currentStage: string;
   countries: Array<{ country: string; status: string; universityName?: string; admissionStatus?: string }>;
-  admissionDetails?: Array<{
-    country?: string;
-    universityName?: string;
-    location?: string;
-    courses?: Array<{ name?: string; intakeQuarter?: string; intakeYear?: string }>;
-  }>;
+  admissionDetails?: AdmissionEntry[];
   counsellor: { name: string };
   enrolledAt?: string;
 }
@@ -26,35 +32,50 @@ export default function AdmissionsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [appLeadStages, setAppLeadStages] = useState<{ value: string; label: string; group: string }[]>([]);
+  const [appLeadStageGroups, setAppLeadStageGroups] = useState<string[]>([]);
+  const [appRemarkOptions, setAppRemarkOptions] = useState<string[]>([]);
 
   useEffect(() => {
     fetch("/api/students?enrolled=true")
       .then((r) => r.json())
       .then((d) => { setStudents(Array.isArray(d) ? d : []); setLoading(false); });
+    fetch("/api/settings/app")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.leadStages?.length) setAppLeadStages(d.leadStages);
+        if (d?.leadStageGroups?.length) setAppLeadStageGroups(d.leadStageGroups);
+        if (d?.remarkOptions?.length) setAppRemarkOptions(d.remarkOptions);
+      }).catch(() => {});
   }, []);
+
+  const quickUpdate = async (studentId: string, entryIndex: number, field: string, value: string) => {
+    let updatedDetails: AdmissionEntry[] = [];
+    setStudents((prev) =>
+      prev.map((s) => {
+        if (s._id !== studentId) return s;
+        const details = (s.admissionDetails || []).map((entry, i) =>
+          i === entryIndex ? { ...entry, [field]: value } : entry
+        );
+        updatedDetails = details;
+        return { ...s, admissionDetails: details };
+      })
+    );
+    await fetch(`/api/students/${studentId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ admissionDetails: updatedDetails }),
+    });
+  };
 
   const filtered = students.filter((s) => {
     const q = search.toLowerCase();
-    const countryMatches = s.countries?.some((c) =>
-      [c.country, c.universityName]
-        .filter(Boolean)
-        .some((v) => (v || "").toLowerCase().includes(q))
+    const admissionMatches = s.admissionDetails?.some((entry) =>
+      [entry.country, entry.universityName].filter(Boolean).some((v) => (v || "").toLowerCase().includes(q))
     ) ?? false;
-    const admissionMatches = s.admissionDetails?.some((entry) => {
-      const baseMatch = [entry.country, entry.universityName, entry.location]
-        .filter(Boolean)
-        .some((v) => (v || "").toLowerCase().includes(q));
-      const intakeMatch = entry.courses?.some((course) => {
-        const intakeText = `${course.intakeQuarter || ""} ${course.intakeYear || ""}`.trim().toLowerCase();
-        return ((course.name || "").toLowerCase().includes(q) || intakeText.includes(q));
-      }) ?? false;
-      return baseMatch || intakeMatch;
-    }) ?? false;
-
     return (
       s.name.toLowerCase().includes(q) ||
       s.email.toLowerCase().includes(q) ||
-      countryMatches ||
       admissionMatches
     );
   });
@@ -71,7 +92,7 @@ export default function AdmissionsPage() {
           <div>
             <h1 className="text-xl font-semibold text-gray-900">Admissions</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              {loading ? "Loading…" : `${filtered.length} of ${students.length} enrolled students`}
+              {loading ? "Loadingâ€¦" : `${filtered.length} of ${students.length} enrolled students`}
             </p>
           </div>
         </div>
@@ -84,147 +105,169 @@ export default function AdmissionsPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by student, destination, university or intake…"
+            placeholder="Search by student, destination, universityâ€¦"
             className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-md text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-colors"
           />
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                {["Student", "Counsellor", "Countries & Universities", "Standing", "Enrolled", ""].map((h) => (
-                  <th key={h} className={`text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap ${h === "Standing" ? "min-w-30" : ""}`}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {loading && (
-                <tr>
-                  <td colSpan={6} className="text-center py-14">
-                    <div className="inline-flex flex-col items-center gap-2 text-gray-400">
-                      <div className="w-5 h-5 border-2 border-gray-200 border-t-gray-500 rounded-full animate-spin" />
-                      <span className="text-sm">Loading admissions…</span>
-                    </div>
-                  </td>
-                </tr>
-              )}
-              {!loading && filtered.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="text-center py-14">
-                    <div className="inline-flex flex-col items-center gap-2 text-gray-400">
-                      <GraduationCap size={28} className="text-gray-300" />
-                      <span className="text-sm">
-                        {search ? "No matching students found" : "No enrolled students yet"}
-                      </span>
-                      {search && (
-                        <button
-                          onClick={() => setSearch("")}
-                          className="text-xs text-gray-500 underline underline-offset-2 hover:text-gray-800"
-                        >
-                          Clear search
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              )}
-              {!loading && filtered.map((s) => (
-                <tr key={s._id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3.5">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center shrink-0">
-                        <span className="text-xs font-semibold text-gray-600">
-                          {s.name.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                      <div className="min-w-0">
-                        <Link href={`/students/${s._id}`} className="font-medium text-gray-900 hover:text-blue-600 hover:underline underline-offset-2 transition-colors">{s.name}</Link>
-                        <div className="flex items-center gap-1 text-[11px] text-gray-500 mt-0.5">
-                          <Phone size={9} className="text-gray-400 shrink-0" />
-                          <a href={`tel:${s.phone}`} className="tabular-nums hover:text-blue-600 hover:underline transition-colors">{s.phone}</a>
-                          {s.phone && (
-                            <a href={`https://wa.me/${s.phone.replace(/[^\d]/g, "")}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Open WhatsApp" className="ml-1 shrink-0 hover:opacity-80 transition-opacity">
-                              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-[#25D366]" xmlns="http://www.w3.org/2000/svg"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/></svg>
-                            </a>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1 text-[11px] text-gray-500">
-                          <Mail size={9} className="text-gray-400 shrink-0" />
-                          <a href={`mailto:${s.email}`} className="truncate max-w-36 hover:text-blue-600 hover:underline transition-colors">{s.email}</a>
-                          {s.email && (
-                            <a href={`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(s.email)}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Send Gmail" className="ml-1 shrink-0 hover:opacity-80 transition-opacity">
-                              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg"><path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.907 1.528-1.145C21.69 2.28 24 3.434 24 5.457z" fill="#EA4335"/></svg>
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5 text-gray-600">
-                    {s.counsellor?.name || <span className="text-gray-300">—</span>}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <div className="space-y-1">
-                      {s.countries?.map((c) => (
-                        <div key={c.country} className="flex items-center gap-2">
-                          <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 border border-gray-200 text-gray-700 whitespace-nowrap">
-                            {c.country}
-                          </span>
-                          {c.universityName && (
-                            <span className="text-xs text-gray-500 truncate max-w-48">{c.universityName}</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <span className={`inline-block px-2.5 py-0.5 rounded text-xs font-semibold whitespace-nowrap capitalize border ${
-                      s.standing === "heated" ? "bg-red-100 text-red-700 border-red-200" :
-                      s.standing === "hot" ? "bg-orange-100 text-orange-700 border-orange-200" :
-                      s.standing === "warm" ? "bg-yellow-100 text-yellow-700 border-yellow-200" :
-                      s.standing === "out_of_contact" ? "bg-gray-100 text-gray-700 border-gray-200" :
-                      "bg-blue-100 text-blue-700 border-blue-200"
-                    }`}>
-                      {s.standing ? s.standing.replace(/_/g, " ") : "Pending"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3.5">
-                    {s.enrolledAt && (
-                      <span className="text-xs text-gray-600">
-                        {new Date(s.enrolledAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <Link
-                      href={`/students/${s._id}`}
-                      className="text-xs font-medium text-gray-500 hover:text-gray-900 border border-gray-200 hover:border-gray-400 px-2.5 py-1 rounded transition-colors"
-                    >
-                      Manage
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Footer */}
-        {!loading && filtered.length > 0 && (
-          <div className="px-4 py-3 border-t border-gray-100 bg-gray-50">
-            <p className="text-xs text-gray-500">
-              Showing <span className="font-semibold text-gray-700">{filtered.length}</span> of{" "}
-              <span className="font-semibold text-gray-700">{students.length}</span> students
-            </p>
+      {/* List */}
+      <div className="space-y-3">
+        {loading && (
+          <div className="bg-white border border-gray-200 rounded-lg p-14 text-center">
+            <div className="inline-flex flex-col items-center gap-2 text-gray-400">
+              <div className="w-5 h-5 border-2 border-gray-200 border-t-gray-500 rounded-full animate-spin" />
+              <span className="text-sm">Loading admissionsâ€¦</span>
+            </div>
           </div>
         )}
+        {!loading && filtered.length === 0 && (
+          <div className="bg-white border border-gray-200 rounded-lg p-14 text-center">
+            <div className="inline-flex flex-col items-center gap-2 text-gray-400">
+              <GraduationCap size={28} className="text-gray-300" />
+              <span className="text-sm">{search ? "No matching students found" : "No enrolled students yet"}</span>
+              {search && (
+                <button onClick={() => setSearch("")} className="text-xs text-gray-500 underline underline-offset-2 hover:text-gray-800">
+                  Clear search
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        {!loading && filtered.map((s) => (
+          <div key={s._id} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            {/* Student header row */}
+            <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 rounded-full bg-gray-200 border border-gray-300 flex items-center justify-center shrink-0">
+                  <span className="text-xs font-semibold text-gray-600">{s.name.charAt(0).toUpperCase()}</span>
+                </div>
+                <div>
+                  <Link href={`/students/${s._id}`} className="font-medium text-gray-900 hover:text-blue-600 hover:underline underline-offset-2 transition-colors text-sm">
+                    {s.name}
+                  </Link>
+                  <div className="flex items-center gap-3 mt-0.5">
+                    <div className="flex items-center gap-1 text-[11px] text-gray-500">
+                      <Phone size={9} className="text-gray-400 shrink-0" />
+                      <a href={`tel:${s.phone}`} className="tabular-nums hover:text-blue-600 transition-colors">{s.phone}</a>
+                    </div>
+                    <div className="flex items-center gap-1 text-[11px] text-gray-500">
+                      <Mail size={9} className="text-gray-400 shrink-0" />
+                      <a href={`mailto:${s.email}`} className="truncate max-w-44 hover:text-blue-600 transition-colors">{s.email}</a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                {s.counsellor?.name && (
+                  <span className="text-xs text-gray-500">{s.counsellor.name}</span>
+                )}
+                {s.enrolledAt && (
+                  <span className="text-xs text-gray-400">
+                    {new Date(s.enrolledAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                  </span>
+                )}
+                <Link href={`/students/${s._id}`} className="text-xs font-medium text-gray-500 hover:text-gray-900 border border-gray-200 hover:border-gray-400 px-2.5 py-1 rounded transition-colors">
+                  Manage
+                </Link>
+              </div>
+            </div>
+
+            {/* Admission entries table */}
+            {s.admissionDetails && s.admissionDetails.length > 0 ? (
+              <div>
+                {/* Column headers */}
+                <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] border-b border-gray-100 bg-gray-50">
+                  {["University", "Stage", "Remarks", "Standing", "Pipeline"].map((col) => (
+                    <div key={col} className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">{col}</div>
+                  ))}
+                </div>
+                {s.admissionDetails.map((entry, entryIndex) => (
+                  <div
+                    key={entry._id || entryIndex}
+                    className={`grid grid-cols-[2fr_1fr_1fr_1fr_1fr] border-b border-gray-50 last:border-0 items-center ${
+                      entry.closed ? "opacity-50" : ""
+                    }`}
+                  >
+                    {/* University + country */}
+                    <div className="px-3 py-2.5 flex items-center gap-2 min-w-0">
+                      <span className="shrink-0 px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-bold rounded-full border border-blue-100">{entry.country}</span>
+                      {entry.universityName && (
+                        <span className="text-xs text-gray-700 font-medium truncate">{entry.universityName}</span>
+                      )}
+                    </div>
+                    {/* Stage */}
+                    <div className="px-2 py-2">
+                      <select
+                        value={entry.stage || ""}
+                        disabled={entry.closed}
+                        onChange={(e) => quickUpdate(s._id, entryIndex, "stage", e.target.value)}
+                        className="w-full text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-full px-2 py-1 focus:outline-none cursor-pointer disabled:cursor-default"
+                      >
+                        <option value="">â€”</option>
+                        {appLeadStages.map((st) => <option key={st.value} value={st.value}>{st.label}</option>)}
+                      </select>
+                    </div>
+                    {/* Remarks */}
+                    <div className="px-2 py-2">
+                      <select
+                        value={entry.remarks || ""}
+                        disabled={entry.closed}
+                        onChange={(e) => quickUpdate(s._id, entryIndex, "remarks", e.target.value)}
+                        className="w-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-2 py-1 focus:outline-none cursor-pointer disabled:cursor-default"
+                      >
+                        <option value="">â€”</option>
+                        {appRemarkOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    </div>
+                    {/* Standing */}
+                    <div className="px-2 py-2">
+                      <select
+                        value={entry.standing || ""}
+                        disabled={entry.closed}
+                        onChange={(e) => quickUpdate(s._id, entryIndex, "standing", e.target.value)}
+                        className="w-full text-xs font-medium rounded-full px-2 py-1 border focus:outline-none cursor-pointer disabled:cursor-default"
+                        style={{
+                          backgroundColor: entry.standing === "hot" ? "#fee2e2" : entry.standing === "warm" ? "#fed7aa" : entry.standing === "heated" ? "#fef3c7" : entry.standing === "cold" ? "#dbeafe" : "#f3f4f6",
+                          color: entry.standing === "hot" ? "#991b1b" : entry.standing === "warm" ? "#92400e" : entry.standing === "heated" ? "#b45309" : entry.standing === "cold" ? "#1e40af" : "#374151",
+                          borderColor: entry.standing === "hot" ? "#fca5a5" : entry.standing === "warm" ? "#fdba74" : entry.standing === "heated" ? "#fcd34d" : entry.standing === "cold" ? "#93c5fd" : "#e5e7eb",
+                        }}
+                      >
+                        <option value="">â€”</option>
+                        <option value="hot">ðŸ”´ Hot</option>
+                        <option value="warm">ðŸŸ  Warm</option>
+                        <option value="heated">ðŸŸ¡ Heated</option>
+                        <option value="cold">ðŸ”µ Cold</option>
+                        <option value="missed">âšª Missed</option>
+                      </select>
+                    </div>
+                    {/* Pipeline */}
+                    <div className="px-2 py-2">
+                      <select
+                        value={entry.pipeline || ""}
+                        disabled={entry.closed}
+                        onChange={(e) => quickUpdate(s._id, entryIndex, "pipeline", e.target.value)}
+                        className="w-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-2 py-1 focus:outline-none cursor-pointer disabled:cursor-default"
+                      >
+                        <option value="">â€”</option>
+                        {appLeadStageGroups.map((g) => <option key={g} value={g}>{g}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="px-4 py-3 text-xs text-gray-400 italic">No admission entries</div>
+            )}
+          </div>
+        ))}
       </div>
+
+      {!loading && filtered.length > 0 && (
+        <p className="text-xs text-gray-400 text-right">
+          Showing {filtered.length} of {students.length} students
+        </p>
+      )}
     </div>
   );
 }

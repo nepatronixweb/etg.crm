@@ -120,6 +120,13 @@ export async function POST(req: NextRequest) {
     if (lead.convertedToStudent) return NextResponse.json({ error: "Lead already converted" }, { status: 400 });
 
     const counsellor = lead.assignedTo || session.user.id;
+    const branch = lead.branch || session.user.branch;
+
+    if (!branch) return NextResponse.json({ error: "No branch assigned to this lead or your account" }, { status: 400 });
+    if (!counsellor) return NextResponse.json({ error: "No counsellor assigned" }, { status: 400 });
+
+    const VALID_SOURCES = ["walk_in", "facebook", "whatsapp", "instagram", "website", "referral", "other"];
+    const source = VALID_SOURCES.includes(lead.source) ? lead.source : "other";
 
     // Support both legacy single-country and new multi-country format
     const countriesArray: { country: string; universityName?: string; status: string }[] =
@@ -137,8 +144,8 @@ export async function POST(req: NextRequest) {
       phone: lead.phone,
       email: lead.email,
       dateOfBirth: lead.dateOfBirth,
-      source: lead.source,
-      branch: lead.branch,
+      source,
+      branch,
       counsellor,
       currentStage: "counsellor",
       countries: countriesArray,
