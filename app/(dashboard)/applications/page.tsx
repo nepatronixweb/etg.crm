@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment } from "react";
 import { useSession } from "next-auth/react";
 import { Plus, Search, X, FileText, Phone, Mail } from "lucide-react";
 import { formatDate, getStatusColor } from "@/lib/utils";
@@ -221,7 +221,8 @@ export default function ApplicationsPage() {
                 </tr>
               )}
               {!loading && filtered.map((app) => (
-                <tr key={app._id} className="hover:bg-gray-50 transition-colors">
+                <Fragment key={app._id}>
+                <tr className="hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-2.5">
                       <div className="w-7 h-7 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center shrink-0">
@@ -367,6 +368,7 @@ export default function ApplicationsPage() {
                     </tr>
                   );
                 })()}
+                </Fragment>
               ))}
             </tbody>
           </table>
