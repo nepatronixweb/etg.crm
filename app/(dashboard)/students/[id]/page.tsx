@@ -18,6 +18,7 @@ import {
   DollarSign,
   BookOpen,
   MapPin,
+  Clock,
 } from "lucide-react";
 import { formatDate, formatDateTime, getStatusColor, getRoleLabel, COUNTRIES } from "@/lib/utils";
 
@@ -215,12 +216,13 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   };
 
   const updateStage = async (stage: string) => {
-    await fetch(`/api/students/${id}`, {
-      method: "PUT",
+    const res = await fetch(`/api/students/${id}`, {
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ currentStage: stage }),
     });
-    fetchData();
+    const updated = await res.json();
+    setStudent((prev) => prev ? { ...prev, currentStage: updated.currentStage } : prev);
   };
 
   const enrollStudent = async () => {
@@ -270,12 +272,13 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   };
 
   const updateStanding = async (standing: string) => {
-    await fetch(`/api/students/${id}`, {
+    const res = await fetch(`/api/students/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ standing }),
     });
-    fetchData();
+    const updated = await res.json();
+    setStudent((prev) => prev ? { ...prev, standing: updated.standing } : prev);
   };
 
   const approveVisa = async (country: string) => {
@@ -324,17 +327,17 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     if (!newCountry) return;
 
     const existing = student?.countries.map((country) => country.country) || [];
-    const updated = [...existing.map((country) => ({ country })), { country: newCountry }];
+    const updatedCountries = [...existing.map((country) => ({ country })), { country: newCountry }];
 
-    await fetch(`/api/students/${id}`, {
-      method: "PUT",
+    const res = await fetch(`/api/students/${id}`, {
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ countries: updated }),
+      body: JSON.stringify({ countries: updatedCountries }),
     });
-
+    const updated = await res.json();
+    setStudent((prev) => prev ? { ...prev, countries: updated.countries } : prev);
     setNewCountry("");
     setAddingCountry(false);
-    fetchData();
   };
 
   const saveAdmissionDetail = async () => {
@@ -343,7 +346,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
 
     setSavingAdmission(true);
 
-    await fetch(`/api/students/${id}`, {
+    const res = await fetch(`/api/students/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -355,17 +358,19 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
         },
       }),
     });
-
+    const updatedStudent = await res.json();
     setSavingAdmission(false);
     setShowAdmissionForm(false);
     setAdmissionForm(EMPTY_ADMISSION_FORM);
-    fetchData();
+    setStudent((prev) => prev ? { ...prev, admissionDetails: updatedStudent.admissionDetails ?? prev.admissionDetails } : prev);
   };
 
   const quickUpdateAdmission = async (index: number, field: string, value: string) => {
     if (!student) return;
+    const today = new Date().toISOString().split("T")[0];
+    const extra = field === "stage" ? { statusDate: today } : {};
     const updated = student.admissionDetails.map((entry, i) =>
-      i === index ? { ...entry, [field]: value } : entry
+      i === index ? { ...entry, [field]: value, ...extra } : entry
     );
     setStudent({ ...student, admissionDetails: updated });
     await fetch(`/api/students/${id}`, {
@@ -379,13 +384,14 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     const entry = student?.admissionDetails?.[index];
     if (!entry) return;
 
+    // Optimistic removal
+    setStudent((prev) => prev ? { ...prev, admissionDetails: prev.admissionDetails.filter((_, i) => i !== index) } : prev);
+
     await fetch(`/api/students/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ $pull: { admissionDetails: { _id: entry._id } } }),
     });
-
-    fetchData();
   };
 
   const updateAdmissionDetail = async (index: number) => {
@@ -400,15 +406,15 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
         : admission
     ));
 
-    await fetch(`/api/students/${id}`, {
+    const res = await fetch(`/api/students/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ admissionDetails: updated }),
     });
-
+    const updatedStudent = await res.json();
     setSavingAdmission(false);
     setEditingAdmission(null);
-    fetchData();
+    setStudent((prev) => prev ? { ...prev, admissionDetails: updatedStudent.admissionDetails ?? updated } : prev);
   };
 
   const toggleAdmissionClosed = async (index: number) => {
@@ -684,7 +690,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                         <label className="block text-sm font-medium text-gray-700 mb-1.5">Stage</label>
                         <select
                           value={admissionForm.stage}
-                          onChange={(e) => setAdmissionForm((form) => ({ ...form, stage: e.target.value }))}
+                          onChange={(e) => setAdmissionForm((form) => ({ ...form, stage: e.target.value, statusDate: new Date().toISOString().split("T")[0] }))}
                           className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                         >
                           <option value="">Select stage</option>
@@ -1027,7 +1033,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                             <label className="block text-xs font-semibold text-gray-600 mb-1">Stage</label>
                             <select
                               value={editAdmissionForm.stage}
-                              onChange={(e) => setEditAdmissionForm((form) => ({ ...form, stage: e.target.value }))}
+                              onChange={(e) => setEditAdmissionForm((form) => ({ ...form, stage: e.target.value, statusDate: new Date().toISOString().split("T")[0] }))}
                               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                             >
                               <option value="">Select stage</option>
@@ -1228,139 +1234,35 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                         </div>
                       </div>
                     ) : (
-                      <div>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="space-y-2 min-w-0 flex-1">
-                            {/* Header row */}
-                            <div className="flex items-center gap-2 flex-wrap" style={entry.closed ? { opacity: 0.55 } : undefined}>
-                              <span className="px-2.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full">{entry.country}</span>
-                              {entry.universityName && <span className="text-sm font-semibold text-gray-800">{entry.universityName}</span>}
-                              {entry.closed && (
-                                <span className="px-2 py-0.5 bg-red-50 text-red-500 text-[10px] font-bold rounded-full uppercase tracking-wide border border-red-200">Closed</span>
-                              )}
+                      <div className={`rounded-xl border overflow-hidden transition-all ${entry.closed ? "border-gray-200 bg-gray-50/50" : "border-gray-200 bg-white shadow-sm"}`}>
+                        {/* Card Header */}
+                        <div className={`px-4 py-3 flex items-center justify-between gap-3 ${entry.closed ? "bg-gray-100/60" : "bg-linear-to-r from-blue-50 to-indigo-50 border-b border-blue-100/60"}`}>
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-bold text-sm ${entry.closed ? "bg-gray-200 text-gray-400" : "bg-blue-600 text-white"}`}>
+                              {(entry.country || "?").substring(0, 2).toUpperCase()}
                             </div>
-                            <div className={entry.closed ? "opacity-45 blur-sm pointer-events-none select-none" : ""}>
-                              {/* Sub-info */}
-                              <div className="flex items-center gap-4 flex-wrap text-xs text-gray-500 mb-3">
-                                {entry.location && <span className="flex items-center gap-1"><MapPin size={11} /> {entry.location}</span>}
-                                {entry.annualTuitionFee && <span className="flex items-center gap-1"><DollarSign size={11} /> {entry.annualTuitionFee} / yr</span>}
-                                {entry.createdAt && <span className="flex items-center gap-1"><Calendar size={11} /> {formatDate(entry.createdAt)}</span>}
-                                {entry.b2bAgentType && <span className="px-2 py-0.5 bg-teal-50 text-teal-700 font-semibold rounded-full border border-teal-200">{entry.b2bAgentType}</span>}
-                                {entry.b2bName && <span className="font-medium text-gray-700">{entry.b2bName}</span>}
-                                {entry.statusDate && <span>{formatDate(entry.statusDate)}</span>}
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${entry.closed ? "bg-gray-200 text-gray-500" : "bg-blue-100 text-blue-700"}`}>{entry.country}</span>
+                                {entry.universityName && (
+                                  <span className={`font-semibold text-sm ${entry.closed ? "text-gray-400" : "text-gray-900"}`}>{entry.universityName}</span>
+                                )}
+                                {entry.closed && (
+                                  <span className="px-2 py-0.5 bg-red-100 text-red-500 text-[10px] font-bold rounded-md uppercase tracking-wide border border-red-200">Closed</span>
+                                )}
                               </div>
-
-                              {/* STAGE | REMARKS | STANDING | PIPELINE table */}
-                              <div className="border border-gray-100 rounded-lg overflow-hidden">
-                                <div className="grid grid-cols-4 bg-gray-50 border-b border-gray-100">
-                                  {["STAGE", "REMARKS", "STANDING", "PIPELINE"].map((col) => (
-                                    <div key={col} className="px-2 py-1.5 text-[10px] font-bold text-gray-400 tracking-widest uppercase text-center">{col}</div>
-                                  ))}
-                                </div>
-                                <div className="grid grid-cols-4">
-                                  {/* STAGE */}
-                                  <div className="px-2 py-2 border-r border-gray-100">
-                                    {canAdmission && !entry.closed ? (
-                                      <select
-                                        value={entry.stage || ""}
-                                        onChange={(e) => quickUpdateAdmission(index, "stage", e.target.value)}
-                                        className="w-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2 py-1 focus:outline-none cursor-pointer"
-                                      >
-                                        <option value="">—</option>
-                                        {appLeadStages.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                                      </select>
-                                    ) : (
-                                      <span className="block text-center text-xs font-medium px-2 py-1 bg-blue-50 text-blue-700 rounded-full truncate">
-                                        {appLeadStages.find((s) => s.value === entry.stage)?.label || entry.stage || "—"}
-                                      </span>
-                                    )}
-                                  </div>
-                                  {/* REMARKS */}
-                                  <div className="px-2 py-2 border-r border-gray-100">
-                                    {canAdmission && !entry.closed ? (
-                                      <select
-                                        value={entry.remarks || ""}
-                                        onChange={(e) => quickUpdateAdmission(index, "remarks", e.target.value)}
-                                        className="w-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-2 py-1 focus:outline-none cursor-pointer"
-                                      >
-                                        <option value="">—</option>
-                                        {appRemarkOptions.map((r) => <option key={r} value={r}>{r}</option>)}
-                                      </select>
-                                    ) : (
-                                      <span className="block text-center text-xs font-medium px-2 py-1 bg-amber-50 text-amber-700 rounded-full truncate">
-                                        {entry.remarks || "—"}
-                                      </span>
-                                    )}
-                                  </div>
-                                  {/* STANDING */}
-                                  <div className="px-2 py-2 border-r border-gray-100">
-                                    {canAdmission && !entry.closed ? (
-                                      <select
-                                        value={entry.standing || ""}
-                                        onChange={(e) => quickUpdateAdmission(index, "standing", e.target.value)}
-                                        className="w-full text-xs font-medium rounded-full px-2 py-1 border focus:outline-none cursor-pointer"
-                                        style={{
-                                          backgroundColor: entry.standing === "hot" ? "#fee2e2" : entry.standing === "warm" ? "#fed7aa" : entry.standing === "heated" ? "#fef3c7" : entry.standing === "cold" ? "#dbeafe" : "#f3f4f6",
-                                          color: entry.standing === "hot" ? "#991b1b" : entry.standing === "warm" ? "#92400e" : entry.standing === "heated" ? "#b45309" : entry.standing === "cold" ? "#1e40af" : "#374151",
-                                          borderColor: entry.standing === "hot" ? "#fca5a5" : entry.standing === "warm" ? "#fdba74" : entry.standing === "heated" ? "#fcd34d" : entry.standing === "cold" ? "#93c5fd" : "#e5e7eb",
-                                        }}
-                                      >
-                                        <option value="">—</option>
-                                        <option value="hot">🔴 Hot</option>
-                                        <option value="warm">🟠 Warm</option>
-                                        <option value="heated">🟡 Heated</option>
-                                        <option value="cold">🔵 Cold</option>
-                                        <option value="missed">⚪ Missed</option>
-                                      </select>
-                                    ) : (
-                                      <span className="block text-center text-xs font-medium px-2 py-1 rounded-full" style={{
-                                        backgroundColor: entry.standing === "hot" ? "#fee2e2" : entry.standing === "warm" ? "#fed7aa" : entry.standing === "heated" ? "#fef3c7" : entry.standing === "cold" ? "#dbeafe" : "#f3f4f6",
-                                        color: entry.standing === "hot" ? "#991b1b" : entry.standing === "warm" ? "#92400e" : entry.standing === "heated" ? "#b45309" : entry.standing === "cold" ? "#1e40af" : "#374151",
-                                      }}>
-                                        {entry.standing ? entry.standing.charAt(0).toUpperCase() + entry.standing.slice(1) : "—"}
-                                      </span>
-                                    )}
-                                  </div>
-                                  {/* PIPELINE */}
-                                  <div className="px-2 py-2">
-                                    {canAdmission && !entry.closed ? (
-                                      <select
-                                        value={entry.pipeline || ""}
-                                        onChange={(e) => quickUpdateAdmission(index, "pipeline", e.target.value)}
-                                        className="w-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-2 py-1 focus:outline-none cursor-pointer"
-                                      >
-                                        <option value="">—</option>
-                                        {appLeadStageGroups.map((g) => <option key={g} value={g}>{g}</option>)}
-                                      </select>
-                                    ) : (
-                                      <span className="block text-center text-xs font-medium px-2 py-1 bg-purple-50 text-purple-700 rounded-full truncate">
-                                        {entry.pipeline || "—"}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Courses */}
+                              {entry.location && (
+                                <p className="text-[11px] text-gray-500 flex items-center gap-1 mt-0.5">
+                                  <MapPin size={10} />{entry.location}
+                                </p>
+                              )}
                               {entry.courses && entry.courses.length > 0 && (
-                                <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                  {entry.courses.map((course, courseIndex) => (
-                                    <div key={courseIndex} className="bg-white border border-gray-200 rounded-lg p-3 text-xs">
-                                      <div className="font-medium text-gray-900 flex items-center gap-1">
-                                        <BookOpen size={11} /> {course.name}
-                                      </div>
-                                      {course.level && (
-                                        <div className="mt-1">
-                                          <span className="inline-block px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-medium">{course.level}</span>
-                                        </div>
-                                      )}
-                                      <div className="text-gray-600 mt-1">
-                                        {[course.intakeQuarter, course.intakeYear].filter(Boolean).join(" ") || "No intake set"}
-                                      </div>
-                                      {course.commencementDate && (
-                                        <div className="text-gray-500 mt-1">Starts {formatDate(course.commencementDate)}</div>
-                                      )}
-                                    </div>
+                                <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                                  {entry.courses.map((course, ci) => course.name && (
+                                    <span key={ci} className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md ${entry.closed ? "bg-gray-200 text-gray-400" : "bg-white/80 text-gray-700 border border-gray-200"}`}>
+                                      <BookOpen size={9} className={entry.closed ? "text-gray-400" : "text-blue-500"} />
+                                      {course.name}
+                                    </span>
                                   ))}
                                 </div>
                               )}
@@ -1370,7 +1272,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                             {canToggleAdmission && (
                               <button
                                 onClick={() => toggleAdmissionClosed(index)}
-                                className={`p-1.5 rounded-md transition-colors ${entry.closed ? "text-green-600 hover:bg-green-50" : "text-orange-500 hover:bg-orange-50"}`}
+                                className={`p-1.5 rounded-md transition-colors ${entry.closed ? "text-green-600 hover:bg-green-50" : "text-orange-400 hover:bg-orange-50"}`}
                                 title={entry.closed ? "Reopen entry" : "Close entry"}
                               >
                                 {entry.closed ? <Unlock size={13} /> : <Lock size={13} />}
@@ -1396,14 +1298,14 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                       courses: entry.courses?.length ? entry.courses.map((course) => ({ ...course })) : [{ ...EMPTY_COURSE }],
                                     });
                                   }}
-                                  className="p-1.5 text-gray-300 hover:text-blue-500 transition-colors"
+                                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
                                   title="Edit entry"
                                 >
                                   <Pencil size={13} />
                                 </button>
                                 <button
                                   onClick={() => deleteAdmissionDetail(index)}
-                                  className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
+                                  className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
                                   title="Remove entry"
                                 >
                                   <Trash2 size={13} />
@@ -1411,6 +1313,186 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                               </>
                             )}
                           </div>
+                        </div>
+
+                        {/* Card Body */}
+                        <div className={entry.closed ? "opacity-40 blur-sm pointer-events-none select-none" : ""}>
+                          {/* Info Strip */}
+                          <div className="px-4 py-2.5 flex flex-wrap gap-x-5 gap-y-1.5 border-b border-gray-100 bg-white">
+                            {entry.annualTuitionFee && (
+                              <div className="flex items-center gap-1.5 text-xs">
+                                <DollarSign size={11} className="text-green-500 shrink-0" />
+                                <span className="font-semibold text-gray-800">{entry.annualTuitionFee}</span>
+                                <span className="text-gray-400">/ yr</span>
+                              </div>
+                            )}
+                            {entry.createdAt && (
+                              <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                                <Calendar size={11} className="text-gray-400 shrink-0" />
+                                <span>Added {formatDate(entry.createdAt)}</span>
+                              </div>
+                            )}
+                            {entry.statusDate && (
+                              <div className="flex items-center gap-1.5 text-xs">
+                                <Clock size={11} className="text-blue-400 shrink-0" />
+                                <span className="text-gray-500">Updated</span>
+                                <span className="font-semibold text-gray-700">{formatDate(entry.statusDate)}</span>
+                              </div>
+                            )}
+                            {(entry.b2bAgentType || entry.b2bName) && (
+                              <div className="flex items-center gap-1.5 text-xs">
+                                <span className="px-2 py-0.5 bg-teal-50 text-teal-700 font-semibold rounded-full border border-teal-200 text-[10px]">{entry.b2bAgentType}</span>
+                                {entry.b2bName && <span className="font-semibold text-gray-700">{entry.b2bName}</span>}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Status Bar */}
+                          <div className="px-4 pt-3 pb-2">
+                            <div className="grid grid-cols-5 gap-2">
+                              {/* STAGE */}
+                              <div>
+                                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 text-center">Stage</p>
+                                {canAdmission ? (
+                                  <select
+                                    value={entry.stage || ""}
+                                    onChange={(e) => quickUpdateAdmission(index, "stage", e.target.value)}
+                                    className="w-full text-xs font-semibold bg-yellow-50 text-yellow-800 border border-yellow-200 rounded-lg px-2 py-1.5 focus:outline-none cursor-pointer text-center"
+                                  >
+                                    <option value="">—</option>
+                                    {appLeadStages.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                                  </select>
+                                ) : (
+                                  <div className="text-center text-xs font-semibold px-2 py-1.5 bg-yellow-50 text-yellow-800 rounded-lg border border-yellow-100 truncate">
+                                    {appLeadStages.find((s) => s.value === entry.stage)?.label || entry.stage || "—"}
+                                  </div>
+                                )}
+                              </div>
+                              {/* REMARKS */}
+                              <div>
+                                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 text-center">Remarks</p>
+                                {canAdmission ? (
+                                  <select
+                                    value={entry.remarks || ""}
+                                    onChange={(e) => quickUpdateAdmission(index, "remarks", e.target.value)}
+                                    className="w-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 rounded-lg px-2 py-1.5 focus:outline-none cursor-pointer text-center"
+                                  >
+                                    <option value="">—</option>
+                                    {appRemarkOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+                                  </select>
+                                ) : (
+                                  <div className="text-center text-xs font-semibold px-2 py-1.5 bg-amber-50 text-amber-800 rounded-lg border border-amber-100 truncate">
+                                    {entry.remarks || "—"}
+                                  </div>
+                                )}
+                              </div>
+                              {/* STANDING */}
+                              <div>
+                                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 text-center">Standing</p>
+                                {canAdmission ? (
+                                  <select
+                                    value={entry.standing || ""}
+                                    onChange={(e) => quickUpdateAdmission(index, "standing", e.target.value)}
+                                    className="w-full text-xs font-semibold rounded-lg px-2 py-1.5 border focus:outline-none cursor-pointer text-center"
+                                    style={{
+                                      backgroundColor: entry.standing === "hot" ? "#fee2e2" : entry.standing === "warm" ? "#fed7aa" : entry.standing === "heated" ? "#fef3c7" : entry.standing === "cold" ? "#dbeafe" : "#f3f4f6",
+                                      color: entry.standing === "hot" ? "#991b1b" : entry.standing === "warm" ? "#92400e" : entry.standing === "heated" ? "#b45309" : entry.standing === "cold" ? "#1e40af" : "#374151",
+                                      borderColor: entry.standing === "hot" ? "#fca5a5" : entry.standing === "warm" ? "#fdba74" : entry.standing === "heated" ? "#fcd34d" : entry.standing === "cold" ? "#93c5fd" : "#e5e7eb",
+                                    }}
+                                  >
+                                    <option value="">—</option>
+                                    <option value="hot">🔴 Hot</option>
+                                    <option value="warm">🟠 Warm</option>
+                                    <option value="heated">🟡 Heated</option>
+                                    <option value="cold">🔵 Cold</option>
+                                    <option value="missed">⚪ Missed</option>
+                                  </select>
+                                ) : (
+                                  <div className="text-center text-xs font-semibold px-2 py-1.5 rounded-lg border" style={{
+                                    backgroundColor: entry.standing === "hot" ? "#fee2e2" : entry.standing === "warm" ? "#fed7aa" : entry.standing === "heated" ? "#fef3c7" : entry.standing === "cold" ? "#dbeafe" : "#f3f4f6",
+                                    color: entry.standing === "hot" ? "#991b1b" : entry.standing === "warm" ? "#92400e" : entry.standing === "heated" ? "#b45309" : entry.standing === "cold" ? "#1e40af" : "#374151",
+                                    borderColor: entry.standing === "hot" ? "#fca5a5" : entry.standing === "warm" ? "#fdba74" : entry.standing === "heated" ? "#fcd34d" : entry.standing === "cold" ? "#93c5fd" : "#e5e7eb",
+                                  }}>
+                                    {entry.standing ? entry.standing.charAt(0).toUpperCase() + entry.standing.slice(1) : "—"}
+                                  </div>
+                                )}
+                              </div>
+                              {/* PIPELINE */}
+                              <div>
+                                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 text-center">Pipeline</p>
+                                {canAdmission ? (
+                                  <select
+                                    value={entry.pipeline || ""}
+                                    onChange={(e) => quickUpdateAdmission(index, "pipeline", e.target.value)}
+                                    className="w-full text-xs font-semibold bg-purple-50 text-purple-800 border border-purple-200 rounded-lg px-2 py-1.5 focus:outline-none cursor-pointer text-center"
+                                  >
+                                    <option value="">—</option>
+                                    {appLeadStageGroups.map((g) => <option key={g} value={g}>{g}</option>)}
+                                  </select>
+                                ) : (
+                                  <div className="text-center text-xs font-semibold px-2 py-1.5 bg-purple-50 text-purple-800 rounded-lg border border-purple-100 truncate">
+                                    {entry.pipeline || "—"}
+                                  </div>
+                                )}
+                              </div>
+                              {/* STATUS DATE */}
+                              <div>
+                                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 text-center">Status Date</p>
+                                {canAdmission ? (
+                                  <input
+                                    type="date"
+                                    value={entry.statusDate ? entry.statusDate.split("T")[0] : ""}
+                                    onChange={(e) => quickUpdateAdmission(index, "statusDate", e.target.value)}
+                                    className="w-full text-xs text-gray-700 font-medium border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none cursor-pointer bg-gray-50 text-center"
+                                  />
+                                ) : (
+                                  <div className="text-center text-xs text-gray-600 font-medium px-2 py-1.5 bg-gray-50 rounded-lg border border-gray-100">
+                                    {entry.statusDate ? entry.statusDate.split("T")[0] : "—"}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Courses */}
+                          {entry.courses && entry.courses.length > 0 && (
+                            <div className="px-4 pb-4 pt-2">
+                              <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2">Courses</p>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {entry.courses.map((course, courseIndex) => (
+                                  <div key={courseIndex} className="rounded-lg border border-gray-100 bg-gray-50/70 p-3">
+                                    <div className="flex items-start gap-2">
+                                      <div className="mt-0.5 w-6 h-6 rounded-md bg-blue-100 flex items-center justify-center shrink-0">
+                                        <BookOpen size={11} className="text-blue-600" />
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-semibold text-gray-900 leading-tight">{course.name}</p>
+                                        <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                          {course.level && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-semibold border border-blue-100">
+                                              {course.level}
+                                            </span>
+                                          )}
+                                          {(course.intakeQuarter || course.intakeYear) && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-semibold border border-indigo-100">
+                                              <Calendar size={8} />
+                                              {[course.intakeQuarter, course.intakeYear].filter(Boolean).join(" ")}
+                                            </span>
+                                          )}
+                                          {course.commencementDate && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-[10px] font-semibold border border-green-100">
+                                              <Clock size={8} />
+                                              Starts {formatDate(course.commencementDate)}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}

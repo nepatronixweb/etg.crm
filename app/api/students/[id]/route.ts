@@ -14,7 +14,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     const student = await Student.findById(id)
       .populate("branch", "name location")
       .populate("counsellor", "name email")
-      .populate("lead");
+      .lean();
     if (!student) return NextResponse.json({ error: "Student not found" }, { status: 404 });
     return NextResponse.json(student);
   } catch {
@@ -34,7 +34,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const update = hasOperators ? body : { $set: body };
     const student = await Student.findByIdAndUpdate(id, update, { new: true, runValidators: false })
       .populate("branch", "name location")
-      .populate("counsellor", "name email");
+      .populate("counsellor", "name email")
+      .lean();
     if (!student) return NextResponse.json({ error: "Student not found" }, { status: 404 });
     return NextResponse.json(student);
   } catch (err) {

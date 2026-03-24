@@ -11,6 +11,7 @@ interface AdmissionEntry {
   pipeline?: string;
   standing?: string;
   remarks?: string;
+  statusDate?: string;
   closed?: boolean;
 }
 
@@ -50,13 +51,17 @@ export default function AdmissionsPage() {
   }, []);
 
   const quickUpdate = async (studentId: string, entryIndex: number, field: string, value: string) => {
+    const today = new Date().toISOString().split("T")[0];
     let updatedDetails: AdmissionEntry[] = [];
     setStudents((prev) =>
       prev.map((s) => {
         if (s._id !== studentId) return s;
-        const details = (s.admissionDetails || []).map((entry, i) =>
-          i === entryIndex ? { ...entry, [field]: value } : entry
-        );
+        const details = (s.admissionDetails || []).map((entry, i) => {
+          if (i !== entryIndex) return entry;
+          const patch: Partial<AdmissionEntry> = { [field]: value };
+          if (field === "stage") patch.statusDate = today;
+          return { ...entry, ...patch };
+        });
         updatedDetails = details;
         return { ...s, admissionDetails: details };
       })
@@ -177,15 +182,15 @@ export default function AdmissionsPage() {
             {s.admissionDetails && s.admissionDetails.length > 0 ? (
               <div>
                 {/* Column headers */}
-                <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] border-b border-gray-100 bg-gray-50">
-                  {["University", "Stage", "Remarks", "Standing", "Pipeline"].map((col) => (
+                <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] border-b border-gray-100 bg-gray-50">
+                  {["University", "Stage", "Remarks", "Standing", "Pipeline", "Status Date"].map((col) => (
                     <div key={col} className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">{col}</div>
                   ))}
                 </div>
                 {s.admissionDetails.map((entry, entryIndex) => (
                   <div
                     key={entry._id || entryIndex}
-                    className={`grid grid-cols-[2fr_1fr_1fr_1fr_1fr] border-b border-gray-50 last:border-0 items-center ${
+                    className={`grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] border-b border-gray-50 last:border-0 items-center ${
                       entry.closed ? "opacity-50" : ""
                     }`}
                   >
@@ -249,9 +254,19 @@ export default function AdmissionsPage() {
                         onChange={(e) => quickUpdate(s._id, entryIndex, "pipeline", e.target.value)}
                         className="w-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-2 py-1 focus:outline-none cursor-pointer disabled:cursor-default"
                       >
-                        <option value="">â€”</option>
+                        <option value="">—</option>
                         {appLeadStageGroups.map((g) => <option key={g} value={g}>{g}</option>)}
                       </select>
+                    </div>
+                    {/* Status Date */}
+                    <div className="px-2 py-2">
+                      <input
+                        type="date"
+                        value={entry.statusDate ? entry.statusDate.split("T")[0] : ""}
+                        disabled={entry.closed}
+                        onChange={(e) => quickUpdate(s._id, entryIndex, "statusDate", e.target.value)}
+                        className="text-xs text-gray-600 font-medium border border-gray-200 rounded-full px-2 py-1 focus:outline-none bg-gray-50 cursor-pointer disabled:cursor-default w-32"
+                      />
                     </div>
                   </div>
                 ))}

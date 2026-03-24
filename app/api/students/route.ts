@@ -35,20 +35,14 @@ export async function GET(req: NextRequest) {
     if (standing) filter.standing = standing;
     if (enrolled === "true") filter.enrolled = true;
 
+    const needsLead = !enrolled && !stage;
     const students = await Student.find(filter)
       .populate("branch", "name")
       .populate("counsellor", "name email")
-      .populate("lead", [
-        "source", "interestedService", "interestedCountry", "interestedCountries",
-        "parentName", "parentPhone1", "parentPhone2",
-        "academicScore", "academicInstitution",
-        "temporaryAddress", "permanentAddress",
-        "examType", "examScore", "examJoinDate", "examStartDate", "examEndDate",
-        "examPaymentMethod", "examEstimatedDate",
-        "gender", "maritalStatus", "nationality", "passportNumber", "visaExpiryDate",
-        "senderName", "academicYear", "applyLevel", "course", "intakeYear", "intakeQuarter",
-        "comments",
-      ].join(" "))
+      .populate(needsLead ? {
+        path: "lead",
+        select: "source interestedService interestedCountry interestedCountries parentName parentPhone1 parentPhone2 academicScore academicInstitution temporaryAddress permanentAddress examType examScore examJoinDate examStartDate examEndDate examPaymentMethod examEstimatedDate gender maritalStatus nationality passportNumber visaExpiryDate senderName academicYear applyLevel course intakeYear intakeQuarter comments",
+      } : "_id")
       .sort({ createdAt: -1 })
       .lean();
 
