@@ -997,358 +997,315 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                 {student.admissionDetails?.map((entry, index) => (
                   <div key={entry._id ?? index} className={`p-4 rounded-xl border transition-all duration-300 ${entry.closed ? "bg-gray-100 border-gray-300" : "bg-gray-50 border-gray-100"}`}>
                     {editingAdmission === index ? (
-                      <div className="space-y-4">
-                        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Edit Entry</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Country</label>
-                            <select
-                              value={editAdmissionForm.country}
-                              onChange={(e) => setEditAdmissionForm((form) => ({ ...form, country: e.target.value }))}
-                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                              <option value="">Select country</option>
-                              {student.countries?.map((country) => (
-                                <option key={country.country} value={country.country}>{country.country}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="relative">
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">University Name</label>
-                            <input
-                              value={editAdmissionForm.universityName}
-                              onChange={(e) => {
-                                setEditAdmissionForm((form) => ({ ...form, universityName: e.target.value }));
-                                setUniDropdownOpen("edit");
-                              }}
-                              onFocus={() => setUniDropdownOpen("edit")}
-                              onBlur={() => setTimeout(() => setUniDropdownOpen(null), 150)}
-                              placeholder="Type or select university"
-                              autoComplete="off"
-                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                            {uniDropdownOpen === "edit" && (() => {
-                              const unis = countryUniversities[editAdmissionForm.country] || [];
-                              const filtered = unis.filter((u) => u.toLowerCase().includes(editAdmissionForm.universityName.toLowerCase()));
-                              
-                              if (!editAdmissionForm.country) {
-                                return (
-                                  <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                                    <li className="px-3 py-2 text-sm text-gray-500 italic">Select a country first</li>
-                                  </ul>
-                                );
-                              }
-                              
-                              if (filtered.length === 0) return null;
-                              
-                              return (
-                                <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                  {filtered.map((name) => (
-                                    <li key={name} onMouseDown={() => { setEditAdmissionForm((form) => ({ ...form, universityName: name })); setUniDropdownOpen(null); }}
-                                      className="px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-900 cursor-pointer truncate">
-                                      {name}
-                                    </li>
-                                  ))}
-                                </ul>
-                              );
-                            })()}
+                      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                        {/* Form header */}
+                        <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100 flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center shrink-0">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                           </div>
                           <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Location / Campus</label>
-                            <input
-                              value={editAdmissionForm.location}
-                              onChange={(e) => setEditAdmissionForm((form) => ({ ...form, location: e.target.value }))}
-                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">B2B Agent</label>
-                            <select
-                              value={editAdmissionForm.b2bAgentType}
-                              onChange={(e) => setEditAdmissionForm((form) => ({ ...form, b2bAgentType: e.target.value }))}
-                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                            >
-                              <option value="">Select type</option>
-                              <option value="Agent">Agent</option>
-                              <option value="Sub-Agent">Sub-Agent</option>
-                            </select>
-                          </div>
-                          <div className="relative">
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">B2B Name</label>
-                            <input
-                              value={editAdmissionForm.b2bName}
-                              onChange={(e) => {
-                                setEditAdmissionForm((form) => ({ ...form, b2bName: e.target.value }));
-                                setB2bDropdownOpen("edit");
-                              }}
-                              onFocus={() => setB2bDropdownOpen("edit")}
-                              onBlur={() => setTimeout(() => setB2bDropdownOpen(null), 150)}
-                              placeholder="Type or select a B2B name"
-                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              autoComplete="off"
-                            />
-                            {b2bDropdownOpen === "edit" && b2bNames.filter((n) => n.toLowerCase().includes(editAdmissionForm.b2bName.toLowerCase())).length > 0 && (
-                              <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                                {b2bNames.filter((n) => n.toLowerCase().includes(editAdmissionForm.b2bName.toLowerCase())).map((name) => (
-                                  <li
-                                    key={name}
-                                    onMouseDown={() => {
-                                      setEditAdmissionForm((form) => ({ ...form, b2bName: name }));
-                                      setB2bDropdownOpen(null);
-                                    }}
-                                    className="px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer"
-                                  >
-                                    {name}
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
+                            <p className="text-sm font-bold text-gray-900">Edit Entry</p>
+                            <p className="text-xs text-blue-600 font-medium">Update admission details below</p>
                           </div>
                         </div>
 
-                        {/* Student Status Group - Edit */}
-                        <div className="border-t border-gray-200 pt-4 mt-4">
-                          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3">Student Status</p>
-                          <div className="bg-gray-50 rounded-xl border border-gray-200 p-4">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className="p-6 space-y-6">
+                          {/* Section: Institution */}
+                          <div>
+                            <div className="flex items-center gap-2 mb-4">
+                              <div className="w-1 h-4 rounded-full bg-blue-500"></div>
+                              <p className="text-[11px] font-black text-gray-500 uppercase tracking-widest">Institution</p>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                               <div>
-                                <label className="block text-xs font-semibold text-gray-600 mb-1">Stage</label>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Country</label>
                                 <select
-                                  value={editAdmissionForm.stage}
-                                  onChange={(e) => setEditAdmissionForm((form) => ({ ...form, stage: e.target.value, statusDate: new Date().toISOString().split("T")[0] }))}
-                                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                  value={editAdmissionForm.country}
+                                  onChange={(e) => setEditAdmissionForm((form) => ({ ...form, country: e.target.value }))}
+                                  className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-all"
                                 >
-                                  <option value="">Select stage</option>
-                                  {appLeadStages.map((s) => (
-                                    <option key={s.value} value={s.value}>{s.label}</option>
+                                  <option value="">Select country</option>
+                                  {student.countries?.map((country) => (
+                                    <option key={country.country} value={country.country}>{country.country}</option>
                                   ))}
                                 </select>
                               </div>
-                              <div>
-                                <label className="block text-xs font-semibold text-gray-600 mb-1">Status Date</label>
+                              <div className="relative">
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">University Name</label>
                                 <input
-                                  type="date"
-                                  value={editAdmissionForm.statusDate}
-                                  onChange={(e) => setEditAdmissionForm((form) => ({ ...form, statusDate: e.target.value }))}
-                                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  value={editAdmissionForm.universityName}
+                                  onChange={(e) => { setEditAdmissionForm((form) => ({ ...form, universityName: e.target.value })); setUniDropdownOpen("edit"); }}
+                                  onFocus={() => setUniDropdownOpen("edit")}
+                                  onBlur={() => setTimeout(() => setUniDropdownOpen(null), 150)}
+                                  placeholder="Type or select university"
+                                  autoComplete="off"
+                                  className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-all"
+                                />
+                                {uniDropdownOpen === "edit" && (() => {
+                                  const unis = countryUniversities[editAdmissionForm.country] || [];
+                                  const filtered = unis.filter((u) => u.toLowerCase().includes(editAdmissionForm.universityName.toLowerCase()));
+                                  if (!editAdmissionForm.country) return (
+                                    <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-40 overflow-y-auto">
+                                      <li className="px-4 py-2.5 text-sm text-gray-400 italic">Select a country first</li>
+                                    </ul>
+                                  );
+                                  if (filtered.length === 0) return null;
+                                  return (
+                                    <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-48 overflow-y-auto">
+                                      {filtered.map((name) => (
+                                        <li key={name} onMouseDown={() => { setEditAdmissionForm((form) => ({ ...form, universityName: name })); setUniDropdownOpen(null); }}
+                                          className="px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-900 cursor-pointer transition-colors truncate">{name}</li>
+                                      ))}
+                                    </ul>
+                                  );
+                                })()}
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Location / Campus</label>
+                                <input
+                                  value={editAdmissionForm.location}
+                                  onChange={(e) => setEditAdmissionForm((form) => ({ ...form, location: e.target.value }))}
+                                  placeholder="e.g. Melbourne"
+                                  className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-all"
                                 />
                               </div>
                               <div>
-                                <label className="block text-xs font-semibold text-gray-600 mb-1">Student ID</label>
-                                <input
-                                  value={editAdmissionForm.studentId ?? ""}
-                                  onChange={(e) => setEditAdmissionForm((form) => ({ ...form, studentId: e.target.value }))}
-                                  placeholder="e.g. STU-2026-001"
-                                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-xs font-semibold text-gray-600 mb-1">Annual Tuition Fee</label>
-                                <input
-                                  value={editAdmissionForm.annualTuitionFee}
-                                  onChange={(e) => setEditAdmissionForm((form) => ({ ...form, annualTuitionFee: e.target.value }))}
-                                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-xs font-semibold text-gray-600 mb-1">Tuition Fee Paid</label>
-                                <input
-                                  value={editAdmissionForm.tuitionFeesPaid ?? ""}
-                                  onChange={(e) => setEditAdmissionForm((form) => ({ ...form, tuitionFeesPaid: e.target.value }))}
-                                  placeholder="e.g. AUD 10,000"
-                                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-xs font-semibold text-gray-600 mb-1">Standing</label>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">B2B Agent</label>
                                 <select
-                                  value={editAdmissionForm.standing}
-                                  onChange={(e) => setEditAdmissionForm((form) => ({ ...form, standing: e.target.value }))}
-                                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                  value={editAdmissionForm.b2bAgentType}
+                                  onChange={(e) => setEditAdmissionForm((form) => ({ ...form, b2bAgentType: e.target.value }))}
+                                  className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-all"
                                 >
-                                  <option value="">Select standing</option>
-                                  {appStandings.map((s) => (
-                                    <option key={s} value={s}>{s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</option>
-                                  ))}
+                                  <option value="">Select type</option>
+                                  <option value="Agent">Agent</option>
+                                  <option value="Sub-Agent">Sub-Agent</option>
                                 </select>
                               </div>
-                              <div>
-                                <label className="block text-xs font-semibold text-gray-600 mb-1">Remarks</label>
-                                <select
-                                  value={editAdmissionForm.remarks}
-                                  onChange={(e) => setEditAdmissionForm((form) => ({ ...form, remarks: e.target.value }))}
-                                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                                >
-                                  <option value="">Select remark</option>
-                                  {appRemarkOptions.map((r) => (
-                                    <option key={r} value={r}>{r}</option>
-                                  ))}
-                                </select>
+                              <div className="relative sm:col-span-2">
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">B2B Name</label>
+                                <input
+                                  value={editAdmissionForm.b2bName}
+                                  onChange={(e) => { setEditAdmissionForm((form) => ({ ...form, b2bName: e.target.value })); setB2bDropdownOpen("edit"); }}
+                                  onFocus={() => setB2bDropdownOpen("edit")}
+                                  onBlur={() => setTimeout(() => setB2bDropdownOpen(null), 150)}
+                                  placeholder="Type or select a B2B partner name"
+                                  className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-all"
+                                  autoComplete="off"
+                                />
+                                {b2bDropdownOpen === "edit" && b2bNames.filter((n) => n.toLowerCase().includes(editAdmissionForm.b2bName.toLowerCase())).length > 0 && (
+                                  <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-40 overflow-y-auto">
+                                    {b2bNames.filter((n) => n.toLowerCase().includes(editAdmissionForm.b2bName.toLowerCase())).map((name) => (
+                                      <li key={name} onMouseDown={() => { setEditAdmissionForm((form) => ({ ...form, b2bName: name })); setB2bDropdownOpen(null); }}
+                                        className="px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer transition-colors">{name}</li>
+                                    ))}
+                                  </ul>
+                                )}
                               </div>
-                              <div>
-                                <label className="block text-xs font-semibold text-gray-600 mb-1">Pipeline</label>
-                                <select
-                                  value={editAdmissionForm.pipeline ?? ""}
-                                  onChange={(e) => setEditAdmissionForm((form) => ({ ...form, pipeline: e.target.value }))}
-                                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                                >
-                                  <option value="">Select pipeline</option>
-                                  {appLeadStageGroups.map((g) => (
-                                    <option key={g} value={g}>{g}</option>
-                                  ))}
-                                </select>
+                            </div>
+                          </div>
+
+                          {/* Section: Student Status */}
+                          <div>
+                            <div className="flex items-center gap-2 mb-4">
+                              <div className="w-1 h-4 rounded-full bg-emerald-500"></div>
+                              <p className="text-[11px] font-black text-gray-500 uppercase tracking-widest">Student Status</p>
+                            </div>
+                            <div className="bg-gray-50/70 rounded-2xl border border-gray-100 p-4">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Stage</label>
+                                  <select
+                                    value={editAdmissionForm.stage}
+                                    onChange={(e) => setEditAdmissionForm((form) => ({ ...form, stage: e.target.value, statusDate: new Date().toISOString().split("T")[0] }))}
+                                    className="w-full px-4 py-2.5 bg-white border border-yellow-200 rounded-xl text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition-all"
+                                  >
+                                    <option value="">Select stage</option>
+                                    {appLeadStages.map((s) => (
+                                      <option key={s.value} value={s.value}>{s.label}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Status Date</label>
+                                  <input
+                                    type="date"
+                                    value={editAdmissionForm.statusDate}
+                                    onChange={(e) => setEditAdmissionForm((form) => ({ ...form, statusDate: e.target.value }))}
+                                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-all"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Student ID</label>
+                                  <input
+                                    value={editAdmissionForm.studentId ?? ""}
+                                    onChange={(e) => setEditAdmissionForm((form) => ({ ...form, studentId: e.target.value }))}
+                                    placeholder="e.g. STU-2026-001"
+                                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-all"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Annual Tuition Fee</label>
+                                  <input
+                                    value={editAdmissionForm.annualTuitionFee}
+                                    onChange={(e) => setEditAdmissionForm((form) => ({ ...form, annualTuitionFee: e.target.value }))}
+                                    placeholder="e.g. 15000"
+                                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-all"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Tuition Fee Paid</label>
+                                  <input
+                                    value={editAdmissionForm.tuitionFeesPaid ?? ""}
+                                    onChange={(e) => setEditAdmissionForm((form) => ({ ...form, tuitionFeesPaid: e.target.value }))}
+                                    placeholder="e.g. AUD 10,000"
+                                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-all"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Standing</label>
+                                  <select
+                                    value={editAdmissionForm.standing}
+                                    onChange={(e) => setEditAdmissionForm((form) => ({ ...form, standing: e.target.value }))}
+                                    className="w-full px-4 py-2.5 bg-white border border-orange-200 rounded-xl text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all"
+                                  >
+                                    <option value="">Select standing</option>
+                                    {appStandings.map((s) => (
+                                      <option key={s} value={s}>{s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Remarks</label>
+                                  <select
+                                    value={editAdmissionForm.remarks}
+                                    onChange={(e) => setEditAdmissionForm((form) => ({ ...form, remarks: e.target.value }))}
+                                    className="w-full px-4 py-2.5 bg-white border border-amber-200 rounded-xl text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400 transition-all"
+                                  >
+                                    <option value="">Select remark</option>
+                                    {appRemarkOptions.map((r) => (
+                                      <option key={r} value={r}>{r}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Pipeline</label>
+                                  <select
+                                    value={editAdmissionForm.pipeline ?? ""}
+                                    onChange={(e) => setEditAdmissionForm((form) => ({ ...form, pipeline: e.target.value }))}
+                                    className="w-full px-4 py-2.5 bg-white border border-purple-200 rounded-xl text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all"
+                                  >
+                                    <option value="">Select pipeline</option>
+                                    {appLeadStageGroups.map((g) => (
+                                      <option key={g} value={g}>{g}</option>
+                                    ))}
+                                  </select>
+                                </div>
                               </div>
+                            </div>
+                          </div>
+
+                          {/* Section: Courses */}
+                          <div>
+                            <div className="flex items-center justify-between mb-4">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1 h-4 rounded-full bg-orange-500"></div>
+                                <p className="text-[11px] font-black text-gray-500 uppercase tracking-widest">Courses</p>
+                              </div>
+                              <button
+                                onClick={() => setEditAdmissionForm((form) => ({ ...form, courses: [...form.courses, { ...EMPTY_COURSE }] }))}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 text-orange-600 border border-orange-200 rounded-lg text-xs font-semibold hover:bg-orange-100 transition-colors"
+                              >
+                                <Plus size={12} /> Add Course
+                              </button>
+                            </div>
+                            <div className="space-y-3">
+                              {editAdmissionForm.courses.map((course, courseIndex) => (
+                                <div key={courseIndex} className="bg-orange-50/40 border border-orange-100 rounded-2xl p-4 space-y-3">
+                                  {editAdmissionForm.courses.length > 1 && (
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-[10px] font-bold text-orange-400 uppercase tracking-widest">Course {courseIndex + 1}</span>
+                                      <button onClick={() => setEditAdmissionForm((form) => ({ ...form, courses: form.courses.filter((_, ci) => ci !== courseIndex) }))}
+                                        className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-semibold transition-colors">
+                                        <Trash2 size={11} /> Remove
+                                      </button>
+                                    </div>
+                                  )}
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div className="relative sm:col-span-2">
+                                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Course Name *</label>
+                                      <input
+                                        value={course.name}
+                                        onChange={(e) => { const u = [...editAdmissionForm.courses]; u[courseIndex] = { ...u[courseIndex], name: e.target.value }; setEditAdmissionForm((f) => ({ ...f, courses: u })); setCourseDropdownOpen("edit"); }}
+                                        onFocus={() => setCourseDropdownOpen("edit")}
+                                        onBlur={() => setTimeout(() => setCourseDropdownOpen(null), 150)}
+                                        placeholder="Select or type course name"
+                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all"
+                                        autoComplete="off"
+                                      />
+                                      {courseDropdownOpen === "edit" && appCourses.filter((c) => c.toLowerCase().includes(course.name.toLowerCase())).length > 0 && (
+                                        <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-32 overflow-y-auto">
+                                          {appCourses.filter((c) => c.toLowerCase().includes(course.name.toLowerCase())).map((cn) => (
+                                            <li key={cn} onMouseDown={() => { const u = [...editAdmissionForm.courses]; u[courseIndex] = { ...u[courseIndex], name: cn }; setEditAdmissionForm((f) => ({ ...f, courses: u })); setCourseDropdownOpen(null); }}
+                                              className="px-4 py-2.5 text-sm text-gray-700 hover:bg-orange-50 hover:text-orange-900 cursor-pointer transition-colors">{cn}</li>
+                                          ))}
+                                        </ul>
+                                      )}
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Level</label>
+                                      <select value={course.level} onChange={(e) => { const u = [...editAdmissionForm.courses]; u[courseIndex] = { ...u[courseIndex], level: e.target.value }; setEditAdmissionForm((f) => ({ ...f, courses: u })); }}
+                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all">
+                                        <option value="">Select level</option>
+                                        {appEducationLevels.map((l) => <option key={l} value={l}>{l}</option>)}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Intake Quarter</label>
+                                      <select value={course.intakeQuarter} onChange={(e) => { const u = [...editAdmissionForm.courses]; u[courseIndex] = { ...u[courseIndex], intakeQuarter: e.target.value }; setEditAdmissionForm((f) => ({ ...f, courses: u })); }}
+                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all">
+                                        <option value="">Select quarter</option>
+                                        <option value="Q1">Q1</option><option value="Q2">Q2</option><option value="Q3">Q3</option><option value="Q4">Q4</option>
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Intake Year</label>
+                                      <input value={course.intakeYear} onChange={(e) => { const u = [...editAdmissionForm.courses]; u[courseIndex] = { ...u[courseIndex], intakeYear: e.target.value }; setEditAdmissionForm((f) => ({ ...f, courses: u })); }}
+                                        placeholder="e.g. 2026"
+                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all" />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Commencement Date</label>
+                                      <input type="date" value={course.commencementDate} onChange={(e) => { const u = [...editAdmissionForm.courses]; u[courseIndex] = { ...u[courseIndex], commencementDate: e.target.value }; setEditAdmissionForm((f) => ({ ...f, courses: u })); }}
+                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all" />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Course End Date</label>
+                                      <input type="date" value={course.courseEndDate ?? ""} onChange={(e) => { const u = [...editAdmissionForm.courses]; u[courseIndex] = { ...u[courseIndex], courseEndDate: e.target.value }; setEditAdmissionForm((f) => ({ ...f, courses: u })); }}
+                                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all" />
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           </div>
                         </div>
 
-                        <div className="border-t border-gray-300 pt-3 mt-3">
-                          <div className="flex items-center justify-between mb-3">
-                            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Courses</p>
-                            <button
-                              onClick={() => setEditAdmissionForm((form) => ({ ...form, courses: [...form.courses, { ...EMPTY_COURSE }] }))}
-                              className="text-blue-600 text-xs flex items-center gap-1 hover:underline"
-                            >
-                              <Plus size={12} /> Add Course
-                            </button>
-                          </div>
-                          <div className="space-y-3">
-                            {editAdmissionForm.courses.map((course, courseIndex) => (
-                              <div key={courseIndex} className="bg-white rounded-lg border border-gray-200 p-3 space-y-2">
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                  <div className="relative">
-                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Course Name *</label>
-                                    <input
-                                      value={course.name}
-                                      onChange={(e) => {
-                                        const updated = [...editAdmissionForm.courses];
-                                        updated[courseIndex] = { ...updated[courseIndex], name: e.target.value };
-                                        setEditAdmissionForm((form) => ({ ...form, courses: updated }));
-                                      }}
-                                      onFocus={() => setCourseDropdownOpen("edit")}
-                                      onBlur={() => setTimeout(() => setCourseDropdownOpen(null), 150)}
-                                      placeholder="Select or type course"
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                      autoComplete="off"
-                                    />
-                                    {courseDropdownOpen === "edit" && appCourses.filter((c) => c.toLowerCase().includes(course.name.toLowerCase())).length > 0 && (
-                                      <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-32 overflow-y-auto">
-                                        {appCourses.filter((c) => c.toLowerCase().includes(course.name.toLowerCase())).map((courseName) => (
-                                          <li
-                                            key={courseName}
-                                            onMouseDown={() => {
-                                              const updated = [...editAdmissionForm.courses];
-                                              updated[courseIndex] = { ...updated[courseIndex], name: courseName };
-                                              setEditAdmissionForm((form) => ({ ...form, courses: updated }));
-                                              setCourseDropdownOpen(null);
-                                            }}
-                                            className="px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer"
-                                          >
-                                            {courseName}
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    )}
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Level</label>
-                                    <select
-                                      value={course.level}
-                                      onChange={(e) => {
-                                        const updated = [...editAdmissionForm.courses];
-                                        updated[courseIndex] = { ...updated[courseIndex], level: e.target.value };
-                                        setEditAdmissionForm((form) => ({ ...form, courses: updated }));
-                                      }}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    >
-                                      <option value="">Select level</option>
-                                      {appEducationLevels.map((l) => <option key={l} value={l}>{l}</option>)}
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Intake Quarter</label>
-                                    <select
-                                      value={course.intakeQuarter}
-                                      onChange={(e) => {
-                                        const updated = [...editAdmissionForm.courses];
-                                        updated[courseIndex] = { ...updated[courseIndex], intakeQuarter: e.target.value };
-                                        setEditAdmissionForm((form) => ({ ...form, courses: updated }));
-                                      }}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    >
-                                      <option value="">Select quarter</option>
-                                      <option value="Q1">Q1</option>
-                                      <option value="Q2">Q2</option>
-                                      <option value="Q3">Q3</option>
-                                      <option value="Q4">Q4</option>
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Intake Year</label>
-                                    <input
-                                      value={course.intakeYear}
-                                      onChange={(e) => {
-                                        const updated = [...editAdmissionForm.courses];
-                                        updated[courseIndex] = { ...updated[courseIndex], intakeYear: e.target.value };
-                                        setEditAdmissionForm((form) => ({ ...form, courses: updated }));
-                                      }}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Course Commencement Date</label>
-                                    <input
-                                      type="date"
-                                      value={course.commencementDate}
-                                      onChange={(e) => {
-                                        const updated = [...editAdmissionForm.courses];
-                                        updated[courseIndex] = { ...updated[courseIndex], commencementDate: e.target.value };
-                                        setEditAdmissionForm((form) => ({ ...form, courses: updated }));
-                                      }}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Course End Date</label>
-                                    <input
-                                      type="date"
-                                      value={course.courseEndDate ?? ""}
-                                      onChange={(e) => {
-                                        const updated = [...editAdmissionForm.courses];
-                                        updated[courseIndex] = { ...updated[courseIndex], courseEndDate: e.target.value };
-                                        setEditAdmissionForm((form) => ({ ...form, courses: updated }));
-                                      }}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    />
-                                  </div>
-                                </div>
-                                {editAdmissionForm.courses.length > 1 && (
-                                  <button
-                                    onClick={() => setEditAdmissionForm((form) => ({
-                                      ...form,
-                                      courses: form.courses.filter((_, currentIndex) => currentIndex !== courseIndex),
-                                    }))}
-                                    className="text-xs text-red-600 hover:text-red-800 flex items-center gap-1"
-                                  >
-                                    <Trash2 size={12} /> Remove Course
-                                  </button>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="flex gap-2 pt-1">
+                        {/* Action buttons */}
+                        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex gap-3">
                           <button
                             onClick={() => updateAdmissionDetail(index)}
                             disabled={!editAdmissionForm.country || editAdmissionForm.courses.some((course) => !course.name.trim()) || savingAdmission}
-                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg text-sm font-medium"
+                            className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl text-sm font-semibold shadow-sm transition-colors"
                           >
-                            {savingAdmission ? "Saving..." : "Update"}
+                            {savingAdmission ? (
+                              <><svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.3"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/></svg> Saving…</>
+                            ) : (
+                              <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Update Entry</>
+                            )}
                           </button>
                           <button
                             onClick={() => setEditingAdmission(null)}
-                            className="px-4 py-2 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg text-sm"
+                            className="px-5 py-2.5 border border-gray-200 text-gray-600 hover:bg-gray-100 rounded-xl text-sm font-semibold transition-colors"
                           >
                             Cancel
                           </button>
