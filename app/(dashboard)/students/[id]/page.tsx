@@ -32,6 +32,7 @@ interface AdmissionCourse {
   intakeQuarter: string;
   intakeYear: string;
   commencementDate: string;
+  courseEndDate: string;
 }
 
 interface AdmissionDetail {
@@ -48,6 +49,8 @@ interface AdmissionDetail {
   closed?: boolean;
   b2bAgentType?: string;
   b2bName?: string;
+  studentId?: string;
+  tuitionFeesPaid?: string;
   courses: AdmissionCourse[];
   createdAt: string;
 }
@@ -88,6 +91,7 @@ const EMPTY_COURSE: AdmissionCourse = {
   intakeQuarter: "",
   intakeYear: "",
   commencementDate: "",
+  courseEndDate: "",
 };
 
 const EMPTY_ADMISSION_FORM = {
@@ -95,6 +99,8 @@ const EMPTY_ADMISSION_FORM = {
   universityName: "",
   location: "",
   annualTuitionFee: "",
+  studentId: "",
+  tuitionFeesPaid: "",
   stage: "",
   pipeline: "",
   standing: "",
@@ -561,228 +567,282 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
               </div>
 
               {showAdmissionForm && (
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-4 overflow-hidden">
-                  <div className="px-5 py-3.5 bg-blue-50 border-b border-blue-100 flex items-center gap-2">
-                    <GraduationCap size={15} className="text-blue-600" />
-                    <p className="text-sm font-semibold text-blue-800">New Admission Entry</p>
-                  </div>
-                  <div className="p-5 space-y-5">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Country *</label>
-                        <select
-                          value={admissionForm.country}
-                          onChange={(e) => setAdmissionForm((form) => ({ ...form, country: e.target.value }))}
-                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                        >
-                          <option value="">Select country</option>
-                          {student.countries?.map((country) => (
-                            <option key={country.country} value={country.country}>{country.country}</option>
-                          ))}
-                        </select>
+                <div className="bg-white rounded-2xl border border-blue-100 shadow-md mb-6 overflow-hidden">
+                  {/* Form Header */}
+                  <div className="px-6 py-4 bg-linear-to-r from-blue-600 to-indigo-600 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                        <GraduationCap size={16} className="text-white" />
                       </div>
-                      <div className="relative">
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">University Name</label>
-                        <input
-                          value={admissionForm.universityName}
-                          onChange={(e) => {
-                            setAdmissionForm((form) => ({ ...form, universityName: e.target.value }));
-                            setUniDropdownOpen("new");
-                          }}
-                          onFocus={() => setUniDropdownOpen("new")}
-                          onBlur={() => setTimeout(() => setUniDropdownOpen(null), 150)}
-                          placeholder="Type or select university"
-                          autoComplete="off"
-                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                        {uniDropdownOpen === "new" && (() => {
-                          const unis = countryUniversities[admissionForm.country] || [];
-                          const filtered = unis.filter((u) => u.toLowerCase().includes(admissionForm.universityName.toLowerCase()));
-                          
-                          if (!admissionForm.country) {
+                      <div>
+                        <p className="text-white font-semibold text-sm">New Admission Entry</p>
+                        <p className="text-blue-100 text-xs">Fill in the university and course details</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-6 space-y-6">
+
+                    {/* University Info Section */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="w-1 h-5 rounded-full bg-blue-500"></div>
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">University Info</p>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Country <span className="text-red-400">*</span></label>
+                          <select
+                            value={admissionForm.country}
+                            onChange={(e) => setAdmissionForm((form) => ({ ...form, country: e.target.value }))}
+                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 focus:bg-white transition-all"
+                          >
+                            <option value="">Select country</option>
+                            {student.countries?.map((country) => (
+                              <option key={country.country} value={country.country}>{country.country}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="relative">
+                          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">University Name</label>
+                          <input
+                            value={admissionForm.universityName}
+                            onChange={(e) => {
+                              setAdmissionForm((form) => ({ ...form, universityName: e.target.value }));
+                              setUniDropdownOpen("new");
+                            }}
+                            onFocus={() => setUniDropdownOpen("new")}
+                            onBlur={() => setTimeout(() => setUniDropdownOpen(null), 150)}
+                            placeholder="Type or select university"
+                            autoComplete="off"
+                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 focus:bg-white transition-all"
+                          />
+                          {uniDropdownOpen === "new" && (() => {
+                            const unis = countryUniversities[admissionForm.country] || [];
+                            const filtered = unis.filter((u) => u.toLowerCase().includes(admissionForm.universityName.toLowerCase()));
+                            if (!admissionForm.country) {
+                              return (
+                                <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
+                                  <li className="px-4 py-2.5 text-sm text-gray-400 italic">Select a country first</li>
+                                </ul>
+                              );
+                            }
+                            if (filtered.length === 0) return null;
                             return (
-                              <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                                <li className="px-3 py-2 text-sm text-gray-500 italic">Select a country first</li>
+                              <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                                {filtered.map((name) => (
+                                  <li key={name} onMouseDown={() => { setAdmissionForm((form) => ({ ...form, universityName: name })); setUniDropdownOpen(null); }}
+                                    className="px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-900 cursor-pointer">
+                                    {name}
+                                  </li>
+                                ))}
                               </ul>
                             );
-                          }
-                          
-                          if (filtered.length === 0) return null;
-                          
-                          return (
-                            <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                              {filtered.map((name) => (
-                                <li key={name} onMouseDown={() => { setAdmissionForm((form) => ({ ...form, universityName: name })); setUniDropdownOpen(null); }}
-                                  className="px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-900 cursor-pointer transitions">
+                          })()}
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Location / Campus</label>
+                          <input
+                            value={admissionForm.location}
+                            onChange={(e) => setAdmissionForm((form) => ({ ...form, location: e.target.value }))}
+                            placeholder="e.g. Melbourne, Sydney"
+                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 focus:bg-white transition-all"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* B2B Agent Section */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="w-1 h-5 rounded-full bg-purple-500"></div>
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">B2B Agent</p>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Agent Type</label>
+                          <select
+                            value={admissionForm.b2bAgentType}
+                            onChange={(e) => setAdmissionForm((form) => ({ ...form, b2bAgentType: e.target.value }))}
+                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 focus:bg-white transition-all"
+                          >
+                            <option value="">Select type</option>
+                            <option value="Agent">Agent</option>
+                            <option value="Sub-Agent">Sub-Agent</option>
+                          </select>
+                        </div>
+                        <div className="relative">
+                          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Agent Name</label>
+                          <input
+                            value={admissionForm.b2bName}
+                            onChange={(e) => {
+                              setAdmissionForm((form) => ({ ...form, b2bName: e.target.value }));
+                              setB2bDropdownOpen("new");
+                            }}
+                            onFocus={() => setB2bDropdownOpen("new")}
+                            onBlur={() => setTimeout(() => setB2bDropdownOpen(null), 150)}
+                            placeholder="Type or select a B2B name"
+                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 focus:bg-white transition-all"
+                            autoComplete="off"
+                          />
+                          {b2bDropdownOpen === "new" && b2bNames.filter((n) => n.toLowerCase().includes(admissionForm.b2bName.toLowerCase())).length > 0 && (
+                            <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
+                              {b2bNames.filter((n) => n.toLowerCase().includes(admissionForm.b2bName.toLowerCase())).map((name) => (
+                                <li
+                                  key={name}
+                                  onMouseDown={() => {
+                                    setAdmissionForm((form) => ({ ...form, b2bName: name }));
+                                    setB2bDropdownOpen(null);
+                                  }}
+                                  className="px-4 py-2.5 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-700 cursor-pointer"
+                                >
                                   {name}
                                 </li>
                               ))}
                             </ul>
-                          );
-                        })()}
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Location / Campus</label>
-                        <input
-                          value={admissionForm.location}
-                          onChange={(e) => setAdmissionForm((form) => ({ ...form, location: e.target.value }))}
-                          placeholder="e.g. Melbourne, Sydney"
-                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Annual Tuition Fee</label>
-                        <input
-                          value={admissionForm.annualTuitionFee}
-                          onChange={(e) => setAdmissionForm((form) => ({ ...form, annualTuitionFee: e.target.value }))}
-                          placeholder="e.g. AUD 32,000"
-                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">B2B Agent</label>
-                        <select
-                          value={admissionForm.b2bAgentType}
-                          onChange={(e) => setAdmissionForm((form) => ({ ...form, b2bAgentType: e.target.value }))}
-                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                        >
-                          <option value="">Select type</option>
-                          <option value="Agent">Agent</option>
-                          <option value="Sub-Agent">Sub-Agent</option>
-                        </select>
-                      </div>
-                      <div className="relative">
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">B2B Name</label>
-                        <input
-                          value={admissionForm.b2bName}
-                          onChange={(e) => {
-                            setAdmissionForm((form) => ({ ...form, b2bName: e.target.value }));
-                            setB2bDropdownOpen("new");
-                          }}
-                          onFocus={() => setB2bDropdownOpen("new")}
-                          onBlur={() => setTimeout(() => setB2bDropdownOpen(null), 150)}
-                          placeholder="Type or select a B2B name"
-                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          autoComplete="off"
-                        />
-                        {b2bDropdownOpen === "new" && b2bNames.filter((n) => n.toLowerCase().includes(admissionForm.b2bName.toLowerCase())).length > 0 && (
-                          <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                            {b2bNames.filter((n) => n.toLowerCase().includes(admissionForm.b2bName.toLowerCase())).map((name) => (
-                              <li
-                                key={name}
-                                onMouseDown={() => {
-                                  setAdmissionForm((form) => ({ ...form, b2bName: name }));
-                                  setB2bDropdownOpen(null);
-                                }}
-                                className="px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer"
-                              >
-                                {name}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
+                          )}
+                        </div>
                       </div>
                     </div>
 
-                    {/* Stage, Standing, Remarks, Status Date, Pipeline Section */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Stage</label>
-                        <select
-                          value={admissionForm.stage}
-                          onChange={(e) => setAdmissionForm((form) => ({ ...form, stage: e.target.value, statusDate: new Date().toISOString().split("T")[0] }))}
-                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                        >
-                          <option value="">Select stage</option>
-                          {appLeadStages.map((s) => (
-                            <option key={s.value} value={s.value}>{s.label}</option>
-                          ))}
-                        </select>
+                    {/* Student Status Section */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="w-1 h-5 rounded-full bg-emerald-500"></div>
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Student Status</p>
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Standing</label>
-                        <select
-                          value={admissionForm.standing}
-                          onChange={(e) => setAdmissionForm((form) => ({ ...form, standing: e.target.value }))}
-                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                        >
-                          <option value="">Select standing</option>
-                          <option value="hot">🔴 Hot</option>
-                          <option value="warm">🟠 Warm</option>
-                          <option value="heated">🟡 Heated</option>
-                          <option value="cold">🔵 Cold</option>
-                          <option value="missed">⚪ Missed</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Status Date</label>
-                        <input
-                          type="date"
-                          value={admissionForm.statusDate}
-                          onChange={(e) => setAdmissionForm((form) => ({ ...form, statusDate: e.target.value }))}
-                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Remarks</label>
-                        <select
-                          value={admissionForm.remarks}
-                          onChange={(e) => setAdmissionForm((form) => ({ ...form, remarks: e.target.value }))}
-                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                        >
-                          <option value="">Select remark</option>
-                          {appRemarkOptions.map((r) => (
-                            <option key={r} value={r}>{r}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="sm:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Pipeline</label>
-                        <select
-                          value={admissionForm.pipeline}
-                          onChange={(e) => setAdmissionForm((form) => ({ ...form, pipeline: e.target.value }))}
-                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                        >
-                          <option value="">Select pipeline</option>
-                          {appLeadStageGroups.map((g) => (
-                            <option key={g} value={g}>{g}</option>
-                          ))}
-                        </select>
+                      <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-5">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Stage</label>
+                            <select
+                              value={admissionForm.stage}
+                              onChange={(e) => setAdmissionForm((form) => ({ ...form, stage: e.target.value, statusDate: new Date().toISOString().split("T")[0] }))}
+                              className="w-full px-4 py-3 bg-white border border-emerald-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all"
+                            >
+                              <option value="">Select stage</option>
+                              {appLeadStages.map((s) => (
+                                <option key={s.value} value={s.value}>{s.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Status Date</label>
+                            <input
+                              type="date"
+                              value={admissionForm.statusDate}
+                              onChange={(e) => setAdmissionForm((form) => ({ ...form, statusDate: e.target.value }))}
+                              className="w-full px-4 py-3 bg-white border border-emerald-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Student ID</label>
+                            <input
+                              value={admissionForm.studentId}
+                              onChange={(e) => setAdmissionForm((form) => ({ ...form, studentId: e.target.value }))}
+                              placeholder="e.g. STU-2026-001"
+                              className="w-full px-4 py-3 bg-white border border-emerald-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Annual Tuition Fee</label>
+                            <input
+                              value={admissionForm.annualTuitionFee}
+                              onChange={(e) => setAdmissionForm((form) => ({ ...form, annualTuitionFee: e.target.value }))}
+                              placeholder="e.g. AUD 32,000"
+                              className="w-full px-4 py-3 bg-white border border-emerald-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tuition Fee Paid</label>
+                            <input
+                              value={admissionForm.tuitionFeesPaid}
+                              onChange={(e) => setAdmissionForm((form) => ({ ...form, tuitionFeesPaid: e.target.value }))}
+                              placeholder="e.g. AUD 10,000"
+                              className="w-full px-4 py-3 bg-white border border-emerald-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Standing</label>
+                            <select
+                              value={admissionForm.standing}
+                              onChange={(e) => setAdmissionForm((form) => ({ ...form, standing: e.target.value }))}
+                              className="w-full px-4 py-3 bg-white border border-emerald-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all"
+                            >
+                              <option value="">Select standing</option>
+                              <option value="hot">🔴 Hot</option>
+                              <option value="warm">🟠 Warm</option>
+                              <option value="heated">🟡 Heated</option>
+                              <option value="cold">🔵 Cold</option>
+                              <option value="missed">⚪ Missed</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Remarks</label>
+                            <select
+                              value={admissionForm.remarks}
+                              onChange={(e) => setAdmissionForm((form) => ({ ...form, remarks: e.target.value }))}
+                              className="w-full px-4 py-3 bg-white border border-emerald-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all"
+                            >
+                              <option value="">Select remark</option>
+                              {appRemarkOptions.map((r) => (
+                                <option key={r} value={r}>{r}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Pipeline</label>
+                            <select
+                              value={admissionForm.pipeline}
+                              onChange={(e) => setAdmissionForm((form) => ({ ...form, pipeline: e.target.value }))}
+                              className="w-full px-4 py-3 bg-white border border-emerald-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all"
+                            >
+                              <option value="">Select pipeline</option>
+                              {appLeadStageGroups.map((g) => (
+                                <option key={g} value={g}>{g}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="border-t border-gray-100 pt-5">
-                      <div className="flex items-center justify-between mb-3">
-                        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Courses</p>
+                    {/* Courses Section */}
+                    <div>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-1 h-5 rounded-full bg-orange-500"></div>
+                          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Courses</p>
+                        </div>
                         <button
                           type="button"
                           onClick={() => setAdmissionForm((form) => ({ ...form, courses: [...form.courses, { ...EMPTY_COURSE }] }))}
-                          className="text-blue-600 text-xs font-medium flex items-center gap-1 hover:text-blue-700"
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 text-orange-600 border border-orange-200 rounded-lg text-xs font-semibold hover:bg-orange-100 transition-colors"
                         >
                           <Plus size={12} /> Add Course
                         </button>
                       </div>
-                      <div className="space-y-3">
+                      <div className="space-y-4">
                         {admissionForm.courses.map((course, index) => (
-                          <div key={index} className="bg-gray-50 rounded-lg border border-gray-200 p-4">
+                          <div key={index} className="bg-orange-50/40 border border-orange-100 rounded-2xl p-5">
                             {admissionForm.courses.length > 1 && (
-                              <div className="flex items-center justify-between mb-3">
-                                <span className="text-xs font-semibold text-gray-500">Course {index + 1}</span>
+                              <div className="flex items-center justify-between mb-4">
+                                <span className="text-xs font-bold text-orange-600 uppercase tracking-wide">Course {index + 1}</span>
                                 <button
                                   type="button"
                                   onClick={() => setAdmissionForm((form) => ({
                                     ...form,
                                     courses: form.courses.filter((_, courseIndex) => courseIndex !== index),
                                   }))}
-                                  className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1"
+                                  className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors"
                                 >
                                   <Trash2 size={11} /> Remove
                                 </button>
                               </div>
                             )}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                               <div className="sm:col-span-2 relative">
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Course Name *</label>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Course Name <span className="text-red-400">*</span></label>
                                 <input
                                   value={course.name}
                                   onChange={(e) => {
@@ -793,11 +853,11 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                   onFocus={() => setCourseDropdownOpen("new")}
                                   onBlur={() => setTimeout(() => setCourseDropdownOpen(null), 150)}
                                   placeholder="e.g. Bachelor of IT"
-                                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  className="w-full px-4 py-3 bg-white border border-orange-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all"
                                   autoComplete="off"
                                 />
                                 {courseDropdownOpen === "new" && appCourses.filter((c) => c.toLowerCase().includes(course.name.toLowerCase())).length > 0 && (
-                                  <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                                  <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
                                     {appCourses.filter((c) => c.toLowerCase().includes(course.name.toLowerCase())).map((courseName) => (
                                       <li
                                         key={courseName}
@@ -807,7 +867,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                           setAdmissionForm((form) => ({ ...form, courses: updated }));
                                           setCourseDropdownOpen(null);
                                         }}
-                                        className="px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer"
+                                        className="px-4 py-2.5 text-sm text-gray-700 hover:bg-orange-50 hover:text-orange-700 cursor-pointer"
                                       >
                                         {courseName}
                                       </li>
@@ -816,7 +876,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                 )}
                               </div>
                               <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Level</label>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Level</label>
                                 <select
                                   value={course.level}
                                   onChange={(e) => {
@@ -824,14 +884,14 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                     updated[index] = { ...updated[index], level: e.target.value };
                                     setAdmissionForm((form) => ({ ...form, courses: updated }));
                                   }}
-                                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                  className="w-full px-4 py-3 bg-white border border-orange-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all"
                                 >
                                   <option value="">Select level</option>
                                   {appEducationLevels.map((l) => <option key={l} value={l}>{l}</option>)}
                                 </select>
                               </div>
                               <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Intake Quarter</label>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Intake Quarter</label>
                                 <select
                                   value={course.intakeQuarter}
                                   onChange={(e) => {
@@ -839,7 +899,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                     updated[index] = { ...updated[index], intakeQuarter: e.target.value };
                                     setAdmissionForm((form) => ({ ...form, courses: updated }));
                                   }}
-                                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                  className="w-full px-4 py-3 bg-white border border-orange-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all"
                                 >
                                   <option value="">Select quarter</option>
                                   <option value="Q1">Q1</option>
@@ -849,7 +909,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                 </select>
                               </div>
                               <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Intake Year</label>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Intake Year</label>
                                 <input
                                   value={course.intakeYear}
                                   onChange={(e) => {
@@ -858,11 +918,11 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                     setAdmissionForm((form) => ({ ...form, courses: updated }));
                                   }}
                                   placeholder="e.g. 2026"
-                                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  className="w-full px-4 py-3 bg-white border border-orange-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all"
                                 />
                               </div>
-                              <div className="sm:col-span-2">
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Commencement Date</label>
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Commencement Date</label>
                                 <input
                                   type="date"
                                   value={course.commencementDate}
@@ -871,7 +931,20 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                     updated[index] = { ...updated[index], commencementDate: e.target.value };
                                     setAdmissionForm((form) => ({ ...form, courses: updated }));
                                   }}
-                                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  className="w-full px-4 py-3 bg-white border border-orange-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Course End Date</label>
+                                <input
+                                  type="date"
+                                  value={course.courseEndDate}
+                                  onChange={(e) => {
+                                    const updated = [...admissionForm.courses];
+                                    updated[index] = { ...updated[index], courseEndDate: e.target.value };
+                                    setAdmissionForm((form) => ({ ...form, courses: updated }));
+                                  }}
+                                  className="w-full px-4 py-3 bg-white border border-orange-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all"
                                 />
                               </div>
                             </div>
@@ -880,11 +953,12 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                       </div>
                     </div>
 
-                    <div className="flex gap-2 pt-1 border-t border-gray-100">
+                    {/* Action Buttons */}
+                    <div className="flex gap-3 pt-2 border-t border-gray-100">
                       <button
                         onClick={saveAdmissionDetail}
                         disabled={!admissionForm.country || admissionForm.courses.some((course) => !course.name.trim()) || savingAdmission}
-                        className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg text-sm font-semibold transition-colors"
+                        className="px-6 py-2.5 bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:from-blue-300 disabled:to-indigo-300 text-white rounded-xl text-sm font-semibold transition-all shadow-sm hover:shadow-md"
                       >
                         {savingAdmission ? "Saving..." : "Save Entry"}
                       </button>
@@ -893,7 +967,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                           setShowAdmissionForm(false);
                           setAdmissionForm(EMPTY_ADMISSION_FORM);
                         }}
-                        className="px-5 py-2.5 border border-gray-300 text-gray-600 hover:bg-gray-50 rounded-lg text-sm font-medium transition-colors"
+                        className="px-6 py-2.5 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-xl text-sm font-medium transition-all"
                       >
                         Cancel
                       </button>
@@ -975,14 +1049,6 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Annual Tuition Fee</label>
-                            <input
-                              value={editAdmissionForm.annualTuitionFee}
-                              onChange={(e) => setEditAdmissionForm((form) => ({ ...form, annualTuitionFee: e.target.value }))}
-                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                          </div>
-                          <div>
                             <label className="block text-xs font-semibold text-gray-600 mb-1">B2B Agent</label>
                             <select
                               value={editAdmissionForm.b2bAgentType}
@@ -1027,70 +1093,101 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                           </div>
                         </div>
 
-                        {/* Stage, Standing, Remarks, Status Date, Pipeline Section - Edit */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3 mt-3">
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Stage</label>
-                            <select
-                              value={editAdmissionForm.stage}
-                              onChange={(e) => setEditAdmissionForm((form) => ({ ...form, stage: e.target.value, statusDate: new Date().toISOString().split("T")[0] }))}
-                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                            >
-                              <option value="">Select stage</option>
-                              {appLeadStages.map((s) => (
-                                <option key={s.value} value={s.value}>{s.label}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Standing</label>
-                            <select
-                              value={editAdmissionForm.standing}
-                              onChange={(e) => setEditAdmissionForm((form) => ({ ...form, standing: e.target.value }))}
-                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                            >
-                              <option value="">Select standing</option>
-                              <option value="hot">🔴 Hot</option>
-                              <option value="warm">🟠 Warm</option>
-                              <option value="heated">🟡 Heated</option>
-                              <option value="cold">🔵 Cold</option>
-                              <option value="missed">⚪ Missed</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Status Date</label>
-                            <input
-                              type="date"
-                              value={editAdmissionForm.statusDate}
-                              onChange={(e) => setEditAdmissionForm((form) => ({ ...form, statusDate: e.target.value }))}
-                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Remarks</label>
-                            <select
-                              value={editAdmissionForm.remarks}
-                              onChange={(e) => setEditAdmissionForm((form) => ({ ...form, remarks: e.target.value }))}
-                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                            >
-                              <option value="">Select remark</option>
-                              {appRemarkOptions.map((r) => (
-                                <option key={r} value={r}>{r}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="sm:col-span-2">
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Pipeline</label>
-                            <select
-                              value={editAdmissionForm.pipeline ?? ""}
-                              onChange={(e) => setEditAdmissionForm((form) => ({ ...form, pipeline: e.target.value }))}
-                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                            >
-                              <option value="">Select pipeline</option>
-                              {appLeadStageGroups.map((g) => (
-                                <option key={g} value={g}>{g}</option>
-                              ))}
-                            </select>
+                        {/* Student Status Group - Edit */}
+                        <div className="border-t border-gray-200 pt-4 mt-4">
+                          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3">Student Status</p>
+                          <div className="bg-gray-50 rounded-xl border border-gray-200 p-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-600 mb-1">Stage</label>
+                                <select
+                                  value={editAdmissionForm.stage}
+                                  onChange={(e) => setEditAdmissionForm((form) => ({ ...form, stage: e.target.value, statusDate: new Date().toISOString().split("T")[0] }))}
+                                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                >
+                                  <option value="">Select stage</option>
+                                  {appLeadStages.map((s) => (
+                                    <option key={s.value} value={s.value}>{s.label}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-600 mb-1">Status Date</label>
+                                <input
+                                  type="date"
+                                  value={editAdmissionForm.statusDate}
+                                  onChange={(e) => setEditAdmissionForm((form) => ({ ...form, statusDate: e.target.value }))}
+                                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-600 mb-1">Student ID</label>
+                                <input
+                                  value={editAdmissionForm.studentId ?? ""}
+                                  onChange={(e) => setEditAdmissionForm((form) => ({ ...form, studentId: e.target.value }))}
+                                  placeholder="e.g. STU-2026-001"
+                                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-600 mb-1">Annual Tuition Fee</label>
+                                <input
+                                  value={editAdmissionForm.annualTuitionFee}
+                                  onChange={(e) => setEditAdmissionForm((form) => ({ ...form, annualTuitionFee: e.target.value }))}
+                                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-600 mb-1">Tuition Fee Paid</label>
+                                <input
+                                  value={editAdmissionForm.tuitionFeesPaid ?? ""}
+                                  onChange={(e) => setEditAdmissionForm((form) => ({ ...form, tuitionFeesPaid: e.target.value }))}
+                                  placeholder="e.g. AUD 10,000"
+                                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-600 mb-1">Standing</label>
+                                <select
+                                  value={editAdmissionForm.standing}
+                                  onChange={(e) => setEditAdmissionForm((form) => ({ ...form, standing: e.target.value }))}
+                                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                >
+                                  <option value="">Select standing</option>
+                                  <option value="hot">🔴 Hot</option>
+                                  <option value="warm">🟠 Warm</option>
+                                  <option value="heated">🟡 Heated</option>
+                                  <option value="cold">🔵 Cold</option>
+                                  <option value="missed">⚪ Missed</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-600 mb-1">Remarks</label>
+                                <select
+                                  value={editAdmissionForm.remarks}
+                                  onChange={(e) => setEditAdmissionForm((form) => ({ ...form, remarks: e.target.value }))}
+                                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                >
+                                  <option value="">Select remark</option>
+                                  {appRemarkOptions.map((r) => (
+                                    <option key={r} value={r}>{r}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-600 mb-1">Pipeline</label>
+                                <select
+                                  value={editAdmissionForm.pipeline ?? ""}
+                                  onChange={(e) => setEditAdmissionForm((form) => ({ ...form, pipeline: e.target.value }))}
+                                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                >
+                                  <option value="">Select pipeline</option>
+                                  {appLeadStageGroups.map((g) => (
+                                    <option key={g} value={g}>{g}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
                           </div>
                         </div>
 
@@ -1200,6 +1297,19 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     />
                                   </div>
+                                  <div>
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Course End Date</label>
+                                    <input
+                                      type="date"
+                                      value={course.courseEndDate ?? ""}
+                                      onChange={(e) => {
+                                        const updated = [...editAdmissionForm.courses];
+                                        updated[courseIndex] = { ...updated[courseIndex], courseEndDate: e.target.value };
+                                        setEditAdmissionForm((form) => ({ ...form, courses: updated }));
+                                      }}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                  </div>
                                 </div>
                                 {editAdmissionForm.courses.length > 1 && (
                                   <button
@@ -1288,6 +1398,8 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                       universityName: entry.universityName || "",
                                       location: entry.location || "",
                                       annualTuitionFee: entry.annualTuitionFee || "",
+                                      studentId: entry.studentId || "",
+                                      tuitionFeesPaid: entry.tuitionFeesPaid || "",
                                       stage: entry.stage || "",
                                       standing: entry.standing || "",
                                       remarks: entry.remarks || "",
@@ -1295,7 +1407,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                       b2bAgentType: entry.b2bAgentType || "",
                                       b2bName: entry.b2bName || "",
                                       pipeline: entry.pipeline || "",
-                                      courses: entry.courses?.length ? entry.courses.map((course) => ({ ...course })) : [{ ...EMPTY_COURSE }],
+                                      courses: entry.courses?.length ? entry.courses.map((course) => ({ ...course, courseEndDate: course.courseEndDate || "" })) : [{ ...EMPTY_COURSE }],
                                     });
                                   }}
                                   className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
@@ -1319,11 +1431,23 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                         <div className={entry.closed ? "opacity-40 blur-sm pointer-events-none select-none" : ""}>
                           {/* Info Strip */}
                           <div className="px-4 py-2.5 flex flex-wrap gap-x-5 gap-y-1.5 border-b border-gray-100 bg-white">
+                            {entry.studentId && (
+                              <div className="flex items-center gap-1.5 text-xs">
+                                <span className="text-gray-400 font-medium">ID</span>
+                                <span className="font-semibold text-gray-800 font-mono">{entry.studentId}</span>
+                              </div>
+                            )}
                             {entry.annualTuitionFee && (
                               <div className="flex items-center gap-1.5 text-xs">
                                 <DollarSign size={11} className="text-green-500 shrink-0" />
                                 <span className="font-semibold text-gray-800">{entry.annualTuitionFee}</span>
                                 <span className="text-gray-400">/ yr</span>
+                              </div>
+                            )}
+                            {entry.tuitionFeesPaid && (
+                              <div className="flex items-center gap-1.5 text-xs">
+                                <span className="px-1.5 py-0.5 bg-green-50 text-green-700 font-semibold rounded text-[10px] border border-green-200">Paid</span>
+                                <span className="font-semibold text-gray-800">{entry.tuitionFeesPaid}</span>
                               </div>
                             )}
                             {entry.createdAt && (
@@ -1483,6 +1607,12 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-[10px] font-semibold border border-green-100">
                                               <Clock size={8} />
                                               Starts {formatDate(course.commencementDate)}
+                                            </span>
+                                          )}
+                                          {course.courseEndDate && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-[10px] font-semibold border border-red-100">
+                                              <Clock size={8} />
+                                              Ends {formatDate(course.courseEndDate)}
                                             </span>
                                           )}
                                         </div>

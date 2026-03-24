@@ -18,6 +18,7 @@ const CourseSchema = new Schema(
     intakeQuarter: { type: String, enum: ["Q1", "Q2", "Q3", "Q4", ""], default: "" },
     intakeYear: { type: String, default: "" },
     commencementDate: { type: String, default: "" },
+    courseEndDate: { type: String, default: "" },
   },
   { timestamps: false, _id: false }
 );
@@ -28,6 +29,8 @@ const AdmissionDetailSchema = new Schema(
     universityName: { type: String, default: "" },
     location: { type: String, default: "" },
     annualTuitionFee: { type: String, default: "" },
+    studentId: { type: String, default: "" },
+    tuitionFeesPaid: { type: String, default: "" },
     stage: { type: String, default: "" },
     pipeline: { type: String, default: "" },
     standing: { type: String, enum: ["hot", "warm", "heated", "cold", "missed", ""], default: "" },
