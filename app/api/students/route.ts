@@ -36,13 +36,13 @@ export async function GET(req: NextRequest) {
     if (enrolled === "true") filter.enrolled = true;
 
     const needsLead = !enrolled && !stage;
+    const leadPopulate = needsLead
+      ? { path: "lead", select: "source interestedService interestedCountry interestedCountries parentName parentPhone1 parentPhone2 academicScore academicInstitution temporaryAddress permanentAddress examType examScore examJoinDate examStartDate examEndDate examPaymentMethod examEstimatedDate gender maritalStatus nationality passportNumber visaExpiryDate senderName academicYear applyLevel course intakeYear intakeQuarter comments" }
+      : { path: "lead", select: "_id" };
     const students = await Student.find(filter)
       .populate("branch", "name")
       .populate("counsellor", "name email")
-      .populate(needsLead ? {
-        path: "lead",
-        select: "source interestedService interestedCountry interestedCountries parentName parentPhone1 parentPhone2 academicScore academicInstitution temporaryAddress permanentAddress examType examScore examJoinDate examStartDate examEndDate examPaymentMethod examEstimatedDate gender maritalStatus nationality passportNumber visaExpiryDate senderName academicYear applyLevel course intakeYear intakeQuarter comments",
-      } : "_id")
+      .populate(leadPopulate)
       .sort({ createdAt: -1 })
       .lean();
 
