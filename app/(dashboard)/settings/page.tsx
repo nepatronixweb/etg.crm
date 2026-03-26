@@ -289,7 +289,7 @@ function Field({
 export default function SettingsPage() {
   const { data: session } = useSession();
   const refreshBranding = useBrandingRefresh();
-  const [tab, setTab] = useState<TabId>("branding");
+  const [tab, setTab] = useState<TabId | "">("");
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -432,9 +432,15 @@ export default function SettingsPage() {
   };
 
   // ── Access guard ──
-  const hasSettingsAccess =
-    session?.user?.role === "super_admin" ||
-    (session?.user?.permissions ?? []).includes("settings");
+  const userPerms = (session?.user?.permissions ?? []) as string[];
+  const isSuperAdmin = session?.user?.role === "super_admin";
+  const hasSettingsAccess = isSuperAdmin || userPerms.includes("settings");
+
+  // Determine which tabs this user can see
+  const hasAnySubPerm = userPerms.some((p) => p.startsWith("settings:"));
+  const visibleTabs = isSuperAdmin || !hasAnySubPerm
+    ? TABS
+    : TABS.filter((t) => userPerms.includes(`settings:${t.id}`));
 
   if (!hasSettingsAccess) {
     return (
@@ -447,6 +453,9 @@ export default function SettingsPage() {
       </div>
     );
   }
+
+  // Ensure current tab is valid — default to first visible tab
+  const activeTab = (visibleTabs.some((t) => t.id === tab) ? tab : visibleTabs[0]?.id || "branding") as TabId;
 
   if (loading) {
     return (
@@ -474,12 +483,12 @@ export default function SettingsPage() {
       {/* Tab Navigation */}
       <div className="border-b border-gray-200">
         <nav className="flex gap-1 overflow-x-auto pb-px">
-          {TABS.map(({ id, label, icon: Icon }) => (
+          {visibleTabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setTab(id)}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-                tab === id
+                activeTab === id
                   ? "border-gray-900 text-gray-900"
                   : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
               }`}
@@ -492,7 +501,7 @@ export default function SettingsPage() {
       </div>
 
       {/* ── Tab: Branding ── */}
-      {tab === "branding" && (
+      {activeTab === "branding" && (
         <div className="space-y-5">
           <SectionCard title="Brand Identity" description="Configure your company name, logo, and visual identity">
             <div className="space-y-5">
@@ -634,7 +643,7 @@ export default function SettingsPage() {
       )}
 
       {/* ── Tab: Contact Info ── */}
-      {tab === "contact" && (
+      {activeTab === "contact" && (
         <div className="space-y-5">
           <SectionCard title="Contact Information" description="Business contact details displayed in the system">
             <div className="space-y-4">
@@ -695,7 +704,7 @@ export default function SettingsPage() {
       )}
 
       {/* ── Tab: Lead Configuration ── */}
-      {tab === "leads" && (
+      {activeTab === "leads" && (
         <div className="space-y-6">
           {/* Section Header */}
           <div className="flex items-center gap-3 pb-2">
@@ -1125,7 +1134,7 @@ export default function SettingsPage() {
       )}
 
       {/* ── Tab: Countries & Services ── */}
-      {tab === "lists" && (
+      {activeTab === "lists" && (
         <div className="space-y-5">
           {/* ── Destination Countries with Universities ── */}
           <SectionCard title="Destination Countries & Universities" description="Manage countries and their universities. These appear in lead forms, student profiles, and document checklists.">
@@ -1282,7 +1291,7 @@ export default function SettingsPage() {
       )}
 
       {/* ── Tab: Module Toggles ── */}
-      {tab === "modules" && (
+      {activeTab === "modules" && (
         <div className="space-y-5">
           <SectionCard title="Feature Modules" description="Enable or disable sections of the application. Disabled modules will be hidden from navigation.">
             <div className="space-y-3">
@@ -1331,7 +1340,7 @@ export default function SettingsPage() {
       )}
 
       {/* ── Tab: Email & SMTP ── */}
-      {tab === "email" && (
+      {activeTab === "email" && (
         <div className="space-y-5">
           <SectionCard title="SMTP Configuration" description="Configure outgoing email for transactional messages, reminders, and reports.">
             <div className="space-y-4">
@@ -1365,7 +1374,7 @@ export default function SettingsPage() {
       )}
 
       {/* ── Tab: Document Checklists ── */}
-      {tab === "checklists" && (
+      {activeTab === "checklists" && (
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-indigo-50 border border-indigo-100 rounded-xl">

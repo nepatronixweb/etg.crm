@@ -5,9 +5,9 @@ import {
   Plus, Users, Search, KeyRound, X, UserPlus,
   Mail, Phone, Shield, Building2, Target, Calendar,
   Lock, Eye, EyeOff, CheckCircle2, AlertCircle,
-  RotateCcw, UserCog, ChevronDown,
+  RotateCcw, UserCog, ChevronDown, Settings,
 } from "lucide-react";
-import { formatDate, getRoleBadgeColor, getRoleLabel, ALL_PERMISSIONS, ROLE_DEFAULT_PERMISSIONS } from "@/lib/utils";
+import { formatDate, getRoleBadgeColor, getRoleLabel, ALL_PERMISSIONS, ROLE_DEFAULT_PERMISSIONS, SETTINGS_SUB_PERMISSIONS, ALL_SETTINGS_SUB_KEYS } from "@/lib/utils";
 import { useBranding } from "@/app/branding-context";
 import { UserRole } from "@/types";
 
@@ -605,37 +605,102 @@ export default function UsersPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-2">
-                    {ALL_PERMISSIONS.map((perm) => {
-                      const checked = form.permissions.includes(perm.key);
-                      return (
-                        <label
-                          key={perm.key}
-                          className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all select-none ${
-                            checked
-                              ? "bg-blue-50 border-blue-300"
-                              : "bg-gray-50 border-gray-200 hover:border-gray-300"
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => {
-                              const next = checked
-                                ? form.permissions.filter((p) => p !== perm.key)
-                                : [...form.permissions, perm.key];
-                              setForm({ ...form, permissions: next });
-                            }}
-                            className="mt-0.5 accent-blue-600 shrink-0"
-                          />
-                          <div className="min-w-0">
-                            <p className="text-xs font-semibold text-gray-800 leading-tight">{perm.label}</p>
-                            <p className="text-[10px] text-gray-500 leading-tight mt-0.5">{perm.description}</p>
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      {ALL_PERMISSIONS.map((perm) => {
+                        const checked = form.permissions.includes(perm.key);
+                        return (
+                          <label
+                            key={perm.key}
+                            className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all select-none ${
+                              checked
+                                ? "bg-blue-50 border-blue-300"
+                                : "bg-gray-50 border-gray-200 hover:border-gray-300"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                let next: string[];
+                                if (checked) {
+                                  next = form.permissions.filter((p) => p !== perm.key);
+                                  if (perm.key === "settings") {
+                                    next = next.filter((p) => !p.startsWith("settings:"));
+                                  }
+                                } else {
+                                  next = [...form.permissions, perm.key];
+                                  if (perm.key === "settings") {
+                                    next = [...next, ...ALL_SETTINGS_SUB_KEYS];
+                                  }
+                                }
+                                setForm({ ...form, permissions: next });
+                              }}
+                              className="mt-0.5 accent-blue-600 shrink-0"
+                            />
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold text-gray-800 leading-tight">{perm.label}</p>
+                              <p className="text-[10px] text-gray-500 leading-tight mt-0.5">{perm.description}</p>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    {form.permissions.includes("settings") && (
+                      <div className="mt-3 p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                        <div className="flex items-center justify-between mb-3">
+                          <div>
+                            <p className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                              <Settings size={12} className="text-gray-400" /> Settings Sections Access
+                            </p>
+                            <p className="text-[10px] text-gray-400 mt-0.5">Choose which settings tabs this user can access.</p>
                           </div>
-                        </label>
-                      );
-                    })}
-                  </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setForm({ ...form, permissions: [...form.permissions.filter((p) => !p.startsWith("settings:")), ...ALL_SETTINGS_SUB_KEYS] })}
+                              className="text-[10px] font-medium text-blue-600 hover:underline"
+                            >All</button>
+                            <span className="text-gray-300 text-[10px]">|</span>
+                            <button
+                              type="button"
+                              onClick={() => setForm({ ...form, permissions: form.permissions.filter((p) => !p.startsWith("settings:")) })}
+                              className="text-[10px] font-medium text-gray-500 hover:underline"
+                            >None</button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {SETTINGS_SUB_PERMISSIONS.map((sub) => {
+                            const subChecked = form.permissions.includes(sub.key);
+                            return (
+                              <label
+                                key={sub.key}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-all select-none text-xs ${
+                                  subChecked
+                                    ? "bg-white border-blue-300 text-gray-900 font-medium"
+                                    : "bg-gray-50 border-gray-100 text-gray-500 hover:border-gray-200"
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={subChecked}
+                                  onChange={() => {
+                                    const next = subChecked
+                                      ? form.permissions.filter((p) => p !== sub.key)
+                                      : [...form.permissions, sub.key];
+                                    setForm({ ...form, permissions: next });
+                                  }}
+                                  className="accent-blue-600 shrink-0"
+                                />
+                                {sub.label}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 

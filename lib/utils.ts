@@ -225,3 +225,16 @@ export const ALL_PERMISSIONS: { key: Permission; label: string; description: str
   { key: "activity_logs", label: "Activity Logs",     description: "Full audit trail of all actions" },
   { key: "settings",      label: "Settings",          description: "System-wide configuration" },
 ];
+
+// ─── Settings sub-permissions (which tabs inside Settings a user can access) ─
+export const SETTINGS_SUB_PERMISSIONS: { key: string; label: string; tabId: string }[] = [
+  { key: "settings:branding",   label: "Branding",            tabId: "branding" },
+  { key: "settings:contact",    label: "Contact Info",         tabId: "contact" },
+  { key: "settings:leads",      label: "Lead Configuration",   tabId: "leads" },
+  { key: "settings:lists",      label: "Countries & Services", tabId: "lists" },
+  { key: "settings:modules",    label: "Module Toggles",       tabId: "modules" },
+  { key: "settings:email",      label: "Email & SMTP",         tabId: "email" },
+  { key: "settings:checklists", label: "Document Checklists",  tabId: "checklists" },
+];
+
+export const ALL_SETTINGS_SUB_KEYS = SETTINGS_SUB_PERMISSIONS.map((s) => s.key);

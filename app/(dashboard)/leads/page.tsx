@@ -1403,7 +1403,7 @@ export default function LeadsPage() {
                       >
                         <option value="">No status</option>
                         {appFdStatuses.map((s) => (
-                          <option key={s} value={s}>{s}</option>
+                          <option key={s.value} value={s.value}>{s.label}</option>
                         ))}
                       </select>
                     </div>
