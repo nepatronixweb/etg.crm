@@ -53,6 +53,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const role = session?.user?.role as UserRole;
   const branding = useBranding();
 
+  // Global module toggles from Settings
+  const [enabledModules, setEnabledModules] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    fetch("/api/settings/app")
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d?.enabledModules)) setEnabledModules(d.enabledModules);
+      })
+      .catch(() => {});
+  }, []);
+
   // Notifications
   const [notifs, setNotifs] = useState<INotif[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -245,9 +257,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   };
 
   const userPermissions = (session?.user?.permissions ?? []) as string[];
-  const visibleNav = navItems.filter((item) =>
-    item.module === "dashboard" || hasPermission(userPermissions, item.module, role)
-  );
+  const visibleNav = navItems.filter((item) => {
+    if (item.module === "dashboard") return true;
+    if (enabledModules && !enabledModules.includes(item.module) && role !== "super_admin") return false;
+    return hasPermission(userPermissions, item.module, role);
+  });
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -370,7 +384,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           <div className="flex items-center gap-1">
           {/* Chat Icon */}
-          {hasPermission(userPermissions, "chat", role) && (
+          {hasPermission(userPermissions, "chat", role) && (!enabledModules || enabledModules.includes("chat") || role === "super_admin") && (
             <Link href="/chat" className="relative p-2 rounded-md text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors">
               <MessageCircle size={18} />
               {chatUnreadCount > 0 && (

@@ -51,6 +51,8 @@ const roleIconMap: Record<UserRole, string> = {
 export default function UsersPage() {
   const { data: session } = useSession();
   const branding = useBranding();
+  const isSuperAdmin = session?.user?.role === "super_admin";
+  const availableRoles = isSuperAdmin ? ROLES : ROLES.filter((r) => r !== "super_admin");
 
   /* ─── State ─── */
   const [users, setUsers] = useState<User[]>([]);
@@ -384,7 +386,7 @@ export default function UsersPage() {
                   <td className="px-5 py-3.5 text-gray-500 text-xs">{formatDate(user.createdAt)}</td>
                   {/* Actions */}
                   <td className="px-5 py-3.5">
-                    {user._id !== session?.user?.id && (
+                    {user._id !== session?.user?.id && (isSuperAdmin || user.role !== "super_admin") && (
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => openEdit(user)}
@@ -541,7 +543,7 @@ export default function UsersPage() {
                       }}
                       className="appearance-none w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all bg-white cursor-pointer"
                     >
-                      {ROLES.map((r) => <option key={r} value={r}>{getRoleLabel(r)}</option>)}
+                      {availableRoles.map((r) => <option key={r} value={r}>{getRoleLabel(r)}</option>)}
                     </select>
                     <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>

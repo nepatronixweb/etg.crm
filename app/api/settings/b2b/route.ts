@@ -15,12 +15,11 @@ export async function GET() {
   }
 }
 
-// POST — add a name
 export async function POST(req: NextRequest) {
   try {
     const session = await auth();
-    if (!session || session.user.role !== "super_admin") {
-      console.error("POST /api/settings/b2b: Forbidden, role=", session?.user?.role);
+    const canEdit = session && (session.user.role === "super_admin" || (session.user.permissions ?? []).includes("settings"));
+    if (!canEdit) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     const { name } = await req.json();
@@ -41,12 +40,11 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// DELETE — remove a name
 export async function DELETE(req: NextRequest) {
   try {
     const session = await auth();
-    if (!session || session.user.role !== "super_admin") {
-      console.error("DELETE /api/settings/b2b: Forbidden, role=", session?.user?.role);
+    const canEdit = session && (session.user.role === "super_admin" || (session.user.permissions ?? []).includes("settings"));
+    if (!canEdit) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     const { name } = await req.json();

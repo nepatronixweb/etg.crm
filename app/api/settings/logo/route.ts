@@ -7,9 +7,9 @@ import AppSettings from "@/models/AppSettings";
 export async function POST(req: NextRequest) {
   try {
     const session = await auth();
-    if (!session || session.user.role !== "super_admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const canEdit = session.user.role === "super_admin" || (session.user.permissions ?? []).includes("settings");
+    if (!canEdit) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const formData = await req.formData();
     const file = formData.get("logo") as File | null;

@@ -6,9 +6,12 @@ import { auth } from "@/lib/auth";
 export async function GET() {
   try {
     const session = await auth();
-    if (!session || !["super_admin", "admission_team"].includes(session.user.role)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const canView = session.user.role === "super_admin"
+      || ["admission_team"].includes(session.user.role)
+      || (session.user.permissions ?? []).includes("analytics")
+      || (session.user.permissions ?? []).includes("admissions");
+    if (!canView) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     await connectDB();
 
     const enrolledFilter = { enrolled: true };

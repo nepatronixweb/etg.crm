@@ -5,10 +5,15 @@ import User from "@/models/User";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
 
+function canManageUsers(session: { user: { role: string; permissions?: string[] } }): boolean {
+  if (session.user.role === "super_admin") return true;
+  return (session.user.permissions ?? []).includes("users");
+}
+
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth();
-    if (!session || session.user.role !== "super_admin") {
+    if (!session || !canManageUsers(session)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { id } = await params;
@@ -24,12 +29,23 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth();
-    if (!session || session.user.role !== "super_admin") {
+    if (!session || !canManageUsers(session)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { id } = await params;
     await connectDB();
     const body = await req.json();
+
+    if (session.user.role !== "super_admin") {
+      const target = await User.findById(id).select("role").lean();
+      if (target?.role === "super_admin") {
+        return NextResponse.json({ error: "Only super admins can edit super admin accounts" }, { status: 403 });
+      }
+      if (body.role === "super_admin") {
+        return NextResponse.json({ error: "Only super admins can assign the super admin role" }, { status: 403 });
+      }
+    }
+
     const isPasswordReset = !!body.password;
     if (body.password) body.password = await bcrypt.hash(body.password, 10);
     const user = await User.findByIdAndUpdate(id, body, { new: true }).select("-password");
@@ -60,11 +76,19 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth();
-    if (!session || session.user.role !== "super_admin") {
+    if (!session || !canManageUsers(session)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { id } = await params;
     await connectDB();
+
+    if (session.user.role !== "super_admin") {
+      const target = await User.findById(id).select("role").lean();
+      if (target?.role === "super_admin") {
+        return NextResponse.json({ error: "Only super admins can deactivate super admin accounts" }, { status: 403 });
+      }
+    }
+
     await User.findByIdAndUpdate(id, { isActive: false });
     return NextResponse.json({ message: "User deactivated" });
   } catch {

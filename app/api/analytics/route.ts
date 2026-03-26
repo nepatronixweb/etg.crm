@@ -10,9 +10,9 @@ import { auth } from "@/lib/auth";
 export async function GET(req: NextRequest) {
   try {
     const session = await auth();
-    if (!session || session.user.role !== "super_admin") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const canView = session.user.role === "super_admin" || (session.user.permissions ?? []).includes("analytics");
+    if (!canView) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     await connectDB();
 
     const { searchParams } = new URL(req.url);

@@ -3,6 +3,7 @@ import connectDB from "@/lib/mongodb";
 import Student from "@/models/Student";
 import User from "@/models/User";
 import ActivityLog from "@/models/ActivityLog";
+import AppSettings from "@/models/AppSettings";
 import { auth } from "@/lib/auth";
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -33,6 +34,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const { id } = await params;
     await connectDB();
     const body = await req.json();
+    
+    // Fetch AppSettings to get the stage-to-pipeline mapping
+    const appSettings = await AppSettings.findOne().lean();
+    const stageToPipelineMapping = appSettings?.stageToPipelineMapping || {};
+    
     // Support raw MongoDB operators ($push, $pull, etc.) passed directly in the body
     const hasOperators = Object.keys(body).some((k) => k.startsWith("$"));
 
@@ -43,23 +49,47 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     } else {
       const setFields: Record<string, unknown> = { ...body };
 
-      // Direction A: admissionDetails inline edit → mirror to top-level student fields
-      // So that the students-list columns (stage/remarks/standing/currentStage) stay in sync.
+      // Direction A: admissionDetails inline edit → AUTO-MAP PIPELINE
       if (Array.isArray(body.admissionDetails) && body.admissionDetails.length > 0) {
+        console.log("🔍 Processing admissionDetails array update");
+        
+        // BRUTAL: Update each admission detail with auto-mapped pipeline
+        const updatedAdmissionDetails = body.admissionDetails.map((detail: any, idx: number) => {
+          if (detail.stage) {
+            const mappedPipeline = stageToPipelineMapping[detail.stage];
+            console.log(`[API] Index ${idx}: Stage "${detail.stage}" → Pipeline "${mappedPipeline}"`);
+            if (mappedPipeline) {
+              return { ...detail, pipeline: mappedPipeline };
+            }
+          }
+          return detail;
+        });
+        
+        // Replace the entire admissionDetails array with updated one
+        setFields.admissionDetails = updatedAdmissionDetails;
+
         // Use the last non-closed entry as the primary source of truth
         const primary =
-          [...body.admissionDetails].reverse().find((e: { closed?: boolean }) => !e.closed) ??
-          body.admissionDetails[body.admissionDetails.length - 1];
+          [...updatedAdmissionDetails].reverse().find((e: { closed?: boolean }) => !e.closed) ??
+          updatedAdmissionDetails[updatedAdmissionDetails.length - 1];
         if (primary) {
-          if (primary.stage    !== undefined && primary.stage    !== "") setFields.stage        = primary.stage;
-          if (primary.remarks  !== undefined && primary.remarks  !== "") setFields.remarks      = primary.remarks;
-          if (primary.standing !== undefined && primary.standing !== "") setFields.standing     = primary.standing;
-          if (primary.pipeline !== undefined && primary.pipeline !== "") setFields.currentStage = primary.pipeline;
+          if (primary.stage !== undefined) {
+            setFields.stage = primary.stage;
+          }
+          // Always sync remarks & standing (including empty strings to support clearing)
+          if (primary.remarks !== undefined) {
+            setFields.remarks = primary.remarks;
+          }
+          if (primary.standing !== undefined) {
+            setFields.standing = primary.standing;
+          }
+          if (primary.pipeline !== undefined && primary.pipeline !== "") {
+            setFields.currentStage = primary.pipeline;
+          }
         }
       }
 
       // Direction B: students-list quick-update → mirror to ALL admissionDetails entries
-      // Only when the patch is a "quick update" (touches only the 4 sync fields, no admissionDetails array).
       const bodyKeys = Object.keys(body);
       const isQuickSync =
         !body.admissionDetails &&
@@ -67,20 +97,36 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         bodyKeys.every((k) => QUICK_SYNC_FIELDS.has(k));
 
       if (isQuickSync) {
-        if (body.stage        !== undefined) setFields["admissionDetails.$[].stage"]    = body.stage;
-        if (body.remarks      !== undefined) setFields["admissionDetails.$[].remarks"]  = body.remarks;
-        if (body.standing     !== undefined) setFields["admissionDetails.$[].standing"] = body.standing;
-        if (body.currentStage !== undefined) setFields["admissionDetails.$[].pipeline"] = body.currentStage;
+        if (body.stage !== undefined) {
+          setFields["admissionDetails.$[].stage"] = body.stage;
+          // Auto-update pipeline based on stage mapping
+          const mappedPipeline = stageToPipelineMapping[body.stage];
+          if (mappedPipeline) {
+            setFields.currentStage = mappedPipeline;
+            setFields["admissionDetails.$[].pipeline"] = mappedPipeline;
+            console.log(`[API Quick-Sync] Stage "${body.stage}" → Pipeline "${mappedPipeline}"`);
+          }
+        }
+        if (body.remarks !== undefined) {
+          setFields["admissionDetails.$[].remarks"] = body.remarks;
+        }
+        if (body.standing !== undefined) {
+          setFields["admissionDetails.$[].standing"] = body.standing;
+        }
       }
 
       update = { $set: setFields };
     }
 
-    const student = await Student.findByIdAndUpdate(id, update, { new: true, runValidators: false })
+    console.log("📤 Sending to MongoDB:", JSON.stringify(update, null, 2));
+    
+    const student = await Student.findByIdAndUpdate(id, update, { returnDocument: "after", runValidators: false })
       .populate("branch", "name location")
       .populate("counsellor", "name email")
       .lean();
     if (!student) return NextResponse.json({ error: "Student not found" }, { status: 404 });
+    
+    console.log("✅ Student updated successfully");
     return NextResponse.json(student);
   } catch (err) {
     console.error("PATCH /api/students/[id] error:", err);
@@ -114,7 +160,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       });
     }
 
-    const updated = await Student.findByIdAndUpdate(id, body, { new: true });
+    const updated = await Student.findByIdAndUpdate(id, body, { returnDocument: "after" });
     return NextResponse.json(updated);
   } catch {
     return NextResponse.json({ error: "Failed to update student" }, { status: 500 });

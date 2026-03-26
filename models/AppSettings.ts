@@ -20,6 +20,7 @@ export interface IAppSettings extends Document {
   fdStatuses: string[];
   leadStageGroups: string[];
   leadStages: { value: string; label: string; group: string }[];
+  stageToPipelineMapping: { [stageValue: string]: string };
   b2bNames: string[];
   remarkOptions: string[];
   // Lists
@@ -96,6 +97,7 @@ const AppSettingsSchema = new Schema<IAppSettings>(
         { value: "document_sent", label: "Document Sent", group: "Offer" },
         { value: "conditional_offer_received", label: "Conditional Offer Received", group: "Offer" },
         { value: "unconditional_offer_received", label: "Unconditional Offer Received", group: "Offer" },
+        { value: "offer_rejected", label: "Offer Rejected", group: "Offer" },
         { value: "gs_applied", label: "GS Applied", group: "GS" },
         { value: "gs_additional_doc_requested", label: "GS Additional Doc Requested", group: "GS" },
         { value: "gs_additional_doc_sent", label: "GS Additional Doc Sent", group: "GS" },
@@ -105,12 +107,44 @@ const AppSettingsSchema = new Schema<IAppSettings>(
         { value: "coe_additional_doc_requested", label: "COE Additional Doc Requested", group: "COE" },
         { value: "coe_additional_doc_sent", label: "COE Additional Doc Sent", group: "COE" },
         { value: "coe_received", label: "COE Received", group: "COE" },
+        { value: "coe_rejected", label: "COE Rejected", group: "COE" },
+        { value: "coe_withdrawn", label: "COE Withdrawn", group: "COE" },
         { value: "visa_applied", label: "Visa Applied", group: "Visa" },
         { value: "visa_grant", label: "Visa Grant", group: "Visa" },
         { value: "visa_reject", label: "Visa Reject", group: "Visa" },
         { value: "visa_invalid", label: "Visa Invalid", group: "Visa" },
         { value: "visa_withdrawn", label: "Visa Withdrawn", group: "Visa" },
       ],
+    },
+    stageToPipelineMapping: {
+      type: Schema.Types.Mixed,
+      default: {
+        "document_pending": "Application",
+        "document_submitted": "Application",
+        "offer_applied": "Offer",
+        "acknowledge": "Offer",
+        "document_requested": "Offer",
+        "document_sent": "Offer",
+        "conditional_offer_received": "Offer",
+        "unconditional_offer_received": "Offer",
+        "offer_rejected": "Offer",
+        "gs_applied": "GS",
+        "gs_additional_doc_requested": "GS",
+        "gs_additional_doc_sent": "GS",
+        "gs_approved": "GS",
+        "gs_rejected": "GS",
+        "coe_applied": "COE",
+        "coe_additional_doc_requested": "COE",
+        "coe_additional_doc_sent": "COE",
+        "coe_received": "COE",
+        "coe_rejected": "COE",
+        "coe_withdrawn": "COE",
+        "visa_applied": "Visa",
+        "visa_grant": "Visa",
+        "visa_reject": "Visa",
+        "visa_invalid": "Visa",
+        "visa_withdrawn": "Visa",
+      },
     },
     // B2B Names
     b2bNames: {

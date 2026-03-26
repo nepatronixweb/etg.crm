@@ -396,11 +396,15 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     if (!student) return;
     setSavingAdmissionRowIndex(index);
     const updated = student.admissionDetails;
-    await fetch(`/api/students/${id}`, {
+    const res = await fetch(`/api/students/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ admissionDetails: updated }),
     });
+    if (res.ok) {
+      const saved = await res.json();
+      setStudent((prev) => prev ? { ...prev, ...saved } : prev);
+    }
     setDirtyAdmissionRows((prev) => { const s = new Set(prev); s.delete(index); return s; });
     setSavingAdmissionRowIndex(null);
   };

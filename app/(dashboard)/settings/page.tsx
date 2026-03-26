@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import {
@@ -432,14 +432,18 @@ export default function SettingsPage() {
   };
 
   // ── Access guard ──
-  if (session?.user?.role !== "super_admin") {
+  const hasSettingsAccess =
+    session?.user?.role === "super_admin" ||
+    (session?.user?.permissions ?? []).includes("settings");
+
+  if (!hasSettingsAccess) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3 text-gray-400">
         <div className="p-3 bg-gray-100 border border-gray-200 rounded-full">
           <Lock size={20} className="text-gray-500" />
         </div>
         <p className="text-sm font-medium text-gray-600">Access Restricted</p>
-        <p className="text-xs text-gray-400">This page is only accessible to Super Admins.</p>
+        <p className="text-xs text-gray-400">You don&apos;t have permission to access settings.</p>
       </div>
     );
   }

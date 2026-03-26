@@ -26,9 +26,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await auth();
-    if (!session || session.user.role !== "super_admin") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const canEdit = session.user.role === "super_admin" || (session.user.permissions ?? []).includes("settings");
+    if (!canEdit) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     await connectDB();
 
     const body = await req.json();

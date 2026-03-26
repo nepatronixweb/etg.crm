@@ -31,7 +31,9 @@ export default function BranchesPage() {
     fetchBranches();
   };
 
-  const isAdmin = session?.user?.role === "super_admin";
+  const isAdmin =
+    session?.user?.role === "super_admin" ||
+    (session?.user?.permissions ?? []).includes("branches");
 
   return (
     <div className="space-y-5">

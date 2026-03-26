@@ -19,9 +19,9 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await auth();
-    if (!session || session.user.role !== "super_admin") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const canManage = session.user.role === "super_admin" || (session.user.permissions ?? []).includes("branches");
+    if (!canManage) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     await connectDB();
     const body = await req.json();
     const branch = await Branch.create(body);

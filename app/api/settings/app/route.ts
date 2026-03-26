@@ -72,13 +72,12 @@ export async function GET() {
   }
 }
 
-// PUT — super_admin only
 export async function PUT(req: NextRequest) {
   try {
     const session = await auth();
-    if (!session || session.user.role !== "super_admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const canEdit = session.user.role === "super_admin" || (session.user.permissions ?? []).includes("settings");
+    if (!canEdit) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const body = await req.json();
 
