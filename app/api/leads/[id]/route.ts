@@ -30,19 +30,22 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     await connectDB();
     const body = await req.json();
 
-    // Enforce role-based field restrictions
     if (session.user.role === "front_desk" && body.stage) {
       return NextResponse.json({ error: "Front desk users cannot update stage" }, { status: 403 });
-    }
-    if (session.user.role !== "front_desk" && body.status) {
-      return NextResponse.json({ error: "Only front desk users can update status" }, { status: 403 });
     }
 
     // Snapshot old assignedTo before updating
     const oldLead = await Lead.findById(id).select("assignedTo name").lean();
     const oldAssignedTo = oldLead?.assignedTo?.toString();
 
-    const lead = await Lead.findByIdAndUpdate(id, body, { new: true });
+    // Use $set to only update provided fields — prevents wiping status/stage/remarks
+    // when the edit form doesn't include them
+    const setFields = { ...body };
+    // Remove empty ObjectId refs so Mongoose doesn't reject them
+    if (!setFields.assignedTo) delete setFields.assignedTo;
+    if (!setFields.branch) delete setFields.branch;
+
+    const lead = await Lead.findByIdAndUpdate(id, { $set: setFields }, { new: true, runValidators: false });
     if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
 
     await ActivityLog.create({

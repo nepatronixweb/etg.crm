@@ -66,17 +66,13 @@ export default function LeadsPage() {
     interestedCountry: "", branch: session?.user?.branch || "",
     standing: "warm" as LeadStanding, assignedTo: "", assignmentMethod: "manual",
     comments: "",
-    // Parent information
+    status: "", stage: "",
     parentName: "", parentPhone1: "", parentPhone2: "",
-    // Student academic information
     academicScore: "", academicInstitution: "", temporaryAddress: "", permanentAddress: "",
-    // IELTS / PTE information
     examType: "", examScore: "", examJoinDate: "", examStartDate: "", examEndDate: "",
     examPaymentMethod: "", examEstimatedDate: "",
-    // Personal details
     gender: "", maritalStatus: "", nationality: "", passportNumber: "", visaExpiryDate: "",
     senderName: "",
-    // Application details
     academicYear: "", applyLevel: "", course: "", intakeYear: "", intakeQuarter: "",
   });
 
@@ -208,6 +204,7 @@ export default function LeadsPage() {
       source: "walk_in", interestedService: "", interestedCountry: "",
       branch: session?.user?.branch || "", standing: "warm",
       assignedTo: "", assignmentMethod: "manual", comments: "",
+      status: "", stage: "",
       parentName: "", parentPhone1: "", parentPhone2: "",
       academicScore: "", academicInstitution: "", temporaryAddress: "", permanentAddress: "",
       examType: "", examScore: "", examJoinDate: "", examStartDate: "", examEndDate: "",
@@ -232,6 +229,7 @@ export default function LeadsPage() {
       typeof lead.assignedTo === "object" && lead.assignedTo !== null
         ? (lead.assignedTo as { _id: string })._id
         : (lead.assignedTo as string) || "";
+    const ext = lead as unknown as { status?: string; stage?: string };
     setForm({
       name: lead.name || "",
       phone: lead.phone || "",
@@ -245,6 +243,8 @@ export default function LeadsPage() {
       assignedTo: assignedId,
       assignmentMethod: "manual",
       comments: lead.comments || "",
+      status: ext.status || "",
+      stage: ext.stage || "",
       parentName: lead.parentName || "",
       parentPhone1: lead.parentPhone1 || "",
       parentPhone2: lead.parentPhone2 || "",
@@ -282,10 +282,12 @@ export default function LeadsPage() {
     setSubmitting(true);
     setSubmitError("");
 
-    // Strip empty string ObjectId fields so MongoDB doesn't reject them
     const payload: Record<string, unknown> = { ...form };
     if (!payload.assignedTo) delete payload.assignedTo;
-    // Don't delete branch - let backend set it from session if needed
+    if (!editingLead) {
+      delete payload.status;
+      delete payload.stage;
+    }
 
 
 
@@ -1390,6 +1392,38 @@ export default function LeadsPage() {
                       ))}
                     </select>
                   </div>
+
+                  {editingLead && (
+                    <div>
+                      <label className={LABEL_CLASS}>FD Status</label>
+                      <select
+                        value={form.status}
+                        onChange={(e) => setForm({ ...form, status: e.target.value })}
+                        className={FIELD_CLASS}
+                      >
+                        <option value="">No status</option>
+                        {appFdStatuses.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {editingLead && (
+                    <div>
+                      <label className={LABEL_CLASS}>Stage</label>
+                      <select
+                        value={form.stage}
+                        onChange={(e) => setForm({ ...form, stage: e.target.value })}
+                        className={FIELD_CLASS}
+                      >
+                        <option value="">No stage</option>
+                        {appLeadStages.map((s) => (
+                          <option key={s.value} value={s.value}>{s.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   <div>
                     <label className={LABEL_CLASS}>Interested Country</label>
