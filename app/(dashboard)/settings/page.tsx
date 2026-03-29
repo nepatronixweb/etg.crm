@@ -1293,6 +1293,17 @@ export default function SettingsPage() {
       {/* ── Tab: Module Toggles ── */}
       {activeTab === "modules" && (
         <div className="space-y-5">
+          {!isSuperAdmin && (
+            <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+              <div className="p-1.5 bg-amber-100 rounded-lg shrink-0 mt-0.5">
+                <Lock size={14} className="text-amber-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-amber-800">Caution — System-wide impact</p>
+                <p className="text-xs text-amber-700 mt-0.5">Disabling a module hides it from <span className="font-semibold">all users</span> across all branches. Changes here affect the entire platform. Contact your Super Admin if you&apos;re unsure.</p>
+              </div>
+            </div>
+          )}
           <SectionCard title="Feature Modules" description="Enable or disable sections of the application. Disabled modules will be hidden from navigation.">
             <div className="space-y-3">
               {ALL_MODULES.map(({ key, label }) => {
@@ -1342,6 +1353,17 @@ export default function SettingsPage() {
       {/* ── Tab: Email & SMTP ── */}
       {activeTab === "email" && (
         <div className="space-y-5">
+          {!isSuperAdmin && (
+            <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+              <div className="p-1.5 bg-blue-100 rounded-lg shrink-0 mt-0.5">
+                <Lock size={14} className="text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-blue-800">Sensitive Configuration</p>
+                <p className="text-xs text-blue-700 mt-0.5">SMTP credentials are used to send all system emails (reminders, reports, notifications). Incorrect settings will stop email delivery for everyone. Handle with care.</p>
+              </div>
+            </div>
+          )}
           <SectionCard title="SMTP Configuration" description="Configure outgoing email for transactional messages, reminders, and reports.">
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

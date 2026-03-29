@@ -353,7 +353,9 @@ export default function StudentsPage() {
 
   const canCreate = ["super_admin", "counsellor", "front_desk"].includes(session?.user?.role || "");
   const canExport = ["super_admin", "telecaller"].includes(session?.user?.role || "");
-  const canUpdateStage = ["super_admin", "counsellor", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
+  // Stage / Remarks / Standing / Pipeline are locked in the list view.
+  // All changes must be made from inside the individual student detail page.
+  const canUpdateStage = false;
   const isAdmin = session?.user?.role === "super_admin";
 
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
@@ -785,25 +787,13 @@ export default function StudentsPage() {
                           const crmStage = (student as unknown as { stage?: string }).stage;
                           const stageInfo = appLeadStages.find((s) => s.value === crmStage);
                           const dotColor = crmStage ? getLeadStageDotColor(crmStage) : "";
-                          return (
-                            <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
-                              <button
-                                onClick={(e) => canUpdateStage && openCrmStagePortal(e, student._id)}
-                                className={`inline-flex items-center gap-2 pl-2.5 pr-2 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 shadow-sm border ${
-                                  stageInfo
-                                    ? `${stageInfo.color} border-transparent hover:shadow-md`
-                                    : "bg-white border-dashed border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500"
-                                } ${canUpdateStage ? "cursor-pointer" : "cursor-default"}`}
-                              >
-                                {stageInfo
-                                  ? <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} opacity-70`} />
-                                  : <span className="text-[13px] leading-none opacity-50">+</span>
-                                }
-                                <span className="max-w-32 truncate">{stageInfo ? stageInfo.label : "Set Stage"}</span>
-                                {canUpdateStage && <ChevronDown size={10} className={`shrink-0 opacity-50 transition-transform duration-200 ${crmStageDropdownId === student._id ? "rotate-180" : ""}`} />}
-                              </button>
-                              {/* Dropdown rendered as fixed portal – see bottom of component */}
-                            </div>
+                          return stageInfo ? (
+                            <span className={`inline-flex items-center gap-2 pl-2.5 pr-2.5 py-1.5 rounded-lg text-xs font-semibold border border-transparent shadow-sm ${stageInfo.color}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} opacity-70`} />
+                              <span className="max-w-32 truncate">{stageInfo.label}</span>
+                            </span>
+                          ) : (
+                            <span className="text-gray-300 text-xs">—</span>
                           );
                         })()}
                       </td>
@@ -833,46 +823,37 @@ export default function StudentsPage() {
 
                       {/* STANDING column */}
                       <td className="px-2.5 py-2 min-w-28">
-                        <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
-                          {(() => {
-                            const standing = (student as unknown as { standing?: string }).standing;
-                            const standingColor = 
-                              standing === "heated" ? "bg-red-50 text-red-700 border-red-200" :
-                              standing === "warm" ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
-                              standing === "cold" ? "bg-blue-50 text-blue-700 border-blue-200" :
-                              standing === "missed" ? "bg-gray-100 text-gray-700 border-gray-200" :
-                              "bg-gray-50 text-gray-400 border-gray-200";
-                            return (
-                              <button
-                                onClick={(e) => openStandingPortal(e, student._id)}
-                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border transition-colors cursor-pointer hover:opacity-80 ${standingColor}`}
-                              >
-                                <span className="capitalize max-w-24 truncate">{standing ? standing.replace("_", " ") : "Set"}</span>
-                                <ChevronDown size={10} className={`shrink-0 opacity-50 transition-transform duration-200 ${standingDropdownId === student._id ? "rotate-180" : ""}`} />
-                              </button>
-                            );
-                          })()}
-                        </div>
+                        {(() => {
+                          const standing = (student as unknown as { standing?: string }).standing;
+                          const standingColor =
+                            standing === "heated" ? "bg-red-50 text-red-700 border-red-200" :
+                            standing === "warm" ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
+                            standing === "cold" ? "bg-blue-50 text-blue-700 border-blue-200" :
+                            standing === "missed" ? "bg-gray-100 text-gray-700 border-gray-200" :
+                            "bg-gray-50 text-gray-400 border-gray-200";
+                          return standing ? (
+                            <span className={`inline-flex items-center px-3 py-1.5 rounded-md text-xs font-semibold border ${standingColor}`}>
+                              <span className="capitalize max-w-24 truncate">{standing.replace("_", " ")}</span>
+                            </span>
+                          ) : (
+                            <span className="text-gray-300 text-xs">—</span>
+                          );
+                        })()}
                       </td>
 
                       {/* PIPELINE (currentStage) column */}
                       <td className="px-2.5 py-2 min-w-32">
-                        <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
-                          {(() => {
-                            const sg = appStageGroups.find(g => g.label.toLowerCase() === student.currentStage?.toLowerCase());
-                            const badgeCls = sg ? (DOT_TO_BADGE[sg.dot] ?? "bg-gray-100 text-gray-800") : getStatusColor(student.currentStage);
-                            return (
-                          <button
-                            onClick={(e) => canUpdateStage && openPipelinePortal(e, student._id)}
-                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${badgeCls} ${canUpdateStage ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
-                          >
-                            <span className="capitalize max-w-24 truncate">{student.currentStage}</span>
-                            {canUpdateStage && <ChevronDown size={11} className={`shrink-0 transition-transform ${stageDropdownId === student._id ? "rotate-180" : ""}`} />}
-                          </button>
-                            );
-                          })()}
-                          {/* Dropdown rendered as fixed portal – see bottom of component */}
-                        </div>
+                        {(() => {
+                          const sg = appStageGroups.find(g => g.label.toLowerCase() === student.currentStage?.toLowerCase());
+                          const badgeCls = sg ? (DOT_TO_BADGE[sg.dot] ?? "bg-gray-100 text-gray-800") : getStatusColor(student.currentStage);
+                          return student.currentStage ? (
+                            <span className={`inline-flex items-center px-3 py-1.5 rounded-md text-xs font-semibold ${badgeCls}`}>
+                              <span className="capitalize max-w-24 truncate">{student.currentStage}</span>
+                            </span>
+                          ) : (
+                            <span className="text-gray-300 text-xs">—</span>
+                          );
+                        })()}
                       </td>
 
                       {/* FOLLOW-UP column */}

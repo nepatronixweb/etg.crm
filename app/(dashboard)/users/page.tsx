@@ -573,7 +573,7 @@ export default function UsersPage() {
                     <p className="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
                       <Shield size={13} className="text-gray-400" /> Module Permissions
                     </p>
-                    <p className="text-[11px] text-gray-400 mt-0.5">Role defaults pre-filled — customise freely.</p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">Role defaults pre-filled — customise freely. Changes take effect on the user&apos;s next login.</p>
                   </div>
                   {form.role !== "super_admin" && (
                     <div className="flex items-center gap-2">

@@ -86,7 +86,7 @@ export async function PUT(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const $set: Record<string, any> = {};
     const fields = [
-      "companyName", "shortCode", "tagline", "faviconPath", "brandColor",
+      "companyName", "shortCode", "tagline", "logoPath", "faviconPath", "brandColor",
       "address", "phone", "email", "website",
       "leadStatuses", "leadSources", "leadStandings", "fdStatuses",
       "leadStageGroups", "leadStages",
