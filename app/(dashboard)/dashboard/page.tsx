@@ -7,6 +7,8 @@ import {
   Bell, Clock, CheckCircle2, PlaneTakeoff, Award, XCircle, BadgeCheck, FilePlus2,
   SlidersHorizontal, Check, Calendar,
   GraduationCap, Send, ShieldCheck, FileInput, MessageSquare,
+  Phone, PhoneMissed, PhoneCall, UserPlus, RefreshCw,
+  CalendarCheck, Flame, Wifi,
 } from "lucide-react";
 import { formatDateTime, getStatusColor, hasPermission } from "@/lib/utils";
 import { IStudent, UserRole } from "@/types";
@@ -76,6 +78,9 @@ interface IAssignedLead {
   standing: string;
   source: string;
   createdAt: string;
+  updatedAt?: string;
+  statusDates?: Record<string, string>;
+  notes?: Array<{ createdAt: string }>;
 }
 
 interface ICounsellorRemark {
@@ -153,6 +158,7 @@ export default function DashboardPage() {
   const isCounsellor = session?.user?.role === "counsellor";
   const isFrontDesk = session?.user?.role === "front_desk";
   const isAdmissionTeam = session?.user?.role === "admission_team";
+  const isTelecaller = session?.user?.role === "telecaller";
   const role = (session?.user?.role ?? "") as UserRole;
   const userPermissions = (session?.user?.permissions ?? []) as string[];
 
@@ -265,10 +271,18 @@ export default function DashboardPage() {
           setLoading(false);
         })
         .catch(() => setLoading(false));
+    } else if (isTelecaller) {
+      fetch("/api/leads?page=1&limit=1000")
+        .then((r) => r.json())
+        .then((d) => {
+          setAssignedLeads(Array.isArray(d) ? d : (d?.leads ?? []));
+          setLoading(false);
+        })
+        .catch(() => setLoading(false));
     } else {
       setTimeout(() => setLoading(false), 0);
     }
-  }, [isAdmin, isCounsellor, isFrontDesk, isAdmissionTeam, filterPeriod, filterDateFrom, filterDateTo]);
+  }, [isAdmin, isCounsellor, isFrontDesk, isAdmissionTeam, isTelecaller, filterPeriod, filterDateFrom, filterDateTo]);
 
   // Trigger celebration when unread assignment notifications arrive
   useEffect(() => {
@@ -1258,8 +1272,237 @@ export default function DashboardPage() {
             </div>
           )}
 
+          {/* ── Telecaller Dashboard ── */}
+          {isTelecaller && (() => {
+            const today = new Date().toDateString();
+            const leads = assignedLeads;
+            const total = leads.length;
+
+            // Status-based counts
+            const freshLeads       = leads.filter(l => ["Open/Unassigned","Interested","AP-Interested","FD-Interested","In-Progress","AP-Pending"].includes(l.status ?? "")).length;
+            const transferred      = leads.filter(l => ["Assigned","Counselling","Counselled","Qualified Lead"].includes(l.status ?? "")).length;
+            const phoneCounselling = leads.filter(l => ["Phone Counselling","Counselled"].includes(l.status ?? "")).length;
+            const onlineEnrollment = leads.filter(l => l.status === "Registered/Completed").length;
+            const cold             = leads.filter(l => l.standing === "cold" || ["AP-Not Interested","Not Interested","Not Qualified","Dead/Junk Lead","FD-Junk","Closed Lost"].includes(l.status ?? "")).length;
+            const cnrEngaged       = leads.filter(l => ["AP-Call Not Received","Not Answering","AP-Call Back Later"].includes(l.status ?? "")).length;
+            const appointmentBooked= leads.filter(l => l.status === "Counselling").length;
+
+            // Today's performance (from statusDates or updatedAt)
+            const callsMadeToday = leads.filter(l => {
+              const sd = l.statusDates;
+              if (sd) {
+                return Object.values(sd).some(d => new Date(d).toDateString() === today);
+              }
+              return l.updatedAt ? new Date(l.updatedAt).toDateString() === today : false;
+            }).length;
+
+            const appointmentToday = leads.filter(l => {
+              const d = l.statusDates?.["Counselling"];
+              return d ? new Date(d).toDateString() === today : false;
+            }).length;
+
+            const phoneCounsellingToday = leads.filter(l => {
+              const d = l.statusDates?.["Phone Counselling"] ?? l.statusDates?.["Counselled"];
+              return d ? new Date(d).toDateString() === today : false;
+            }).length;
+
+            // Target progress helpers
+            const pct = (val: number, target: number) => target > 0 ? Math.min(100, Math.round((val / target) * 100)) : 0;
+
+            return (
+              <div className="space-y-6">
+
+                {/* Header Banner */}
+                <div className="relative overflow-hidden bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-700 rounded-2xl p-6 text-white shadow-xl">
+                  <div className="absolute inset-0 opacity-10"
+                    style={{ backgroundImage: "radial-gradient(circle at 20% 50%, white 1px, transparent 1px), radial-gradient(circle at 80% 20%, white 1px, transparent 1px)", backgroundSize: "30px 30px" }} />
+                  <div className="relative flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-3 mb-1">
+                        <div className="p-2.5 bg-white/15 rounded-xl border border-white/20">
+                          <Phone size={20} className="text-white" />
+                        </div>
+                        <div>
+                          <h1 className="text-2xl font-bold">Telecaller Dashboard</h1>
+                          <p className="text-white/70 text-sm">Welcome back, {session?.user?.name}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-white/60 text-xs font-medium uppercase tracking-widest">Today</p>
+                      <p className="text-white font-bold text-lg">{new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Today's Targets ── */}
+                <div>
+                  <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Today&apos;s Targets</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {[
+                      { label: "Calls Made Today",       value: callsMadeToday,        target: 200, icon: Phone,        color: "from-violet-500 to-purple-600",  ring: "ring-violet-200", textAccent: "text-violet-600", bg: "bg-violet-50" },
+                      { label: "Appointments Booked",    value: appointmentToday,      target: 10,  icon: CalendarCheck, color: "from-emerald-500 to-teal-600",   ring: "ring-emerald-200", textAccent: "text-emerald-600", bg: "bg-emerald-50" },
+                      { label: "Phone Counselling",      value: phoneCounsellingToday, target: 25,  icon: PhoneCall,     color: "from-blue-500 to-indigo-600",    ring: "ring-blue-200", textAccent: "text-blue-600", bg: "bg-blue-50" },
+                    ].map((t) => {
+                      const Icon = t.icon;
+                      const p = pct(t.value, t.target);
+                      const done = p >= 100;
+                      return (
+                        <div key={t.label} className={`bg-white border border-gray-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow ring-1 ${t.ring}`}>
+                          <div className="flex items-start justify-between mb-4">
+                            <div className={`p-2.5 rounded-xl ${t.bg}`}>
+                              <Icon size={18} className={t.textAccent} />
+                            </div>
+                            <div className="text-right">
+                              <span className="text-2xl font-black text-gray-900">{t.value}</span>
+                              <span className="text-sm text-gray-400 font-medium"> / {t.target}</span>
+                            </div>
+                          </div>
+                          <p className="text-sm font-bold text-gray-800 mb-3">{t.label}</p>
+                          {/* Progress bar */}
+                          <div className="w-full bg-gray-100 rounded-full h-2 mb-1.5 overflow-hidden">
+                            <div
+                              className={`h-2 rounded-full bg-gradient-to-r ${t.color} transition-all duration-700`}
+                              style={{ width: `${p}%` }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className={`text-xs font-bold ${done ? "text-emerald-600" : t.textAccent}`}>{p}% of target</span>
+                            {done
+                              ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">✓ TARGET MET</span>
+                              : <span className="text-[10px] text-gray-400">{t.target - t.value} more needed</span>
+                            }
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* ── Lead Stats Grid ── */}
+                <div>
+                  <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Lead Overview</h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      { label: "Total Enquiry", value: total,           icon: Users,       bg: "bg-gray-900",      text: "text-white",        sub: "All assigned leads",        sub2: "text-white/60" },
+                      { label: "Fresh Leads",   value: freshLeads,      icon: UserPlus,    bg: "bg-emerald-500",   text: "text-white",        sub: "New & pending contact",     sub2: "text-white/70" },
+                      { label: "Transferred",   value: transferred,     icon: RefreshCw,   bg: "bg-blue-500",      text: "text-white",        sub: "Moved to counsellor",       sub2: "text-white/70" },
+                      { label: "Appointment",   value: appointmentBooked,icon: CalendarCheck,bg: "bg-violet-500",  text: "text-white",        sub: "Counselling scheduled",     sub2: "text-white/70" },
+                    ].map((s) => {
+                      const Icon = s.icon;
+                      return (
+                        <Link key={s.label} href="/leads"
+                          className={`${s.bg} rounded-xl p-5 hover:opacity-90 transition-opacity shadow-sm`}>
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="p-1.5 bg-white/15 rounded-lg">
+                              <Icon size={14} className={s.text} />
+                            </div>
+                          </div>
+                          <p className={`text-3xl font-black tracking-tight ${s.text}`}>{s.value}</p>
+                          <p className={`text-sm font-bold mt-1 ${s.text}`}>{s.label}</p>
+                          <p className={`text-[11px] mt-0.5 ${s.sub2}`}>{s.sub}</p>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* ── Secondary Stats ── */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { label: "Phone Counselling", value: phoneCounselling, icon: PhoneCall,   bg: "bg-indigo-50",  border: "border-indigo-200",  text: "text-indigo-700",  sub: "Counselled over phone" },
+                    { label: "Online Enrollment", value: onlineEnrollment, icon: Wifi,        bg: "bg-teal-50",    border: "border-teal-200",    text: "text-teal-700",    sub: "Registered & completed" },
+                    { label: "Cold",              value: cold,             icon: Flame,       bg: "bg-slate-50",   border: "border-slate-200",   text: "text-slate-600",   sub: "Low interest / cold" },
+                    { label: "CNR / Engaged",     value: cnrEngaged,       icon: PhoneMissed, bg: "bg-amber-50",   border: "border-amber-200",   text: "text-amber-700",   sub: "Not reachable / busy" },
+                  ].map((s) => {
+                    const Icon = s.icon;
+                    return (
+                      <Link key={s.label} href="/leads"
+                        className={`${s.bg} border ${s.border} rounded-xl p-4 hover:shadow-sm transition-shadow flex flex-col gap-3`}>
+                        <div className={`w-8 h-8 rounded-lg border ${s.border} flex items-center justify-center bg-white`}>
+                          <Icon size={15} className={s.text} />
+                        </div>
+                        <div>
+                          <p className={`text-2xl font-black tracking-tight ${s.text}`}>{s.value}</p>
+                          <p className={`text-xs font-bold mt-0.5 ${s.text}`}>{s.label}</p>
+                          <p className="text-[11px] text-gray-400 mt-0.5">{s.sub}</p>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+
+                {/* ── Recent Leads ── */}
+                <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gray-50/60">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-violet-50 rounded-lg border border-violet-100">
+                        <Users size={14} className="text-violet-600" />
+                      </div>
+                      <h2 className="text-sm font-semibold text-gray-900">Recent Assigned Leads</h2>
+                      <span className="text-[11px] font-bold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{total}</span>
+                    </div>
+                    <Link href="/leads" className="text-xs font-semibold text-violet-600 hover:text-violet-800 flex items-center gap-1">
+                      View all <ChevronRight size={12} />
+                    </Link>
+                  </div>
+                  {leads.length === 0 ? (
+                    <div className="py-12 text-center">
+                      <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                        <Users size={20} className="text-gray-300" />
+                      </div>
+                      <p className="text-sm font-medium text-gray-500">No leads assigned yet</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-50">
+                      {leads.slice(0, 8).map((lead) => {
+                        const standingColor: Record<string, string> = {
+                          hot: "bg-red-100 text-red-700",
+                          warm: "bg-orange-100 text-orange-700",
+                          heated: "bg-yellow-100 text-yellow-700",
+                          cold: "bg-blue-100 text-blue-700",
+                          missed: "bg-gray-100 text-gray-500",
+                        };
+                        return (
+                          <Link key={lead._id} href={`/leads/${lead._id}`}
+                            className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50/80 transition-colors group">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center shrink-0">
+                              <span className="text-xs font-bold text-white">{lead.name.charAt(0).toUpperCase()}</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-gray-900 truncate">{lead.name}</p>
+                              <p className="text-xs text-gray-400 truncate">
+                                {lead.phone}{lead.interestedCountry ? ` · ${lead.interestedCountry}` : ""}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {lead.status && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-semibold max-w-28 truncate">
+                                  {lead.status}
+                                </span>
+                              )}
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${standingColor[lead.standing] ?? "bg-gray-100 text-gray-500"}`}>
+                                {lead.standing}
+                              </span>
+                              <ChevronRight size={13} className="text-gray-300 group-hover:text-gray-500 transition-colors" />
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {leads.length > 8 && (
+                    <div className="px-5 py-3 border-t border-gray-100 bg-gray-50/40">
+                      <Link href="/leads" className="text-xs text-violet-600 hover:underline font-medium">+ {leads.length - 8} more leads →</Link>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Generic quick links for non-counsellor, non-admin, non-front-desk roles */}
-          {!isCounsellor && !isFrontDesk && !isAdmissionTeam && (
+          {!isCounsellor && !isFrontDesk && !isAdmissionTeam && !isTelecaller && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {[
                 { label: "Leads", href: "/leads", module: "leads", icon: Users, desc: "View and manage your assigned leads" },
