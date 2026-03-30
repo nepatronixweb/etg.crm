@@ -31,6 +31,9 @@ export interface ILeadDocument extends Document {
   status?: LeadStatus; // Status field for FD department
   stageDates?: Record<string, Date>;
   statusDates?: Record<string, Date>;
+  // Import metadata
+  campaign?: string;
+  importDate?: Date;
   // Multiple interested countries & universities
   interestedCountries: { country: string; universityName?: string }[];
   // Parent information
@@ -136,6 +139,9 @@ const LeadSchema = new Schema<ILeadDocument>(
     intakeQuarter: { type: String, default: "" },
     // General comments / notes at creation
     comments: { type: String, trim: true },
+    // Import metadata
+    campaign: { type: String, trim: true, default: "" },
+    importDate: { type: Date },
   },
   { timestamps: true }
 );

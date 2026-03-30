@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
+import * as XLSX from "xlsx";
 import {
   Users, UserCheck, FileText, TrendingUp,
   ChevronRight, Activity, Target, ArrowUp,
@@ -8,7 +9,8 @@ import {
   SlidersHorizontal, Check, Calendar,
   GraduationCap, Send, ShieldCheck, FileInput, MessageSquare,
   Phone, PhoneMissed, PhoneCall, UserPlus, RefreshCw,
-  CalendarCheck, Flame, Wifi,
+  CalendarCheck, Flame, Wifi, Upload, X, AlertCircle, CheckCircle,
+  FileSpreadsheet, Table2,
 } from "lucide-react";
 import { formatDateTime, getStatusColor, hasPermission } from "@/lib/utils";
 import { IStudent, UserRole } from "@/types";
@@ -186,6 +188,18 @@ export default function DashboardPage() {
   // Admin + Counsellor: recent notifications on dashboard
   const [notifs, setNotifs] = useState<INotif[]>([]);
 
+  // ── Import modal state (telecaller) ──
+  const [showImport, setShowImport] = useState(false);
+  const [importCampaign, setImportCampaign] = useState("");
+  const [importSource, setImportSource] = useState("");
+  const [importDate, setImportDate] = useState(new Date().toISOString().split("T")[0]);
+  const [importSources, setImportSources] = useState<string[]>(["Walk-in","Referral","Social Media","Website","Partner","Phone Call","Email","Exhibition","Other"]);
+  const [importPreview, setImportPreview] = useState<Record<string, string>[]>([]);
+  const [importFileName, setImportFileName] = useState("");
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResult, setImportResult] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const importFileRef = useRef<HTMLInputElement>(null);
+
   // Celebration overlay for new assignments
   const [showCelebration, setShowCelebration] = useState(false);
   const [celebrationMsg, setCelebrationMsg] = useState({ title: "", sub: "" });
@@ -272,10 +286,13 @@ export default function DashboardPage() {
         })
         .catch(() => setLoading(false));
     } else if (isTelecaller) {
-      fetch("/api/leads?page=1&limit=1000")
-        .then((r) => r.json())
-        .then((d) => {
+      Promise.all([
+        fetch("/api/leads?page=1&limit=1000").then(r => r.json()),
+        fetch("/api/settings/app").then(r => r.json()).catch(() => ({})),
+      ])
+        .then(([d, settings]) => {
           setAssignedLeads(Array.isArray(d) ? d : (d?.leads ?? []));
+          if (settings?.leadSources?.length) setImportSources(settings.leadSources);
           setLoading(false);
         })
         .catch(() => setLoading(false));
@@ -314,6 +331,81 @@ export default function DashboardPage() {
       body: JSON.stringify({}),
     }).catch(() => {});
   }, []);
+
+  // ── File parsing helper ──
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportFileName(file.name);
+    setImportResult(null);
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = evt.target?.result;
+        const wb = XLSX.read(data, { type: "binary" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json<Record<string, string>>(ws, { defval: "" });
+        // Normalize column headers: trim + lowercase for matching
+        const normalized = rows.map((row) => {
+          const out: Record<string, string> = {};
+          Object.keys(row).forEach((k) => { out[k.trim()] = String(row[k] ?? "").trim(); });
+          return out;
+        });
+        setImportPreview(normalized);
+      } catch {
+        setImportResult({ type: "error", msg: "Could not parse the file. Make sure it's a valid .csv or .xlsx." });
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  // ── Column name aliases ──
+  const colAlias = (row: Record<string, string>, ...keys: string[]) => {
+    for (const k of keys) {
+      const found = Object.keys(row).find((c) => c.toLowerCase() === k.toLowerCase());
+      if (found) return row[found] ?? "";
+    }
+    return "";
+  };
+
+  const handleImport = async () => {
+    if (!importCampaign.trim()) { setImportResult({ type: "error", msg: "Campaign name is required." }); return; }
+    if (!importSource) { setImportResult({ type: "error", msg: "Source is required." }); return; }
+    if (importPreview.length === 0) { setImportResult({ type: "error", msg: "Please select a file first." }); return; }
+    setImportLoading(true);
+    setImportResult(null);
+    const rows = importPreview.map((r) => ({
+      name:              colAlias(r, "name","full name","student name","fullname"),
+      phone:             colAlias(r, "phone","mobile","contact","phone number","mobile number"),
+      email:             colAlias(r, "email","email address","mail"),
+      interestedCountry: colAlias(r, "country","interested country","destination","interestedcountry"),
+      comments:          colAlias(r, "comments","comment","notes","note","remarks","remark"),
+    }));
+    try {
+      const res = await fetch("/api/leads/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaign: importCampaign, source: importSource, importDate, rows }),
+      });
+      const d = await res.json();
+      if (res.ok) {
+        setImportResult({ type: "success", msg: `✓ ${d.imported} leads imported successfully for campaign "${d.campaign}"!` });
+        setImportPreview([]);
+        setImportFileName("");
+        setImportCampaign("");
+        if (importFileRef.current) importFileRef.current.value = "";
+        // Refresh telecaller leads
+        fetch("/api/leads?page=1&limit=1000").then(r => r.json())
+          .then(data => setAssignedLeads(Array.isArray(data) ? data : (data?.leads ?? [])));
+      } else {
+        setImportResult({ type: "error", msg: d.error || "Import failed." });
+      }
+    } catch {
+      setImportResult({ type: "error", msg: "Network error. Please try again." });
+    } finally {
+      setImportLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -1328,9 +1420,18 @@ export default function DashboardPage() {
                         </div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-white/60 text-xs font-medium uppercase tracking-widest">Today</p>
-                      <p className="text-white font-bold text-lg">{new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</p>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right hidden sm:block">
+                        <p className="text-white/60 text-xs font-medium uppercase tracking-widest">Today</p>
+                        <p className="text-white font-bold text-lg">{new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</p>
+                      </div>
+                      <button
+                        onClick={() => { setShowImport(true); setImportResult(null); }}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-white text-violet-700 rounded-xl font-bold text-sm hover:bg-violet-50 transition-colors shadow-lg shadow-violet-900/20"
+                      >
+                        <Upload size={15} />
+                        Import Leads
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1497,6 +1598,194 @@ export default function DashboardPage() {
                     </div>
                   )}
                 </div>
+
+                {/* ── Import Modal ── */}
+                {showImport && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+
+                      {/* Modal Header */}
+                      <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-violet-600 to-purple-600 text-white shrink-0">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-white/15 rounded-lg">
+                            <FileSpreadsheet size={18} className="text-white" />
+                          </div>
+                          <div>
+                            <h2 className="text-base font-bold">Import Leads</h2>
+                            <p className="text-white/70 text-xs">Upload a .csv or .xlsx file to bulk-add leads</p>
+                          </div>
+                        </div>
+                        <button onClick={() => setShowImport(false)} className="p-1.5 rounded-lg hover:bg-white/20 transition-colors">
+                          <X size={18} />
+                        </button>
+                      </div>
+
+                      <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+
+                        {/* ── Meta fields ── */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          {/* Campaign Name */}
+                          <div className="sm:col-span-1">
+                            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">
+                              Campaign Name <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              value={importCampaign}
+                              onChange={(e) => setImportCampaign(e.target.value)}
+                              placeholder="e.g. March Walk-In Drive"
+                              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 transition-all"
+                            />
+                          </div>
+                          {/* Source */}
+                          <div>
+                            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">
+                              Source <span className="text-red-500">*</span>
+                            </label>
+                            <select
+                              value={importSource}
+                              onChange={(e) => setImportSource(e.target.value)}
+                              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 transition-all appearance-none bg-white"
+                            >
+                              <option value="">Select source</option>
+                              {importSources.map((s) => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          </div>
+                          {/* Date */}
+                          <div>
+                            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">Date</label>
+                            <input
+                              type="date"
+                              value={importDate}
+                              onChange={(e) => setImportDate(e.target.value)}
+                              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 transition-all"
+                            />
+                          </div>
+                        </div>
+
+                        {/* ── File Upload ── */}
+                        <div>
+                          <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">
+                            Upload File <span className="text-red-500">*</span>
+                          </label>
+                          <label className="flex flex-col items-center justify-center gap-3 border-2 border-dashed border-gray-200 rounded-2xl p-6 cursor-pointer hover:border-violet-400 hover:bg-violet-50/40 transition-all group">
+                            <div className="p-3 bg-gray-100 rounded-xl group-hover:bg-violet-100 transition-colors">
+                              <Upload size={22} className="text-gray-400 group-hover:text-violet-500 transition-colors" />
+                            </div>
+                            {importFileName ? (
+                              <div className="text-center">
+                                <p className="text-sm font-bold text-violet-700">{importFileName}</p>
+                                <p className="text-xs text-gray-400 mt-0.5">{importPreview.length} rows detected — click to change</p>
+                              </div>
+                            ) : (
+                              <div className="text-center">
+                                <p className="text-sm font-semibold text-gray-700">Click to upload or drag & drop</p>
+                                <p className="text-xs text-gray-400 mt-0.5">Supports .xlsx, .xls, .csv files</p>
+                              </div>
+                            )}
+                            <input
+                              ref={importFileRef}
+                              type="file"
+                              accept=".csv,.xlsx,.xls"
+                              className="hidden"
+                              onChange={handleFileSelect}
+                            />
+                          </label>
+                        </div>
+
+                        {/* ── Column guide ── */}
+                        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                            <Table2 size={12} />
+                            Expected Columns (header row required)
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {[
+                              { col: "Name", note: "Required" },
+                              { col: "Phone", note: "" },
+                              { col: "Email", note: "" },
+                              { col: "Country", note: "" },
+                              { col: "Comments", note: "" },
+                            ].map(({ col, note }) => (
+                              <span key={col} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border ${note ? "bg-violet-50 text-violet-700 border-violet-200" : "bg-gray-100 text-gray-600 border-gray-200"}`}>
+                                {col}
+                                {note && <span className="text-[10px] text-violet-500 font-black">{note}</span>}
+                              </span>
+                            ))}
+                          </div>
+                          <p className="text-[11px] text-gray-400 mt-2">Column names are case-insensitive. Extra columns are ignored.</p>
+                        </div>
+
+                        {/* ── Preview table ── */}
+                        {importPreview.length > 0 && (
+                          <div>
+                            <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">
+                              Preview — {importPreview.length} rows
+                              {importPreview.length > 5 && <span className="text-gray-400 font-normal"> (showing first 5)</span>}
+                            </p>
+                            <div className="overflow-x-auto rounded-xl border border-gray-200">
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="bg-gray-50 border-b border-gray-200">
+                                    {Object.keys(importPreview[0]).slice(0, 6).map((col) => (
+                                      <th key={col} className="px-3 py-2 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">{col}</th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {importPreview.slice(0, 5).map((row, i) => (
+                                    <tr key={i} className="hover:bg-gray-50">
+                                      {Object.keys(importPreview[0]).slice(0, 6).map((col) => (
+                                        <td key={col} className="px-3 py-2 text-gray-700 max-w-32 truncate">{row[col]}</td>
+                                      ))}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ── Result message ── */}
+                        {importResult && (
+                          <div className={`flex items-start gap-3 p-4 rounded-xl border ${importResult.type === "success" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+                            {importResult.type === "success"
+                              ? <CheckCircle size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+                              : <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
+                            }
+                            <p className={`text-sm font-medium ${importResult.type === "success" ? "text-emerald-700" : "text-red-600"}`}>
+                              {importResult.msg}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Modal Footer */}
+                      <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50/60 shrink-0">
+                        <div className="text-xs text-gray-400">
+                          {importPreview.length > 0 && !importResult?.type &&
+                            <span><span className="font-semibold text-gray-700">{importPreview.length}</span> rows ready to import</span>
+                          }
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <button onClick={() => setShowImport(false)}
+                            className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-gray-800 border border-gray-200 rounded-xl hover:bg-gray-100 transition-colors">
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleImport}
+                            disabled={importLoading || importPreview.length === 0}
+                            className="flex items-center gap-2 px-5 py-2 bg-violet-600 hover:bg-violet-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-xl text-sm font-bold transition-colors shadow-sm"
+                          >
+                            {importLoading
+                              ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Importing…</>
+                              : <><Upload size={14} /> Import {importPreview.length > 0 ? `${importPreview.length} Leads` : "Leads"}</>
+                            }
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })()}
