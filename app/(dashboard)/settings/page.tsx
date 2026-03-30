@@ -28,6 +28,7 @@ interface AppSettings {
   fdStatuses: string[];
   leadStageGroups: string[];
   leadStages: { value: string; label: string; group: string }[];
+  countryStages: Record<string, { value: string; label: string; pipeline: string }[]>;
   b2bNames: string[];
   remarkOptions: string[];
   courses: string[];
@@ -121,6 +122,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     { value: "visa_invalid", label: "Visa Invalid", group: "Visa" },
     { value: "visa_withdrawn", label: "Visa Withdrawn", group: "Visa" },
   ],
+  countryStages: {},
   b2bNames: [],
   remarkOptions: [
     "Additional Documents Requested", "Additional Documents Sent",
@@ -296,6 +298,9 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [editingStage, setEditingStage] = useState<string | null>(null);
   const [editingStageLabel, setEditingStageLabel] = useState("");
+  const [expandedCountryStage, setExpandedCountryStage] = useState<string | null>(null);
+  const [editingCsStage, setEditingCsStage] = useState<string | null>(null); // "country::value"
+  const [editingCsLabel, setEditingCsLabel] = useState("");
 
   // Logo upload
   const [logoPreview, setLogoPreview] = useState<string>("");
@@ -1124,6 +1129,165 @@ export default function SettingsPage() {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* ── Country-Specific Stages ── */}
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            <div className="px-6 py-5 border-b border-gray-100 bg-gradient-to-r from-white to-gray-50">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                    <Globe size={14} className="text-emerald-500" />
+                    Country-Specific Stages
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Override the pipeline stages for specific destination countries. When set, students applying to that country will see these stages instead of the global ones.
+                  </p>
+                </div>
+                <span className="px-2.5 py-1 bg-emerald-50 text-emerald-600 text-xs font-semibold rounded-full">
+                  {Object.keys(settings.countryStages || {}).length} countries configured
+                </span>
+              </div>
+            </div>
+            <div className="p-6 space-y-3">
+              {/* Countries that have custom stages */}
+              {settings.countries.map((c) => {
+                const countryName = c.name;
+                const stages = (settings.countryStages || {})[countryName] || [];
+                const isExpanded = expandedCountryStage === countryName;
+                const pipelineColors: Record<string, string> = {
+                  Offer: "bg-blue-50 text-blue-700 border-blue-200",
+                  COE:   "bg-emerald-50 text-emerald-700 border-emerald-200",
+                  Visa:  "bg-teal-50 text-teal-700 border-teal-200",
+                };
+                return (
+                  <div key={countryName} className={`border rounded-xl overflow-hidden transition-all ${stages.length > 0 ? "border-emerald-200" : "border-gray-200"}`}>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedCountryStage(isExpanded ? null : countryName)}
+                      className="w-full flex items-center justify-between px-4 py-3 bg-gray-50/70 hover:bg-gray-100/70 transition-colors text-left"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Globe size={13} className={stages.length > 0 ? "text-emerald-500" : "text-gray-400"} />
+                        <span className="text-sm font-semibold text-gray-800">{countryName}</span>
+                        {stages.length > 0 ? (
+                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-full">{stages.length} stages</span>
+                        ) : (
+                          <span className="px-2 py-0.5 bg-gray-100 text-gray-400 text-[10px] font-semibold rounded-full">Using global stages</span>
+                        )}
+                      </div>
+                      <ChevronDown size={14} className={`text-gray-400 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                    </button>
+
+                    {isExpanded && (
+                      <div className="px-4 pb-4 pt-3 border-t border-gray-100">
+                        {/* Stage list grouped by pipeline */}
+                        {["Offer", "COE", "Visa"].map((pipeline) => {
+                          const pipeStages = stages.filter(s => s.pipeline === pipeline);
+                          return (
+                            <div key={pipeline} className="mb-3">
+                              <p className={`text-[10px] font-black uppercase tracking-widest mb-1.5 px-2 py-0.5 rounded w-fit border ${pipelineColors[pipeline] || "bg-gray-100 text-gray-500 border-gray-200"}`}>{pipeline}</p>
+                              <div className="flex flex-wrap gap-1.5 min-h-[32px] mb-1">
+                                {pipeStages.map((stage) => {
+                                  const editKey = `${countryName}::${stage.value}`;
+                                  return (
+                                    <span key={stage.value} className="group inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-gray-200 rounded-md text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all">
+                                      {editingCsStage === editKey ? (
+                                        <input
+                                          autoFocus
+                                          value={editingCsLabel}
+                                          onChange={(e) => setEditingCsLabel(e.target.value)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                              const newLabel = editingCsLabel.trim();
+                                              if (newLabel) {
+                                                const updated = stages.map(s => s.value === stage.value ? { ...s, label: newLabel } : s);
+                                                set("countryStages", { ...(settings.countryStages || {}), [countryName]: updated });
+                                              }
+                                              setEditingCsStage(null);
+                                            } else if (e.key === "Escape") { setEditingCsStage(null); }
+                                          }}
+                                          onBlur={() => {
+                                            const newLabel = editingCsLabel.trim();
+                                            if (newLabel) {
+                                              const updated = stages.map(s => s.value === stage.value ? { ...s, label: newLabel } : s);
+                                              set("countryStages", { ...(settings.countryStages || {}), [countryName]: updated });
+                                            }
+                                            setEditingCsStage(null);
+                                          }}
+                                          className="w-28 px-1.5 py-0.5 text-xs border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
+                                        />
+                                      ) : (
+                                        <>
+                                          {stage.label}
+                                          <button type="button" onClick={() => { setEditingCsStage(editKey); setEditingCsLabel(stage.label); }}
+                                            className="text-gray-300 hover:text-blue-500 transition-colors opacity-0 group-hover:opacity-100">
+                                            <Pencil size={10} />
+                                          </button>
+                                        </>
+                                      )}
+                                      <button type="button" onClick={() => {
+                                        const updated = stages.filter(s => s.value !== stage.value);
+                                        set("countryStages", { ...(settings.countryStages || {}), [countryName]: updated });
+                                      }} className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                                        <X size={10} />
+                                      </button>
+                                    </span>
+                                  );
+                                })}
+                                {pipeStages.length === 0 && <span className="text-[11px] text-gray-400 italic self-center">No {pipeline} stages</span>}
+                              </div>
+                              {/* Add stage to this pipeline */}
+                              <div className="flex gap-2 mt-1">
+                                <input
+                                  id={`cs-${countryName}-${pipeline}`}
+                                  placeholder={`Add ${pipeline} stage...`}
+                                  className="flex-1 px-3 py-1.5 border border-gray-200 bg-gray-50 rounded-lg text-xs focus:outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-100 focus:bg-white transition-all placeholder-gray-400"
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      e.preventDefault();
+                                      const label = (e.target as HTMLInputElement).value.trim();
+                                      const value = label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+                                      if (label && value && !stages.some(s => s.value === value)) {
+                                        const updated = [...stages, { value, label, pipeline }];
+                                        set("countryStages", { ...(settings.countryStages || {}), [countryName]: updated });
+                                        (e.target as HTMLInputElement).value = "";
+                                      }
+                                    }
+                                  }}
+                                />
+                                <button type="button" onClick={() => {
+                                  const input = document.getElementById(`cs-${countryName}-${pipeline}`) as HTMLInputElement;
+                                  const label = input?.value.trim();
+                                  const value = label?.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+                                  if (label && value && !stages.some(s => s.value === value)) {
+                                    const updated = [...stages, { value, label, pipeline }];
+                                    set("countryStages", { ...(settings.countryStages || {}), [countryName]: updated });
+                                    if (input) input.value = "";
+                                  }
+                                }} className="px-3 py-1.5 bg-white hover:bg-gray-100 text-gray-700 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 border border-gray-200 shadow-sm">
+                                  <Plus size={11} /> Add
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {/* Clear all stages for this country */}
+                        {stages.length > 0 && (
+                          <button type="button" onClick={() => {
+                            const updated = { ...(settings.countryStages || {}) };
+                            delete updated[countryName];
+                            set("countryStages", updated);
+                          }} className="mt-1 text-[11px] text-red-400 hover:text-red-600 transition-colors flex items-center gap-1">
+                            <Trash2 size={10} /> Reset to global stages
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 

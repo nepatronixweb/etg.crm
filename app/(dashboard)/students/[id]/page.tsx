@@ -141,8 +141,17 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   const [courseDropdownOpen, setCourseDropdownOpen] = useState<"new" | "edit" | null>(null);
   const [appLeadStages, setAppLeadStages] = useState<{ value: string; label: string; group: string }[]>([]);
   const [appLeadStageGroups, setAppLeadStageGroups] = useState<string[]>([]);
+  const [countryStages, setCountryStages] = useState<Record<string, { value: string; label: string; pipeline: string }[]>>({});
   const [appRemarkOptions, setAppRemarkOptions] = useState<string[]>([]);
   const [appStandings, setAppStandings] = useState<string[]>(["hot", "warm", "heated", "cold", "missed"]);
+
+  // Returns country-specific stages if available, otherwise global lead stages
+  const getStagesForCountry = (country?: string) => {
+    if (country && countryStages[country]?.length) {
+      return countryStages[country].map((s) => ({ value: s.value, label: s.label, group: s.pipeline }));
+    }
+    return appLeadStages;
+  };
 
   const fetchData = async () => {
     const [studentRes, docsRes] = await Promise.all([
@@ -191,6 +200,9 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
       }
       if (d?.leadStageGroups?.length) {
         setAppLeadStageGroups(d.leadStageGroups);
+      }
+      if (d?.countryStages && typeof d.countryStages === "object") {
+        setCountryStages(d.countryStages);
       }
       if (d?.remarkOptions?.length) {
         setAppRemarkOptions(d.remarkOptions);
@@ -382,7 +394,9 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     const today = new Date().toISOString().split("T")[0];
     let extra: Record<string, string> = {};
     if (field === "stage") {
-      const autoPipeline = appLeadStages.find((s) => s.value === value)?.group || "";
+      const entryCountry = student.admissionDetails[index]?.country;
+      const stageList = getStagesForCountry(entryCountry);
+      const autoPipeline = stageList.find((s) => s.value === value)?.group || "";
       extra = { statusDate: today, pipeline: autoPipeline, remarks: "", standing: "" };
     }
     const updated = student.admissionDetails.map((entry, i) =>
@@ -744,7 +758,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                               className="w-full px-4 py-3 bg-white border border-emerald-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all"
                             >
                               <option value="">Select stage</option>
-                              {appLeadStages.map((s) => (
+                              {getStagesForCountry(admissionForm.country).map((s) => (
                                 <option key={s.value} value={s.value}>{s.label}</option>
                               ))}
                             </select>
@@ -1128,7 +1142,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                     className="w-full px-4 py-2.5 bg-white border border-yellow-200 rounded-xl text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition-all"
                                   >
                                     <option value="">Select stage</option>
-                                    {appLeadStages.map((s) => (
+                                    {getStagesForCountry(editAdmissionForm.country).map((s) => (
                                       <option key={s.value} value={s.value}>{s.label}</option>
                                     ))}
                                   </select>
@@ -1460,11 +1474,11 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                     className="w-full text-xs font-semibold bg-yellow-50 text-yellow-800 border border-yellow-200 rounded-lg px-2 py-1.5 focus:outline-none cursor-pointer text-center"
                                   >
                                     <option value="">—</option>
-                                    {appLeadStages.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                                    {getStagesForCountry(entry.country).map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                                   </select>
                                 ) : (
                                   <div className="text-center text-xs font-semibold px-2 py-1.5 bg-yellow-50 text-yellow-800 rounded-lg border border-yellow-100 truncate">
-                                    {appLeadStages.find((s) => s.value === entry.stage)?.label || entry.stage || "—"}
+                                    {getStagesForCountry(entry.country).find((s) => s.value === entry.stage)?.label || entry.stage || "—"}
                                   </div>
                                 )}
                               </div>

@@ -49,6 +49,95 @@ export async function GET() {
       await settings.save();
     }
 
+    // Backfill countryStages if missing — the schema default only applies on document creation
+    if (!settings.countryStages || Object.keys(settings.countryStages).length === 0) {
+      settings.countryStages = {
+        "United Kingdom": [
+          { value: "offer_applied",         label: "Offer Applied",         pipeline: "Offer" },
+          { value: "conditional_offer",      label: "Conditional Offer",     pipeline: "Offer" },
+          { value: "unconditional_offer",    label: "Unconditional Offer",   pipeline: "Offer" },
+          { value: "offer_reject",           label: "Offer Reject",          pipeline: "Offer" },
+          { value: "coe_applied",            label: "CoE Applied",           pipeline: "COE"   },
+          { value: "coe_received",           label: "CoE Received",          pipeline: "COE"   },
+          { value: "coe_withdrawn_reject",   label: "CoE Withdrawn/Reject",  pipeline: "COE"   },
+          { value: "visa_applied",           label: "Visa Applied",          pipeline: "Visa"  },
+          { value: "visa_grant",             label: "Visa Grant",            pipeline: "Visa"  },
+          { value: "visa_reject",            label: "Visa Reject",           pipeline: "Visa"  },
+          { value: "visa_withdrawn",         label: "Visa Withdrawn",        pipeline: "Visa"  },
+          { value: "visa_reapply",           label: "Visa Reapply",          pipeline: "Visa"  },
+        ],
+        "New Zealand": [
+          { value: "offer_applied",         label: "Offer Applied",         pipeline: "Offer" },
+          { value: "conditional_offer",      label: "Conditional Offer",     pipeline: "Offer" },
+          { value: "unconditional_offer",    label: "Unconditional Offer",   pipeline: "Offer" },
+          { value: "offer_reject",           label: "Offer Reject",          pipeline: "Offer" },
+          { value: "visa_applied",           label: "Visa Applied",          pipeline: "Visa"  },
+          { value: "aip",                    label: "AIP",                   pipeline: "Visa"  },
+          { value: "visa_grant",             label: "Visa Grant",            pipeline: "Visa"  },
+          { value: "visa_reject",            label: "Visa Reject",           pipeline: "Visa"  },
+          { value: "visa_withdrawn",         label: "Visa Withdrawn",        pipeline: "Visa"  },
+          { value: "visa_reapply",           label: "Visa Reapply",          pipeline: "Visa"  },
+        ],
+        "United States": [
+          { value: "offer_applied",         label: "Offer Applied",         pipeline: "Offer" },
+          { value: "conditional_offer",      label: "Conditional Offer",     pipeline: "Offer" },
+          { value: "unconditional_offer",    label: "Unconditional Offer",   pipeline: "Offer" },
+          { value: "offer_reject",           label: "Offer Reject",          pipeline: "Offer" },
+          { value: "coe_applied",            label: "CoE Applied",           pipeline: "COE"   },
+          { value: "coe_received",           label: "CoE Received",          pipeline: "COE"   },
+          { value: "visa_applied",           label: "Visa Applied",          pipeline: "Visa"  },
+          { value: "visa_grant",             label: "Visa Grant",            pipeline: "Visa"  },
+          { value: "visa_reject",            label: "Visa Reject",           pipeline: "Visa"  },
+          { value: "visa_withdrawn",         label: "Visa Withdrawn",        pipeline: "Visa"  },
+          { value: "visa_reapply",           label: "Visa Reapply",          pipeline: "Visa"  },
+        ],
+        "Canada": [
+          { value: "offer_applied",         label: "Offer Applied",         pipeline: "Offer" },
+          { value: "conditional_offer",      label: "Conditional Offer",     pipeline: "Offer" },
+          { value: "unconditional_offer",    label: "Unconditional Offer",   pipeline: "Offer" },
+          { value: "offer_reject",           label: "Offer Reject",          pipeline: "Offer" },
+          { value: "coe_applied",            label: "CoE Applied",           pipeline: "COE"   },
+          { value: "coe_received",           label: "CoE Received",          pipeline: "COE"   },
+          { value: "pal_applied",            label: "PAL Applied",           pipeline: "COE"   },
+          { value: "pal_received",           label: "PAL Received",          pipeline: "COE"   },
+          { value: "visa_applied",           label: "Visa Applied",          pipeline: "Visa"  },
+          { value: "ppr",                    label: "PPR",                   pipeline: "Visa"  },
+          { value: "visa_grant",             label: "Visa Grant",            pipeline: "Visa"  },
+          { value: "visa_reject",            label: "Visa Reject",           pipeline: "Visa"  },
+          { value: "visa_withdrawn",         label: "Visa Withdrawn",        pipeline: "Visa"  },
+          { value: "visa_reapply",           label: "Visa Reapply",          pipeline: "Visa"  },
+        ],
+        "Germany": [
+          { value: "offer_applied",         label: "Offer Applied",         pipeline: "Offer" },
+          { value: "conditional_offer",      label: "Conditional Offer",     pipeline: "Offer" },
+          { value: "unconditional_offer",    label: "Unconditional Offer",   pipeline: "Offer" },
+          { value: "offer_reject",           label: "Offer Reject",          pipeline: "Offer" },
+          { value: "coe_applied",            label: "CoE Applied",           pipeline: "COE"   },
+          { value: "coe_received",           label: "CoE Received",          pipeline: "COE"   },
+          { value: "visa_applied",           label: "Visa Applied",          pipeline: "Visa"  },
+          { value: "visa_grant",             label: "Visa Grant",            pipeline: "Visa"  },
+          { value: "visa_reject",            label: "Visa Reject",           pipeline: "Visa"  },
+          { value: "visa_withdrawn",         label: "Visa Withdrawn",        pipeline: "Visa"  },
+          { value: "visa_reapply",           label: "Visa Reapply",          pipeline: "Visa"  },
+        ],
+        "Finland": [
+          { value: "offer_applied",         label: "Offer Applied",         pipeline: "Offer" },
+          { value: "conditional_offer",      label: "Conditional Offer",     pipeline: "Offer" },
+          { value: "unconditional_offer",    label: "Unconditional Offer",   pipeline: "Offer" },
+          { value: "offer_reject",           label: "Offer Reject",          pipeline: "Offer" },
+          { value: "coe_applied",            label: "CoE Applied",           pipeline: "COE"   },
+          { value: "coe_received",           label: "CoE Received",          pipeline: "COE"   },
+          { value: "visa_applied",           label: "Visa Applied",          pipeline: "Visa"  },
+          { value: "visa_grant",             label: "Visa Grant",            pipeline: "Visa"  },
+          { value: "visa_reject",            label: "Visa Reject",           pipeline: "Visa"  },
+          { value: "visa_withdrawn",         label: "Visa Withdrawn",        pipeline: "Visa"  },
+          { value: "visa_reapply",           label: "Visa Reapply",          pipeline: "Visa"  },
+        ],
+      };
+      settings.markModified("countryStages");
+      await settings.save();
+    }
+
     // Use lean() for the JSON response to bypass Mongoose schema projection.
     // This ensures fields added after the model was first compiled (e.g. after a
     // hot-reload) are always included — toObject() only returns schema-known fields.
@@ -63,6 +152,9 @@ export async function GET() {
     }
     if (!Array.isArray(json.educationLevels) || json.educationLevels.length === 0) {
       json.educationLevels = ["Diploma", "Bachelor", "Master"];
+    }
+    if (!json.countryStages || typeof json.countryStages !== "object") {
+      json.countryStages = {};
     }
 
     return NextResponse.json(json);
@@ -95,6 +187,7 @@ export async function PUT(req: NextRequest) {
       "enabledModules",
       "smtpHost", "smtpPort", "smtpUser", "smtpPass", "emailFromName",
       "paymentQrPath",
+      "countryStages",
     ];
     for (const field of fields) {
       if (body[field] !== undefined) {
