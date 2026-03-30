@@ -10,7 +10,7 @@ import {
   GraduationCap, Send, ShieldCheck, FileInput, MessageSquare,
   Phone, PhoneMissed, PhoneCall, UserPlus, RefreshCw,
   CalendarCheck, Flame, Wifi, Upload, X, AlertCircle, CheckCircle,
-  FileSpreadsheet, Table2,
+  FileSpreadsheet, Table2, BarChart3, Globe2, LayoutDashboard,
 } from "lucide-react";
 import { formatDateTime, getStatusColor, hasPermission } from "@/lib/utils";
 import { IStudent, UserRole } from "@/types";
@@ -59,6 +59,10 @@ interface AnalyticsData {
     branch: { name: string };
   }>;
   leadsByStatus: Array<{ _id: string; count: number }>;
+  leadsBySource?: Array<{ _id: string; count: number }>;
+  studentsByStage?: Array<{ _id: string; count: number }>;
+  applicationsByCountry?: Array<{ _id: string; count: number }>;
+  applicationsByStatus?: Array<{ _id: string; count: number }>;
 }
 
 interface INotif {
@@ -143,6 +147,20 @@ function getDateRange(period: FilterPeriod): { from?: string; to?: string } {
   return {};
 }
 
+function humanizeAnalyticsKey(s: string) {
+  if (!s) return "—";
+  return String(s).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function adminPeriodLabel(period: FilterPeriod, from: string, to: string): string {
+  if (from || to) {
+    if (from && to) return `${from} → ${to}`;
+    if (from) return `From ${from}`;
+    return `Until ${to}`;
+  }
+  return FILTER_OPTIONS.find((o) => o.value === period)?.label ?? "All time";
+}
+
 export default function DashboardPage() {
   const { data: session } = useSession();
   const branding = useBranding();
@@ -207,6 +225,15 @@ export default function DashboardPage() {
   const celebrationShownRef = useRef(false);
   const hasAnalyticsRef = useRef(false);
 
+  // Load lead sources for import modal (all roles that can import)
+  useEffect(() => {
+    if (!session) return;
+    fetch("/api/settings/app")
+      .then(r => r.json())
+      .then(d => { if (d?.leadSources?.length) setImportSources(d.leadSources); })
+      .catch(() => {});
+  }, [session]);
+
   // Close filter dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -237,8 +264,14 @@ export default function DashboardPage() {
       }, 0);
       fetch(url)
         .then((r) => r.json())
-        .then((d) => { hasAnalyticsRef.current = true; setData(d); setLoading(false); setRefetching(false); })
-        .catch(() => { clearTimeout(loadTimer); setLoading(false); setRefetching(false); });
+        .then((d) => {
+          hasAnalyticsRef.current = true;
+          if (d?.error) setData(null);
+          else setData(d);
+          setLoading(false);
+          setRefetching(false);
+        })
+        .catch(() => { clearTimeout(loadTimer); setData(null); setLoading(false); setRefetching(false); });
       // Also fetch recent notifications for admin
       fetch("/api/notifications?limit=5")
         .then((r) => r.json())
@@ -287,13 +320,9 @@ export default function DashboardPage() {
         })
         .catch(() => setLoading(false));
     } else if (isTelecaller) {
-      Promise.all([
-        fetch("/api/leads?page=1&limit=1000").then(r => r.json()),
-        fetch("/api/settings/app").then(r => r.json()).catch(() => ({})),
-      ])
-        .then(([d, settings]) => {
+      fetch("/api/leads?page=1&limit=1000").then(r => r.json())
+        .then((d) => {
           setAssignedLeads(Array.isArray(d) ? d : (d?.leads ?? []));
-          if (settings?.leadSources?.length) setImportSources(settings.leadSources);
           setLoading(false);
         })
         .catch(() => setLoading(false));
@@ -432,11 +461,243 @@ export default function DashboardPage() {
         />
       )}
 
+      {/* ── Import Leads Modal (shared: admin + telecaller) ── */}
+      {showImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+          <div className="bg-white rounded-lg shadow-lg border border-gray-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-md border border-gray-200 bg-white text-gray-600">
+                  <FileSpreadsheet size={18} />
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold text-gray-900">Import Leads</h2>
+                  <p className="text-gray-500 text-xs">Upload a .csv or .xlsx file to bulk-add leads</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setShowImport(false)} className="p-1.5 rounded-md text-gray-500 hover:bg-gray-200 hover:text-gray-800 transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+              {/* ── Meta fields ── */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="sm:col-span-1">
+                  <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">
+                    Campaign Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    value={importCampaign}
+                    onChange={(e) => setImportCampaign(e.target.value)}
+                    placeholder="e.g. March Walk-In Drive"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-100 transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">
+                    Source <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={importSource}
+                    onChange={(e) => setImportSource(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-100 transition-all appearance-none bg-white"
+                  >
+                    <option value="">Select source</option>
+                    {importSources.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">Date</label>
+                  <input
+                    type="date"
+                    value={importDate}
+                    onChange={(e) => setImportDate(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-100 transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* ── Lead Type ── */}
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">
+                  Enquiry Lead Status <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setImportLeadType("fresh")}
+                    className={`relative flex items-center gap-3 p-4 rounded-lg border transition-all text-left ${
+                      importLeadType === "fresh"
+                        ? "border-gray-900 bg-gray-50 ring-1 ring-gray-900"
+                        : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    <div className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 ${importLeadType === "fresh" ? "bg-gray-200" : "bg-gray-100"}`}>
+                      <UserPlus size={16} className={importLeadType === "fresh" ? "text-gray-800" : "text-gray-400"} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className={`text-sm font-semibold ${importLeadType === "fresh" ? "text-gray-900" : "text-gray-700"}`}>Fresh Leads</p>
+                      <p className="text-[11px] text-gray-500 mt-0.5">Open / needs follow-up</p>
+                    </div>
+                    <div className={`absolute top-3 right-3 w-4 h-4 rounded-full border-2 flex items-center justify-center ${importLeadType === "fresh" ? "border-gray-900 bg-gray-900" : "border-gray-300"}`}>
+                      {importLeadType === "fresh" && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setImportLeadType("cold")}
+                    className={`relative flex items-center gap-3 p-4 rounded-lg border transition-all text-left ${
+                      importLeadType === "cold"
+                        ? "border-gray-900 bg-gray-50 ring-1 ring-gray-900"
+                        : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    <div className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 ${importLeadType === "cold" ? "bg-gray-200" : "bg-gray-100"}`}>
+                      <Flame size={16} className={importLeadType === "cold" ? "text-gray-700" : "text-gray-400"} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className={`text-sm font-semibold ${importLeadType === "cold" ? "text-gray-900" : "text-gray-700"}`}>Cold Leads</p>
+                      <p className="text-[11px] text-gray-500 mt-0.5">Low interest / not reachable</p>
+                    </div>
+                    <div className={`absolute top-3 right-3 w-4 h-4 rounded-full border-2 flex items-center justify-center ${importLeadType === "cold" ? "border-gray-900 bg-gray-900" : "border-gray-300"}`}>
+                      {importLeadType === "cold" && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    </div>
+                  </button>
+                </div>
+                <p className="text-[11px] mt-2 text-gray-500">
+                  {importLeadType === "fresh"
+                    ? "Leads will be marked as Open/Unassigned and counted in Fresh Leads."
+                    : "Leads will be marked as Cold and counted in the Cold section."}
+                </p>
+              </div>
+
+              {/* ── File Upload ── */}
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">
+                  Upload File <span className="text-red-500">*</span>
+                </label>
+                <label className="flex flex-col items-center justify-center gap-3 border-2 border-dashed border-gray-200 rounded-lg p-6 cursor-pointer hover:border-gray-400 hover:bg-gray-50 transition-all group">
+                  <div className="p-3 bg-gray-100 rounded-md group-hover:bg-gray-200 transition-colors">
+                    <Upload size={22} className="text-gray-500 group-hover:text-gray-700 transition-colors" />
+                  </div>
+                  {importFileName ? (
+                    <div className="text-center">
+                      <p className="text-sm font-semibold text-gray-900">{importFileName}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{importPreview.length} rows detected — click to change</p>
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      <p className="text-sm font-semibold text-gray-700">Click to upload or drag & drop</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Supports .xlsx, .xls, .csv files</p>
+                    </div>
+                  )}
+                  <input ref={importFileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleFileSelect} />
+                </label>
+              </div>
+
+              {/* ── Column guide ── */}
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                  <Table2 size={12} />
+                  Expected Columns (header row required)
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { col: "Name", note: "Required" },
+                    { col: "Phone", note: "" },
+                    { col: "Email", note: "" },
+                    { col: "Country", note: "" },
+                    { col: "Comments", note: "" },
+                  ].map(({ col, note }) => (
+                    <span key={col} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium border ${note ? "bg-gray-100 text-gray-800 border-gray-300" : "bg-gray-50 text-gray-600 border-gray-200"}`}>
+                      {col}
+                      {note && <span className="text-[10px] text-gray-500 font-semibold">{note}</span>}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-[11px] text-gray-400 mt-2">Column names are case-insensitive. Extra columns are ignored.</p>
+              </div>
+
+              {/* ── Preview table ── */}
+              {importPreview.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">
+                    Preview — {importPreview.length} rows
+                    {importPreview.length > 5 && <span className="text-gray-400 font-normal"> (showing first 5)</span>}
+                  </p>
+                  <div className="overflow-x-auto rounded-xl border border-gray-200">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200">
+                          {Object.keys(importPreview[0]).slice(0, 6).map((col) => (
+                            <th key={col} className="px-3 py-2 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">{col}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {importPreview.slice(0, 5).map((row, i) => (
+                          <tr key={i} className="hover:bg-gray-50">
+                            {Object.keys(importPreview[0]).slice(0, 6).map((col) => (
+                              <td key={col} className="px-3 py-2 text-gray-700 max-w-32 truncate">{row[col]}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Result message ── */}
+              {importResult && (
+                <div className={`flex items-start gap-3 p-4 rounded-xl border ${importResult.type === "success" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+                  {importResult.type === "success"
+                    ? <CheckCircle size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+                    : <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
+                  }
+                  <p className={`text-sm font-medium ${importResult.type === "success" ? "text-emerald-700" : "text-red-600"}`}>
+                    {importResult.msg}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50/60 shrink-0">
+              <div className="text-xs text-gray-400">
+                {importPreview.length > 0 && !importResult?.type &&
+                  <span><span className="font-semibold text-gray-700">{importPreview.length}</span> rows ready to import</span>
+                }
+              </div>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => setShowImport(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleImport}
+                  disabled={importLoading || importPreview.length === 0}
+                  className="flex items-center gap-2 px-5 py-2 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  {importLoading
+                    ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Importing…</>
+                    : <><Upload size={14} /> Import {importPreview.length > 0 ? `${importPreview.length} Leads` : "Leads"}</>
+                  }
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">
-            {isAdmin ? "Overview" : "Dashboard"}
+            {isAdmin ? "Admin overview" : "Dashboard"}
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
             Welcome back, {session?.user?.name} &mdash; {branding.companyName}
@@ -542,6 +803,14 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
+            <button
+              type="button"
+              onClick={() => { setShowImport(true); setImportResult(null); setImportLeadType("fresh"); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors bg-gray-900 text-white border-gray-900 hover:bg-gray-800"
+            >
+              <Upload size={13} />
+              Import Leads
+            </button>
             <span className="text-xs font-medium px-2.5 py-1 rounded-md bg-gray-100 text-gray-600 border border-gray-200">
               Super Admin
             </span>
@@ -549,36 +818,80 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {isAdmin && data && (
+      {isAdmin && !loading && !data && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+          <p className="font-medium">Analytics could not be loaded.</p>
+          <p className="text-amber-800/90 mt-1 text-xs">Check your connection or try refreshing the page.</p>
+        </div>
+      )}
+
+      {isAdmin && data && (() => {
+        const leadsBySource = [...(data.leadsBySource ?? [])].sort((a, b) => b.count - a.count);
+        const studentsByStage = [...(data.studentsByStage ?? [])].sort((a, b) => b.count - a.count);
+        const applicationsByCountry = [...(data.applicationsByCountry ?? [])].sort((a, b) => b.count - a.count);
+        const applicationsByStatus = [...(data.applicationsByStatus ?? [])].sort((a, b) => b.count - a.count);
+        const standingTotal = Math.max(1, data.leadsByStatus.reduce((sum, x) => sum + x.count, 0));
+        const maxSrc = Math.max(1, ...leadsBySource.map((x) => x.count), 0);
+        const maxStage = Math.max(1, ...studentsByStage.map((x) => x.count), 0);
+        const maxCountry = Math.max(1, ...applicationsByCountry.map((x) => x.count), 0);
+        const maxAppSt = Math.max(1, ...applicationsByStatus.map((x) => x.count), 0);
+        const periodLabel = adminPeriodLabel(filterPeriod, filterDateFrom, filterDateTo);
+
+        return (
         <div className={`space-y-6 transition-opacity duration-200 ${refetching ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
-          {/* KPI Summary */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+
+          {/* Control strip */}
+          <div className="bg-white border border-gray-200 rounded-lg p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-md border border-gray-200 bg-gray-50 text-gray-600">
+                <LayoutDashboard size={18} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Operations snapshot</h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Period: <span className="font-medium text-gray-700">{periodLabel}</span>
+                  {refetching && <span className="ml-2 text-gray-400">Updating…</span>}
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/reports"
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium border border-gray-200 bg-white text-gray-800 hover:bg-gray-50 hover:border-gray-300 transition-colors shrink-0"
+            >
+              <BarChart3 size={15} className="text-gray-500" />
+              Full analytics &amp; charts
+              <ChevronRight size={14} className="text-gray-400" />
+            </Link>
+          </div>
+
+          {/* KPIs */}
+          <div className="grid w-full grid-cols-2 lg:grid-cols-4 gap-4 items-stretch">
             {[
               {
-                label: "Total Leads",
+                label: "Total leads",
                 value: data.summary.totalLeads,
-                sub: `${data.summary.convertedLeads} converted`,
+                sub: `${data.summary.convertedLeads} converted to students`,
                 icon: Users,
                 href: "/leads",
               },
               {
-                label: "Total Students",
+                label: "Students",
                 value: data.summary.totalStudents,
-                sub: "Active enrolments",
+                sub: "Records in selected period",
                 icon: UserCheck,
                 href: "/students",
               },
               {
                 label: "Applications",
                 value: data.summary.totalApplications,
-                sub: "All time",
+                sub: "Submitted in period",
                 icon: FileText,
                 href: "/applications",
               },
               {
-                label: "Conversion Rate",
+                label: "Conversion rate",
                 value: `${data.summary.conversionRate}%`,
-                sub: "Lead to student",
+                sub: "Leads → students",
                 icon: TrendingUp,
                 href: "/reports",
               },
@@ -588,165 +901,237 @@ export default function DashboardPage() {
                 <Link
                   key={card.label}
                   href={card.href}
-                  className="group bg-white border border-gray-200 rounded-lg p-5 hover:border-gray-300 hover:shadow-sm transition-all"
+                  className="group flex h-full min-h-[9.5rem] w-full min-w-0 flex-col bg-white border border-gray-200 rounded-lg p-5 hover:border-gray-300 hover:shadow-sm transition-all"
                 >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="p-2 bg-gray-50 border border-gray-100 rounded-md">
+                  <div className="flex items-start justify-between shrink-0 mb-3">
+                    <div className="p-2 bg-gray-50 border border-gray-200 rounded-md">
                       <Icon size={16} className="text-gray-600" />
                     </div>
                     <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-500 transition-colors mt-1" />
                   </div>
-                  <p className="text-2xl font-bold text-gray-900 tracking-tight">{card.value}</p>
-                  <p className="text-xs font-medium text-gray-700 mt-1">{card.label}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{card.sub}</p>
+                  <p className="text-2xl font-semibold text-gray-900 tracking-tight tabular-nums shrink-0">{card.value}</p>
+                  <div className="mt-auto pt-3 space-y-0.5">
+                    <p className="text-xs font-medium text-gray-700 leading-snug">{card.label}</p>
+                    <p className="text-xs text-gray-500 leading-snug line-clamp-2">{card.sub}</p>
+                  </div>
                 </Link>
               );
             })}
           </div>
 
-          {/* Student Pipeline Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-            {[
-              {
-                label: "GS Applied",
-                value: data.summary.gsApplied,
-                sub: "Application stage",
-                icon: FilePlus2,
-                color: "text-sky-600",
-                bg: "bg-sky-50 border-sky-100",
-              },
-              {
-                label: "COE Received",
-                value: data.summary.coeReceived,
-                sub: "Enrollment confirmed",
-                icon: BadgeCheck,
-                color: "text-teal-600",
-                bg: "bg-teal-50 border-teal-100",
-              },
-              {
-                label: "Conditional",
-                value: data.summary.conditionalOffers,
-                sub: "Conditional offer",
-                icon: Clock,
-                color: "text-amber-600",
-                bg: "bg-amber-50 border-amber-100",
-              },
-              {
-                label: "Unconditional",
-                value: data.summary.unconditionalOffers,
-                sub: "Unconditional offer",
-                icon: CheckCircle2,
-                color: "text-green-600",
-                bg: "bg-green-50 border-green-100",
-              },
-              {
-                label: "Visa Lodged",
-                value: data.summary.visaLodged,
-                sub: "Visa submitted",
-                icon: PlaneTakeoff,
-                color: "text-indigo-600",
-                bg: "bg-indigo-50 border-indigo-100",
-              },
-              {
-                label: "Granted",
-                value: data.summary.granted,
-                sub: "Visa approved",
-                icon: Award,
-                color: "text-emerald-600",
-                bg: "bg-emerald-50 border-emerald-100",
-              },
-              {
-                label: "Rejected",
-                value: data.summary.rejected,
-                sub: "Visa rejected",
-                icon: XCircle,
-                color: "text-red-500",
-                bg: "bg-red-50 border-red-100",
-              },
-            ].map((card) => {
-              const Icon = card.icon;
-              return (
-                <div
-                  key={card.label}
-                  className="bg-white border border-gray-200 rounded-lg p-4 flex flex-col gap-2"
-                >
-                  <div className={`w-8 h-8 rounded-md border flex items-center justify-center ${card.bg}`}>
-                    <Icon size={15} className={card.color} />
+          {/* Admissions & visa pipeline — minmax(0,1fr) + min-w-0 on cards keeps seven equal columns at lg */}
+          <div className="w-full">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Admissions &amp; visa pipeline</h3>
+            <div className="grid w-full grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 items-stretch">
+              {[
+                { label: "GS applied", value: data.summary.gsApplied, sub: "Genuine student", icon: FilePlus2 },
+                { label: "COE received", value: data.summary.coeReceived, sub: "Enrollment", icon: BadgeCheck },
+                { label: "Conditional", value: data.summary.conditionalOffers, sub: "Offers", icon: Clock },
+                { label: "Unconditional", value: data.summary.unconditionalOffers, sub: "Offers", icon: CheckCircle2 },
+                { label: "Visa lodged", value: data.summary.visaLodged, sub: "Submitted", icon: PlaneTakeoff },
+                { label: "Granted", value: data.summary.granted, sub: "Approved", icon: Award },
+                { label: "Rejected", value: data.summary.rejected, sub: "Visa", icon: XCircle },
+              ].map((card) => {
+                const Icon = card.icon;
+                return (
+                  <div
+                    key={card.label}
+                    className="flex h-full min-h-[7.5rem] w-full min-w-0 max-w-full flex-col gap-2 bg-white border border-gray-200 rounded-lg p-3 sm:p-4 overflow-hidden"
+                  >
+                    <div className="w-8 h-8 shrink-0 rounded-md border border-gray-200 bg-gray-50 flex items-center justify-center">
+                      <Icon size={15} className={card.label === "Rejected" ? "text-red-600" : "text-gray-600"} />
+                    </div>
+                    <p className="text-xl sm:text-2xl font-semibold text-gray-900 tracking-tight tabular-nums shrink-0">{card.value}</p>
+                    <div className="mt-auto space-y-0.5 min-w-0">
+                      <p className="text-[11px] sm:text-xs font-medium text-gray-800 leading-tight line-clamp-2 break-words">{card.label}</p>
+                      <p className="text-[10px] sm:text-[11px] text-gray-500 leading-tight line-clamp-2 break-words">{card.sub}</p>
+                    </div>
                   </div>
-                  <p className="text-2xl font-bold text-gray-900 tracking-tight">{card.value}</p>
-                  <div>
-                    <p className="text-xs font-semibold text-gray-700">{card.label}</p>
-                    <p className="text-[11px] text-gray-400 mt-0.5">{card.sub}</p>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
 
-          {/* Middle Row */}
+          {/* Analytics at a glance */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="bg-white border border-gray-200 rounded-lg p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="p-1.5 rounded-md border border-gray-200 bg-gray-50">
+                  <Users size={14} className="text-gray-600" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Leads by source</h3>
+                  <p className="text-[11px] text-gray-500">Top channels in this period</p>
+                </div>
+              </div>
+              {leadsBySource.length === 0 ? (
+                <p className="text-sm text-gray-400 py-6 text-center">No lead source data</p>
+              ) : (
+                <div className="space-y-3">
+                  {leadsBySource.slice(0, 6).map((row) => (
+                    <div key={String(row._id)}>
+                      <div className="flex justify-between gap-2 text-xs mb-1">
+                        <span className="text-gray-600 truncate">{humanizeAnalyticsKey(String(row._id))}</span>
+                        <span className="font-medium text-gray-900 tabular-nums shrink-0">{row.count}</span>
+                      </div>
+                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-gray-800 rounded-full transition-all" style={{ width: `${(row.count / maxSrc) * 100}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white border border-gray-200 rounded-lg p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="p-1.5 rounded-md border border-gray-200 bg-gray-50">
+                  <GraduationCap size={14} className="text-gray-600" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Students by stage</h3>
+                  <p className="text-[11px] text-gray-500">Pipeline distribution</p>
+                </div>
+              </div>
+              {studentsByStage.length === 0 ? (
+                <p className="text-sm text-gray-400 py-6 text-center">No student stage data</p>
+              ) : (
+                <div className="space-y-3">
+                  {studentsByStage.slice(0, 6).map((row) => (
+                    <div key={String(row._id)}>
+                      <div className="flex justify-between gap-2 text-xs mb-1">
+                        <span className="text-gray-600 truncate">{humanizeAnalyticsKey(String(row._id))}</span>
+                        <span className="font-medium text-gray-900 tabular-nums shrink-0">{row.count}</span>
+                      </div>
+                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-gray-700 rounded-full transition-all" style={{ width: `${(row.count / maxStage) * 100}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white border border-gray-200 rounded-lg p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="p-1.5 rounded-md border border-gray-200 bg-gray-50">
+                  <Globe2 size={14} className="text-gray-600" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Applications by country</h3>
+                  <p className="text-[11px] text-gray-500">Top destinations</p>
+                </div>
+              </div>
+              {applicationsByCountry.length === 0 ? (
+                <p className="text-sm text-gray-400 py-6 text-center">No country data</p>
+              ) : (
+                <div className="space-y-3">
+                  {applicationsByCountry.slice(0, 6).map((row) => (
+                    <div key={String(row._id)}>
+                      <div className="flex justify-between gap-2 text-xs mb-1">
+                        <span className="text-gray-600 truncate">{humanizeAnalyticsKey(String(row._id))}</span>
+                        <span className="font-medium text-gray-900 tabular-nums shrink-0">{row.count}</span>
+                      </div>
+                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-gray-600 rounded-full transition-all" style={{ width: `${(row.count / maxCountry) * 100}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Application outcomes (compact) */}
+          {applicationsByStatus.length > 0 && (
+            <div className="bg-white border border-gray-200 rounded-lg p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="p-1.5 rounded-md border border-gray-200 bg-gray-50">
+                  <FileText size={14} className="text-gray-600" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Applications by status</h3>
+                  <p className="text-[11px] text-gray-500">Outcomes in period</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                {applicationsByStatus.map((row) => (
+                  <div key={String(row._id)} className="border border-gray-200 rounded-md px-3 py-2.5 bg-gray-50/50">
+                    <p className="text-lg font-semibold text-gray-900 tabular-nums">{row.count}</p>
+                    <p className="text-[11px] text-gray-600 mt-0.5 leading-tight">{humanizeAnalyticsKey(String(row._id))}</p>
+                    <div className="mt-2 h-1 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-gray-800 rounded-full" style={{ width: `${(row.count / maxAppSt) * 100}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recent leads + counsellor targets */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-            {/* Recent Leads */}
-            <div className="lg:col-span-2 bg-white border border-gray-200 rounded-lg">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <div className="lg:col-span-2 bg-white border border-gray-200 rounded-lg overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 bg-gray-50/80">
                 <div className="flex items-center gap-2">
                   <Users size={15} className="text-gray-500" />
-                  <h2 className="text-sm font-semibold text-gray-800">Recent Leads</h2>
+                  <h2 className="text-sm font-semibold text-gray-900">Recent leads</h2>
                 </div>
-                <Link
-                  href="/leads"
-                  className="text-xs text-gray-500 hover:text-gray-800 flex items-center gap-1 transition-colors"
-                >
+                <Link href="/leads" className="text-xs font-medium text-gray-600 hover:text-gray-900 flex items-center gap-1">
                   View all <ChevronRight size={12} />
                 </Link>
               </div>
 
               {data.recentLeads.length === 0 ? (
-                <div className="px-5 py-10 text-center text-sm text-gray-400">No leads recorded yet</div>
+                <div className="px-5 py-12 text-center text-sm text-gray-400">No leads in this period</div>
               ) : (
-                <div className="divide-y divide-gray-50">
+                <div className="divide-y divide-gray-100">
                   {data.recentLeads.map((lead) => (
                     <Link
                       key={lead._id}
                       href={`/leads/${lead._id}`}
-                      className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors"
+                      className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors gap-3"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-7 h-7 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center shrink-0">
-                          <span className="text-xs font-semibold text-gray-600">
+                        <div className="w-8 h-8 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center shrink-0">
+                          <span className="text-xs font-semibold text-gray-700">
                             {lead.name.charAt(0).toUpperCase()}
                           </span>
                         </div>
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-gray-900 truncate">{lead.name}</p>
-                          <p className="text-xs text-gray-400 truncate">
-                            {lead.interestedCountry}
+                          <p className="text-xs text-gray-500 truncate">
+                            {lead.source ? `${lead.source} · ` : ""}{lead.interestedCountry || "—"}
                             {lead.branch?.name ? ` · ${lead.branch.name}` : ""}
                           </p>
                         </div>
                       </div>
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded font-medium shrink-0 ${getStatusColor(lead.standing)}`}
-                      >
-                        {STATUS_LABELS[lead.standing] ?? lead.standing}
-                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {lead.status && (
+                          <span className="hidden sm:inline text-[10px] px-2 py-0.5 rounded border border-gray-200 bg-white text-gray-600 max-w-[7rem] truncate">
+                            {lead.status}
+                          </span>
+                        )}
+                        <span className={`text-xs px-2 py-0.5 rounded-md font-medium border border-transparent ${getStatusColor(lead.standing)}`}>
+                          {STATUS_LABELS[lead.standing] ?? lead.standing}
+                        </span>
+                      </div>
                     </Link>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* Counsellor Targets */}
-            <div className="bg-white border border-gray-200 rounded-lg">
-              <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100">
+            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden flex flex-col">
+              <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-200 bg-gray-50/80">
                 <Target size={15} className="text-gray-500" />
-                <h2 className="text-sm font-semibold text-gray-800">Counsellor Targets</h2>
+                <h2 className="text-sm font-semibold text-gray-900">Counsellor targets</h2>
               </div>
 
               {data.counsellorPerformance.length === 0 ? (
-                <div className="px-5 py-10 text-center text-sm text-gray-400">No counsellors found</div>
+                <div className="px-5 py-12 text-center text-sm text-gray-400 flex-1">No active counsellors</div>
               ) : (
-                <div className="px-5 py-4 space-y-5">
+                <div className="px-5 py-4 space-y-5 flex-1">
                   {data.counsellorPerformance.map((c) => {
                     const pct = c.target > 0
                       ? Math.min(100, Math.round((c.currentCount / c.target) * 100))
@@ -754,27 +1139,25 @@ export default function DashboardPage() {
                     const isComplete = pct >= 100;
                     return (
                       <div key={c._id}>
-                        <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center justify-between mb-1.5 gap-2">
                           <div className="min-w-0">
-                            <p className="text-sm font-medium text-gray-800 truncate">{c.name}</p>
+                            <p className="text-sm font-medium text-gray-900 truncate">{c.name}</p>
                             {c.branch?.name && (
-                              <p className="text-xs text-gray-400 truncate">{c.branch.name}</p>
+                              <p className="text-xs text-gray-500 truncate">{c.branch.name}</p>
                             )}
                           </div>
-                          <div className="text-right shrink-0 ml-3">
+                          <div className="text-right shrink-0 tabular-nums">
                             <span className="text-sm font-semibold text-gray-900">{c.currentCount}</span>
-                            <span className="text-xs text-gray-400">/{c.target}</span>
+                            <span className="text-xs text-gray-500">/{c.target}</span>
                           </div>
                         </div>
-                        <div className="w-full bg-gray-100 rounded-full h-1.5">
+                        <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
                           <div
-                            className={`h-1.5 rounded-full transition-all ${
-                              isComplete ? "bg-gray-800" : "bg-gray-400"
-                            }`}
-                            style={{ inlineSize: `${pct}%` }}
+                            className={`h-1.5 rounded-full transition-all ${isComplete ? "bg-gray-900" : "bg-gray-500"}`}
+                            style={{ width: `${pct}%` }}
                           />
                         </div>
-                        <p className="text-xs text-gray-400 mt-1">{pct}% of target</p>
+                        <p className="text-xs text-gray-500 mt-1">{pct}% of monthly target</p>
                       </div>
                     );
                   })}
@@ -783,56 +1166,70 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Lead Status Breakdown */}
+          {/* Lead standing distribution */}
           {data.leadsByStatus.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-lg">
-              <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100">
-                <ArrowUp size={15} className="text-gray-500" />
-                <h2 className="text-sm font-semibold text-gray-800">Lead Status Breakdown</h2>
+            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 bg-gray-50/80">
+                <div className="flex items-center gap-2">
+                  <ArrowUp size={15} className="text-gray-500" />
+                  <h2 className="text-sm font-semibold text-gray-900">Lead standing distribution</h2>
+                </div>
+                <span className="text-xs text-gray-500 tabular-nums">{standingTotal} leads</span>
               </div>
-              <div className="px-5 py-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
-                {data.leadsByStatus.map((s) => (
-                  <div key={s._id} className="text-center p-3 rounded-md bg-gray-50 border border-gray-100">
-                    <p className="text-xl font-bold text-gray-900">{s.count}</p>
-                    <p className="text-xs text-gray-500 mt-0.5 capitalize">
-                      {STATUS_LABELS[s._id] ?? s._id}
-                    </p>
-                  </div>
-                ))}
+              <div className="px-5 py-4 space-y-4">
+                <div className="flex h-2 rounded-full overflow-hidden bg-gray-100">
+                  {data.leadsByStatus.map((s, i, arr) => (
+                    <div
+                      key={s._id}
+                      className={`h-full min-w-0 bg-gray-800 ${i === 0 ? "rounded-l-full" : ""} ${i === arr.length - 1 ? "rounded-r-full" : ""}`}
+                      style={{ width: `${(s.count / standingTotal) * 100}%` }}
+                      title={`${STATUS_LABELS[s._id] ?? s._id}: ${s.count}`}
+                    />
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                  {data.leadsByStatus.map((s) => (
+                    <div key={s._id} className="border border-gray-200 rounded-md px-3 py-2.5 text-center bg-gray-50/30">
+                      <p className="text-lg font-semibold text-gray-900 tabular-nums">{s.count}</p>
+                      <p className="text-[11px] text-gray-600 mt-0.5">
+                        {STATUS_LABELS[s._id] ?? humanizeAnalyticsKey(String(s._id))}
+                      </p>
+                      <p className="text-[10px] text-gray-400 mt-0.5 tabular-nums">
+                        {Math.round((s.count / standingTotal) * 100)}%
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
 
-          {/* Recent Activity + Notifications — side by side */}
+          {/* Activity + notifications */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-            {/* Recent Activity */}
-            <div className="bg-white border border-gray-200 rounded-lg flex flex-col">
-              <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100">
+            <div className="bg-white border border-gray-200 rounded-lg flex flex-col overflow-hidden">
+              <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-200 bg-gray-50/80">
                 <Activity size={15} className="text-gray-500" />
-                <h2 className="text-sm font-semibold text-gray-800">Recent Activity</h2>
+                <h2 className="text-sm font-semibold text-gray-900">Recent activity</h2>
               </div>
               {data.recentActivity.length === 0 ? (
-                <div className="px-5 py-10 text-center text-sm text-gray-400 flex-1">No activity logged</div>
+                <div className="px-5 py-12 text-center text-sm text-gray-400 flex-1">No activity in this period</div>
               ) : (
-                <div className="divide-y divide-gray-50 flex-1">
+                <div className="divide-y divide-gray-100 flex-1">
                   {data.recentActivity.map((log) => (
-                    <div
-                      key={log._id}
-                      className="flex items-center justify-between px-5 py-3"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-1.5 h-1.5 rounded-full bg-gray-400 shrink-0" />
-                        <p className="text-sm text-gray-700 truncate">
+                    <div key={log._id} className="flex items-start justify-between gap-3 px-5 py-3">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className="w-1.5 h-1.5 rounded-full bg-gray-400 shrink-0 mt-1.5" />
+                        <p className="text-sm text-gray-700 leading-snug">
                           <span className="font-medium text-gray-900">{log.userName}</span>
                           {" "}
                           <span className="text-gray-500 capitalize">{log.action.toLowerCase()}</span>
                           {" "}
                           <span className="text-gray-800">{log.targetName}</span>
-                          <span className="text-gray-400"> &mdash; {log.module}</span>
+                          <span className="text-gray-400"> · {log.module}</span>
                         </p>
                       </div>
-                      <span className="text-xs text-gray-400 whitespace-nowrap ml-4 shrink-0">
+                      <span className="text-xs text-gray-400 whitespace-nowrap shrink-0 tabular-nums">
                         {formatDateTime(log.createdAt)}
                       </span>
                     </div>
@@ -841,38 +1238,37 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* Notifications (admin only) */}
-            <div className="bg-white border border-gray-200 rounded-lg flex flex-col">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <div className="bg-white border border-gray-200 rounded-lg flex flex-col overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 bg-gray-50/80">
                 <div className="flex items-center gap-2">
                   <Bell size={15} className="text-gray-500" />
-                  <h2 className="text-sm font-semibold text-gray-800">Notifications</h2>
+                  <h2 className="text-sm font-semibold text-gray-900">Notifications</h2>
                   {notifs.filter((n) => !n.read).length > 0 && (
-                    <span className="text-[10px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">
+                    <span className="text-[10px] font-semibold bg-gray-900 text-white px-1.5 py-0.5 rounded">
                       {notifs.filter((n) => !n.read).length} new
                     </span>
                   )}
                 </div>
               </div>
               {notifs.length === 0 ? (
-                <div className="px-5 py-10 text-center flex-1">
-                  <Bell size={24} className="text-gray-200 mx-auto mb-2" />
-                  <p className="text-sm text-gray-400">No notifications yet</p>
+                <div className="px-5 py-12 text-center flex-1">
+                  <Bell size={22} className="text-gray-200 mx-auto mb-2" />
+                  <p className="text-sm text-gray-400">No notifications</p>
                 </div>
               ) : (
-                <div className="divide-y divide-gray-50 flex-1">
+                <div className="divide-y divide-gray-100 flex-1">
                   {notifs.map((n) => (
-                    <div key={n._id} className={`px-5 py-3.5 flex items-start gap-3 ${n.read ? "" : "bg-blue-50"}`}>
-                      <div className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${n.read ? "bg-gray-200" : "bg-blue-500"}`} />
+                    <div key={n._id} className={`px-5 py-3.5 flex items-start gap-3 ${n.read ? "" : "bg-gray-50"}`}>
+                      <div className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${n.read ? "bg-gray-200" : "bg-gray-900"}`} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-medium text-gray-800">{n.title}</p>
-                          <span className="text-xs text-gray-400 whitespace-nowrap shrink-0">{formatDateTime(n.createdAt)}</span>
+                          <p className="text-sm font-medium text-gray-900">{n.title}</p>
+                          <span className="text-xs text-gray-400 whitespace-nowrap shrink-0 tabular-nums">{formatDateTime(n.createdAt)}</span>
                         </div>
-                        <p className="text-xs text-gray-500 mt-0.5">{n.message}</p>
+                        <p className="text-xs text-gray-500 mt-0.5 leading-snug">{n.message}</p>
                         {n.link && (
-                          <Link href={n.link} className="text-xs text-blue-600 hover:underline mt-0.5 inline-block">
-                            View lead →
+                          <Link href={n.link} className="text-xs font-medium text-gray-700 hover:text-gray-900 mt-1 inline-block">
+                            Open →
                           </Link>
                         )}
                       </div>
@@ -884,7 +1280,8 @@ export default function DashboardPage() {
 
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Non-admin quick links */}
       {!isAdmin && (
@@ -1406,74 +1803,72 @@ export default function DashboardPage() {
             return (
               <div className="space-y-6">
 
-                {/* Header Banner */}
-                <div className="relative overflow-hidden bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-700 rounded-2xl p-6 text-white shadow-xl">
-                  <div className="absolute inset-0 opacity-10"
-                    style={{ backgroundImage: "radial-gradient(circle at 20% 50%, white 1px, transparent 1px), radial-gradient(circle at 80% 20%, white 1px, transparent 1px)", backgroundSize: "30px 30px" }} />
-                  <div className="relative flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-3 mb-1">
-                        <div className="p-2.5 bg-white/15 rounded-xl border border-white/20">
-                          <Phone size={20} className="text-white" />
-                        </div>
-                        <div>
-                          <h1 className="text-2xl font-bold">Telecaller Dashboard</h1>
-                          <p className="text-white/70 text-sm">Welcome back, {session?.user?.name}</p>
-                        </div>
+                {/* Header */}
+                <div className="bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2.5 rounded-md border border-gray-200 bg-gray-50 text-gray-600">
+                        <Phone size={20} />
+                      </div>
+                      <div>
+                        <h1 className="text-lg font-semibold text-gray-900 tracking-tight">Telecaller dashboard</h1>
+                        <p className="text-sm text-gray-500 mt-0.5">{session?.user?.name}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="text-right hidden sm:block">
-                        <p className="text-white/60 text-xs font-medium uppercase tracking-widest">Today</p>
-                        <p className="text-white font-bold text-lg">{new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</p>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+                      <div className="text-left sm:text-right">
+                        <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Today</p>
+                        <p className="text-sm font-medium text-gray-900 tabular-nums">
+                          {new Date().toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short", year: "numeric" })}
+                        </p>
                       </div>
                       <button
+                        type="button"
                         onClick={() => { setShowImport(true); setImportResult(null); setImportLeadType("fresh"); }}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-white text-violet-700 rounded-xl font-bold text-sm hover:bg-violet-50 transition-colors shadow-lg shadow-violet-900/20"
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-900 text-white hover:bg-gray-800 transition-colors"
                       >
                         <Upload size={15} />
-                        Import Leads
+                        Import leads
                       </button>
                     </div>
                   </div>
                 </div>
 
-                {/* ── Today's Targets ── */}
+                {/* Today&apos;s targets */}
                 <div>
-                  <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Today&apos;s Targets</h2>
+                  <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Today&apos;s targets</h2>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     {[
-                      { label: "Calls Made Today",       value: callsMadeToday,        target: 200, icon: Phone,        color: "from-violet-500 to-purple-600",  ring: "ring-violet-200", textAccent: "text-violet-600", bg: "bg-violet-50" },
-                      { label: "Appointments Booked",    value: appointmentToday,      target: 10,  icon: CalendarCheck, color: "from-emerald-500 to-teal-600",   ring: "ring-emerald-200", textAccent: "text-emerald-600", bg: "bg-emerald-50" },
-                      { label: "Phone Counselling",      value: phoneCounsellingToday, target: 25,  icon: PhoneCall,     color: "from-blue-500 to-indigo-600",    ring: "ring-blue-200", textAccent: "text-blue-600", bg: "bg-blue-50" },
+                      { label: "Calls made today", value: callsMadeToday, target: 200, icon: Phone },
+                      { label: "Appointments booked", value: appointmentToday, target: 10, icon: CalendarCheck },
+                      { label: "Phone counselling", value: phoneCounsellingToday, target: 25, icon: PhoneCall },
                     ].map((t) => {
                       const Icon = t.icon;
                       const p = pct(t.value, t.target);
                       const done = p >= 100;
                       return (
-                        <div key={t.label} className={`bg-white border border-gray-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow ring-1 ${t.ring}`}>
+                        <div key={t.label} className="bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
                           <div className="flex items-start justify-between mb-4">
-                            <div className={`p-2.5 rounded-xl ${t.bg}`}>
-                              <Icon size={18} className={t.textAccent} />
+                            <div className="p-2 rounded-md border border-gray-200 bg-gray-50 text-gray-600">
+                              <Icon size={18} />
                             </div>
-                            <div className="text-right">
-                              <span className="text-2xl font-black text-gray-900">{t.value}</span>
-                              <span className="text-sm text-gray-400 font-medium"> / {t.target}</span>
+                            <div className="text-right tabular-nums">
+                              <span className="text-2xl font-semibold text-gray-900">{t.value}</span>
+                              <span className="text-sm text-gray-400 font-normal"> / {t.target}</span>
                             </div>
                           </div>
-                          <p className="text-sm font-bold text-gray-800 mb-3">{t.label}</p>
-                          {/* Progress bar */}
-                          <div className="w-full bg-gray-100 rounded-full h-2 mb-1.5 overflow-hidden">
+                          <p className="text-sm font-medium text-gray-800 mb-3">{t.label}</p>
+                          <div className="w-full bg-gray-100 rounded h-1.5 mb-2 overflow-hidden">
                             <div
-                              className={`h-2 rounded-full bg-gradient-to-r ${t.color} transition-all duration-700`}
+                              className="h-1.5 rounded bg-gray-800 transition-all duration-500"
                               style={{ width: `${p}%` }}
                             />
                           </div>
-                          <div className="flex items-center justify-between">
-                            <span className={`text-xs font-bold ${done ? "text-emerald-600" : t.textAccent}`}>{p}% of target</span>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className={`font-medium ${done ? "text-gray-700" : "text-gray-500"}`}>{p}% of target</span>
                             {done
-                              ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">✓ TARGET MET</span>
-                              : <span className="text-[10px] text-gray-400">{t.target - t.value} more needed</span>
+                              ? <span className="text-gray-600 font-medium">Target met</span>
+                              : <span className="text-gray-400">{Math.max(0, t.target - t.value)} remaining</span>
                             }
                           </div>
                         </div>
@@ -1482,109 +1877,113 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* ── Lead Stats Grid ── */}
+                {/* Lead overview */}
                 <div>
-                  <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Lead Overview</h2>
+                  <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Lead overview</h2>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {[
-                      { label: "Total Enquiry", value: total,           icon: Users,       bg: "bg-gray-900",      text: "text-white",        sub: "All assigned leads",        sub2: "text-white/60" },
-                      { label: "Fresh Leads",   value: freshLeads,      icon: UserPlus,    bg: "bg-emerald-500",   text: "text-white",        sub: "New & pending contact",     sub2: "text-white/70" },
-                      { label: "Transferred",   value: transferred,     icon: RefreshCw,   bg: "bg-blue-500",      text: "text-white",        sub: "Moved to counsellor",       sub2: "text-white/70" },
-                      { label: "Appointment",   value: appointmentBooked,icon: CalendarCheck,bg: "bg-violet-500",  text: "text-white",        sub: "Counselling scheduled",     sub2: "text-white/70" },
+                      { label: "Total enquiry", value: total, icon: Users, sub: "All assigned leads" },
+                      { label: "Fresh leads", value: freshLeads, icon: UserPlus, sub: "New & pending contact" },
+                      { label: "Transferred", value: transferred, icon: RefreshCw, sub: "Moved to counsellor" },
+                      { label: "Appointment", value: appointmentBooked, icon: CalendarCheck, sub: "Counselling scheduled" },
                     ].map((s) => {
                       const Icon = s.icon;
                       return (
-                        <Link key={s.label} href="/leads"
-                          className={`${s.bg} rounded-xl p-5 hover:opacity-90 transition-opacity shadow-sm`}>
+                        <Link
+                          key={s.label}
+                          href="/leads"
+                          className="bg-white border border-gray-200 rounded-lg p-5 hover:border-gray-300 hover:shadow-sm transition-all"
+                        >
                           <div className="flex items-center justify-between mb-3">
-                            <div className="p-1.5 bg-white/15 rounded-lg">
-                              <Icon size={14} className={s.text} />
-                            </div>
+                            <Icon size={16} className="text-gray-400" />
                           </div>
-                          <p className={`text-3xl font-black tracking-tight ${s.text}`}>{s.value}</p>
-                          <p className={`text-sm font-bold mt-1 ${s.text}`}>{s.label}</p>
-                          <p className={`text-[11px] mt-0.5 ${s.sub2}`}>{s.sub}</p>
+                          <p className="text-2xl font-semibold text-gray-900 tabular-nums tracking-tight">{s.value}</p>
+                          <p className="text-sm font-medium text-gray-800 mt-1">{s.label}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{s.sub}</p>
                         </Link>
                       );
                     })}
                   </div>
                 </div>
 
-                {/* ── Secondary Stats ── */}
+                {/* Secondary metrics */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
-                    { label: "Phone Counselling", value: phoneCounselling, icon: PhoneCall,   bg: "bg-indigo-50",  border: "border-indigo-200",  text: "text-indigo-700",  sub: "Counselled over phone" },
-                    { label: "Online Enrollment", value: onlineEnrollment, icon: Wifi,        bg: "bg-teal-50",    border: "border-teal-200",    text: "text-teal-700",    sub: "Registered & completed" },
-                    { label: "Cold",              value: cold,             icon: Flame,       bg: "bg-slate-50",   border: "border-slate-200",   text: "text-slate-600",   sub: "Low interest / cold" },
-                    { label: "CNR / Engaged",     value: cnrEngaged,       icon: PhoneMissed, bg: "bg-amber-50",   border: "border-amber-200",   text: "text-amber-700",   sub: "Not reachable / busy" },
+                    { label: "Phone counselling", value: phoneCounselling, icon: PhoneCall, sub: "Counselled over phone" },
+                    { label: "Online enrollment", value: onlineEnrollment, icon: Wifi, sub: "Registered & completed" },
+                    { label: "Cold", value: cold, icon: Flame, sub: "Low interest / cold" },
+                    { label: "CNR / engaged", value: cnrEngaged, icon: PhoneMissed, sub: "Not reachable / busy" },
                   ].map((s) => {
                     const Icon = s.icon;
                     return (
-                      <Link key={s.label} href="/leads"
-                        className={`${s.bg} border ${s.border} rounded-xl p-4 hover:shadow-sm transition-shadow flex flex-col gap-3`}>
-                        <div className={`w-8 h-8 rounded-lg border ${s.border} flex items-center justify-center bg-white`}>
-                          <Icon size={15} className={s.text} />
+                      <Link
+                        key={s.label}
+                        href="/leads"
+                        className="bg-white border border-gray-200 rounded-lg p-4 hover:border-gray-300 hover:shadow-sm transition-all flex flex-col gap-3"
+                      >
+                        <div className="w-8 h-8 rounded-md border border-gray-200 flex items-center justify-center bg-gray-50 text-gray-600">
+                          <Icon size={15} />
                         </div>
                         <div>
-                          <p className={`text-2xl font-black tracking-tight ${s.text}`}>{s.value}</p>
-                          <p className={`text-xs font-bold mt-0.5 ${s.text}`}>{s.label}</p>
-                          <p className="text-[11px] text-gray-400 mt-0.5">{s.sub}</p>
+                          <p className="text-xl font-semibold text-gray-900 tabular-nums tracking-tight">{s.value}</p>
+                          <p className="text-xs font-medium text-gray-700 mt-0.5">{s.label}</p>
+                          <p className="text-[11px] text-gray-500 mt-0.5">{s.sub}</p>
                         </div>
                       </Link>
                     );
                   })}
                 </div>
 
-                {/* ── Recent Leads ── */}
-                <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
-                  <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gray-50/60">
+                {/* Recent assigned leads */}
+                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 bg-gray-50">
                     <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-violet-50 rounded-lg border border-violet-100">
-                        <Users size={14} className="text-violet-600" />
+                      <div className="p-1.5 rounded-md border border-gray-200 bg-white text-gray-600">
+                        <Users size={14} />
                       </div>
-                      <h2 className="text-sm font-semibold text-gray-900">Recent Assigned Leads</h2>
-                      <span className="text-[11px] font-bold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{total}</span>
+                      <h2 className="text-sm font-semibold text-gray-900">Recent assigned leads</h2>
+                      <span className="text-[11px] font-medium bg-white text-gray-600 px-2 py-0.5 rounded border border-gray-200 tabular-nums">{total}</span>
                     </div>
-                    <Link href="/leads" className="text-xs font-semibold text-violet-600 hover:text-violet-800 flex items-center gap-1">
+                    <Link href="/leads" className="text-xs font-medium text-gray-700 hover:text-gray-900 flex items-center gap-1">
                       View all <ChevronRight size={12} />
                     </Link>
                   </div>
                   {leads.length === 0 ? (
                     <div className="py-12 text-center">
                       <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-                        <Users size={20} className="text-gray-300" />
+                        <Users size={20} className="text-gray-400" />
                       </div>
                       <p className="text-sm font-medium text-gray-500">No leads assigned yet</p>
                     </div>
                   ) : (
-                    <div className="divide-y divide-gray-50">
+                    <div className="divide-y divide-gray-100">
                       {leads.slice(0, 8).map((lead) => {
-                        const standingColor: Record<string, string> = {
-                          hot: "bg-red-100 text-red-700",
-                          warm: "bg-orange-100 text-orange-700",
-                          heated: "bg-yellow-100 text-yellow-700",
-                          cold: "bg-blue-100 text-blue-700",
-                          missed: "bg-gray-100 text-gray-500",
+                        const standingStyle: Record<string, string> = {
+                          hot: "bg-gray-100 text-gray-800 border-gray-200",
+                          warm: "bg-gray-100 text-gray-800 border-gray-200",
+                          heated: "bg-gray-100 text-gray-800 border-gray-200",
+                          cold: "bg-gray-100 text-gray-700 border-gray-200",
+                          missed: "bg-gray-50 text-gray-500 border-gray-200",
                         };
                         return (
                           <Link key={lead._id} href={`/leads/${lead._id}`}
-                            className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50/80 transition-colors group">
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center shrink-0">
-                              <span className="text-xs font-bold text-white">{lead.name.charAt(0).toUpperCase()}</span>
+                            className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors group">
+                            <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center shrink-0 border border-gray-300">
+                              <span className="text-xs font-semibold text-gray-700">{lead.name.charAt(0).toUpperCase()}</span>
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold text-gray-900 truncate">{lead.name}</p>
-                              <p className="text-xs text-gray-400 truncate">
+                              <p className="text-sm font-medium text-gray-900 truncate">{lead.name}</p>
+                              <p className="text-xs text-gray-500 truncate">
                                 {lead.phone}{lead.interestedCountry ? ` · ${lead.interestedCountry}` : ""}
                               </p>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                               {lead.status && (
-                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-semibold max-w-28 truncate">
+                                <span className="text-[10px] px-2 py-0.5 rounded border border-gray-200 bg-white text-gray-600 font-medium max-w-28 truncate">
                                   {lead.status}
                                 </span>
                               )}
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${standingColor[lead.standing] ?? "bg-gray-100 text-gray-500"}`}>
+                              <span className={`text-xs px-2 py-0.5 rounded border font-medium ${standingStyle[lead.standing] ?? "bg-gray-50 text-gray-500 border-gray-200"}`}>
                                 {lead.standing}
                               </span>
                               <ChevronRight size={13} className="text-gray-300 group-hover:text-gray-500 transition-colors" />
@@ -1595,257 +1994,13 @@ export default function DashboardPage() {
                     </div>
                   )}
                   {leads.length > 8 && (
-                    <div className="px-5 py-3 border-t border-gray-100 bg-gray-50/40">
-                      <Link href="/leads" className="text-xs text-violet-600 hover:underline font-medium">+ {leads.length - 8} more leads →</Link>
+                    <div className="px-5 py-3 border-t border-gray-200 bg-gray-50">
+                      <Link href="/leads" className="text-xs text-gray-700 hover:text-gray-900 font-medium">
+                        + {leads.length - 8} more leads
+                      </Link>
                     </div>
                   )}
                 </div>
-
-                {/* ── Import Modal ── */}
-                {showImport && (
-                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
-
-                      {/* Modal Header */}
-                      <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-violet-600 to-purple-600 text-white shrink-0">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-white/15 rounded-lg">
-                            <FileSpreadsheet size={18} className="text-white" />
-                          </div>
-                          <div>
-                            <h2 className="text-base font-bold">Import Leads</h2>
-                            <p className="text-white/70 text-xs">Upload a .csv or .xlsx file to bulk-add leads</p>
-                          </div>
-                        </div>
-                        <button onClick={() => setShowImport(false)} className="p-1.5 rounded-lg hover:bg-white/20 transition-colors">
-                          <X size={18} />
-                        </button>
-                      </div>
-
-                      <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
-
-                        {/* ── Meta fields ── */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                          {/* Campaign Name */}
-                          <div className="sm:col-span-1">
-                            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">
-                              Campaign Name <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                              value={importCampaign}
-                              onChange={(e) => setImportCampaign(e.target.value)}
-                              placeholder="e.g. March Walk-In Drive"
-                              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 transition-all"
-                            />
-                          </div>
-                          {/* Source */}
-                          <div>
-                            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">
-                              Source <span className="text-red-500">*</span>
-                            </label>
-                            <select
-                              value={importSource}
-                              onChange={(e) => setImportSource(e.target.value)}
-                              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 transition-all appearance-none bg-white"
-                            >
-                              <option value="">Select source</option>
-                              {importSources.map((s) => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                          </div>
-                          {/* Date */}
-                          <div>
-                            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">Date</label>
-                            <input
-                              type="date"
-                              value={importDate}
-                              onChange={(e) => setImportDate(e.target.value)}
-                              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 transition-all"
-                            />
-                          </div>
-                        </div>
-
-                        {/* ── Lead Type ── */}
-                        <div>
-                          <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">
-                            Enquiry Lead Status <span className="text-red-500">*</span>
-                          </label>
-                          <div className="grid grid-cols-2 gap-3">
-                            {/* Fresh */}
-                            <button
-                              type="button"
-                              onClick={() => setImportLeadType("fresh")}
-                              className={`relative flex items-center gap-3 p-4 rounded-xl border-2 transition-all text-left ${
-                                importLeadType === "fresh"
-                                  ? "border-emerald-500 bg-emerald-50 shadow-sm shadow-emerald-100"
-                                  : "border-gray-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/40"
-                              }`}
-                            >
-                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${importLeadType === "fresh" ? "bg-emerald-100" : "bg-gray-100"}`}>
-                                <UserPlus size={16} className={importLeadType === "fresh" ? "text-emerald-600" : "text-gray-400"} />
-                              </div>
-                              <div className="min-w-0">
-                                <p className={`text-sm font-bold ${importLeadType === "fresh" ? "text-emerald-800" : "text-gray-700"}`}>Fresh Leads</p>
-                                <p className="text-[11px] text-gray-400 mt-0.5">Open / needs follow-up</p>
-                              </div>
-                              <div className={`absolute top-3 right-3 w-4 h-4 rounded-full border-2 flex items-center justify-center ${importLeadType === "fresh" ? "border-emerald-500 bg-emerald-500" : "border-gray-300"}`}>
-                                {importLeadType === "fresh" && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                              </div>
-                            </button>
-
-                            {/* Cold */}
-                            <button
-                              type="button"
-                              onClick={() => setImportLeadType("cold")}
-                              className={`relative flex items-center gap-3 p-4 rounded-xl border-2 transition-all text-left ${
-                                importLeadType === "cold"
-                                  ? "border-blue-500 bg-blue-50 shadow-sm shadow-blue-100"
-                                  : "border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50/40"
-                              }`}
-                            >
-                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${importLeadType === "cold" ? "bg-blue-100" : "bg-gray-100"}`}>
-                                <Flame size={16} className={importLeadType === "cold" ? "text-blue-500" : "text-gray-400"} />
-                              </div>
-                              <div className="min-w-0">
-                                <p className={`text-sm font-bold ${importLeadType === "cold" ? "text-blue-800" : "text-gray-700"}`}>Cold Leads</p>
-                                <p className="text-[11px] text-gray-400 mt-0.5">Low interest / not reachable</p>
-                              </div>
-                              <div className={`absolute top-3 right-3 w-4 h-4 rounded-full border-2 flex items-center justify-center ${importLeadType === "cold" ? "border-blue-500 bg-blue-500" : "border-gray-300"}`}>
-                                {importLeadType === "cold" && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                              </div>
-                            </button>
-                          </div>
-                          {/* Descriptor */}
-                          <p className={`text-[11px] mt-2 font-medium ${importLeadType === "fresh" ? "text-emerald-600" : "text-blue-600"}`}>
-                            {importLeadType === "fresh"
-                              ? "→ Leads will be marked as Open/Unassigned and counted in Fresh Leads"
-                              : "→ Leads will be marked as Cold and counted in Cold section"}
-                          </p>
-                        </div>
-
-                        {/* ── File Upload ── */}
-                        <div>
-                          <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">
-                            Upload File <span className="text-red-500">*</span>
-                          </label>
-                          <label className="flex flex-col items-center justify-center gap-3 border-2 border-dashed border-gray-200 rounded-2xl p-6 cursor-pointer hover:border-violet-400 hover:bg-violet-50/40 transition-all group">
-                            <div className="p-3 bg-gray-100 rounded-xl group-hover:bg-violet-100 transition-colors">
-                              <Upload size={22} className="text-gray-400 group-hover:text-violet-500 transition-colors" />
-                            </div>
-                            {importFileName ? (
-                              <div className="text-center">
-                                <p className="text-sm font-bold text-violet-700">{importFileName}</p>
-                                <p className="text-xs text-gray-400 mt-0.5">{importPreview.length} rows detected — click to change</p>
-                              </div>
-                            ) : (
-                              <div className="text-center">
-                                <p className="text-sm font-semibold text-gray-700">Click to upload or drag & drop</p>
-                                <p className="text-xs text-gray-400 mt-0.5">Supports .xlsx, .xls, .csv files</p>
-                              </div>
-                            )}
-                            <input
-                              ref={importFileRef}
-                              type="file"
-                              accept=".csv,.xlsx,.xls"
-                              className="hidden"
-                              onChange={handleFileSelect}
-                            />
-                          </label>
-                        </div>
-
-                        {/* ── Column guide ── */}
-                        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-                          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                            <Table2 size={12} />
-                            Expected Columns (header row required)
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            {[
-                              { col: "Name", note: "Required" },
-                              { col: "Phone", note: "" },
-                              { col: "Email", note: "" },
-                              { col: "Country", note: "" },
-                              { col: "Comments", note: "" },
-                            ].map(({ col, note }) => (
-                              <span key={col} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border ${note ? "bg-violet-50 text-violet-700 border-violet-200" : "bg-gray-100 text-gray-600 border-gray-200"}`}>
-                                {col}
-                                {note && <span className="text-[10px] text-violet-500 font-black">{note}</span>}
-                              </span>
-                            ))}
-                          </div>
-                          <p className="text-[11px] text-gray-400 mt-2">Column names are case-insensitive. Extra columns are ignored.</p>
-                        </div>
-
-                        {/* ── Preview table ── */}
-                        {importPreview.length > 0 && (
-                          <div>
-                            <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">
-                              Preview — {importPreview.length} rows
-                              {importPreview.length > 5 && <span className="text-gray-400 font-normal"> (showing first 5)</span>}
-                            </p>
-                            <div className="overflow-x-auto rounded-xl border border-gray-200">
-                              <table className="w-full text-xs">
-                                <thead>
-                                  <tr className="bg-gray-50 border-b border-gray-200">
-                                    {Object.keys(importPreview[0]).slice(0, 6).map((col) => (
-                                      <th key={col} className="px-3 py-2 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">{col}</th>
-                                    ))}
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                  {importPreview.slice(0, 5).map((row, i) => (
-                                    <tr key={i} className="hover:bg-gray-50">
-                                      {Object.keys(importPreview[0]).slice(0, 6).map((col) => (
-                                        <td key={col} className="px-3 py-2 text-gray-700 max-w-32 truncate">{row[col]}</td>
-                                      ))}
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* ── Result message ── */}
-                        {importResult && (
-                          <div className={`flex items-start gap-3 p-4 rounded-xl border ${importResult.type === "success" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
-                            {importResult.type === "success"
-                              ? <CheckCircle size={16} className="text-emerald-600 shrink-0 mt-0.5" />
-                              : <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
-                            }
-                            <p className={`text-sm font-medium ${importResult.type === "success" ? "text-emerald-700" : "text-red-600"}`}>
-                              {importResult.msg}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Modal Footer */}
-                      <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50/60 shrink-0">
-                        <div className="text-xs text-gray-400">
-                          {importPreview.length > 0 && !importResult?.type &&
-                            <span><span className="font-semibold text-gray-700">{importPreview.length}</span> rows ready to import</span>
-                          }
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <button onClick={() => setShowImport(false)}
-                            className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-gray-800 border border-gray-200 rounded-xl hover:bg-gray-100 transition-colors">
-                            Cancel
-                          </button>
-                          <button
-                            onClick={handleImport}
-                            disabled={importLoading || importPreview.length === 0}
-                            className="flex items-center gap-2 px-5 py-2 bg-violet-600 hover:bg-violet-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-xl text-sm font-bold transition-colors shadow-sm"
-                          >
-                            {importLoading
-                              ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Importing…</>
-                              : <><Upload size={14} /> Import {importPreview.length > 0 ? `${importPreview.length} Leads` : "Leads"}</>
-                            }
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             );
           })()}

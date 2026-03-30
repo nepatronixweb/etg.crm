@@ -7,6 +7,25 @@ import Application from "@/models/Application";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
 
+/** Merge aggregate buckets (e.g. Application + Student countries) by string key */
+function mergeCountBuckets(
+  parts: Array<Array<{ _id: unknown; count: number }>>
+): Array<{ _id: string; count: number }> {
+  const map = new Map<string, number>();
+  for (const arr of parts) {
+    for (const row of arr) {
+      const key =
+        row._id === null || row._id === undefined || row._id === ""
+          ? "Not recorded"
+          : String(row._id);
+      map.set(key, (map.get(key) ?? 0) + row.count);
+    }
+  }
+  return Array.from(map.entries())
+    .map(([_id, count]) => ({ _id, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
 export async function GET(req: NextRequest) {
   try {
     const session = await auth();
@@ -50,8 +69,10 @@ export async function GET(req: NextRequest) {
       leadsBySource,
       leadsByStatus,
       studentsByStage,
-      applicationsByStatus,
-      applicationsByCountry,
+      applicationsByStatusFromApps,
+      applicationsByCountryFromApps,
+      applicationsByCountryFromStudents,
+      applicationsByStatusFromStudents,
       counsellorPerformance,
       recentLeads,
       recentActivity,
@@ -68,7 +89,38 @@ export async function GET(req: NextRequest) {
       Lead.aggregate([{ $match: leadFilter }, { $group: { _id: "$standing", count: { $sum: 1 } } }]),
       Student.aggregate([{ $match: studentFilter }, { $group: { _id: "$currentStage", count: { $sum: 1 } } }]),
       Application.aggregate([{ $match: dateFilter }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
-      Application.aggregate([{ $match: dateFilter }, { $group: { _id: "$country", count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 10 }]),
+      Application.aggregate([{ $match: dateFilter }, { $group: { _id: "$country", count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+      /* Per-country rows on students (where most CRM application data lives) */
+      Student.aggregate([
+        { $match: studentFilter },
+        { $unwind: "$countries" },
+        { $group: { _id: "$countries.country", count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+      ]),
+      /* Prefer applicationStatus when set; else pipeline status on the country row */
+      Student.aggregate([
+        { $match: studentFilter },
+        { $unwind: "$countries" },
+        {
+          $addFields: {
+            _statusLabel: {
+              $switch: {
+                branches: [
+                  {
+                    case: {
+                      $gt: [{ $strLenCP: { $toString: { $ifNull: ["$countries.applicationStatus", ""] } } }, 0],
+                    },
+                    then: { $toString: "$countries.applicationStatus" },
+                  },
+                ],
+                default: { $toString: { $ifNull: ["$countries.status", "Not recorded"] } },
+              },
+            },
+          },
+        },
+        { $group: { _id: "$_statusLabel", count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+      ]),
       User.find({ role: "counsellor", isActive: true }).select("name target currentCount branch").populate("branch", "name"),
       Lead.find(leadFilter).sort({ createdAt: -1 }).limit(5).populate("branch", "name").populate("assignedTo", "name"),
       ActivityLog.find(dateFilter).sort({ createdAt: -1 }).limit(10).populate("user", "name"),
@@ -80,6 +132,16 @@ export async function GET(req: NextRequest) {
 
     const conversionRate = totalLeads > 0 ? Math.round((convertedLeads / totalLeads) * 100) : 0;
     const stageMap = Object.fromEntries((studentsByStage as Array<{ _id: string; count: number }>).map((s) => [s._id, s.count]));
+
+    /* Standalone Application docs + student country rows (real CRM data) */
+    const applicationsByStatus = mergeCountBuckets([
+      applicationsByStatusFromApps as Array<{ _id: unknown; count: number }>,
+      applicationsByStatusFromStudents as Array<{ _id: unknown; count: number }>,
+    ]);
+    const applicationsByCountry = mergeCountBuckets([
+      applicationsByCountryFromApps as Array<{ _id: unknown; count: number }>,
+      applicationsByCountryFromStudents as Array<{ _id: unknown; count: number }>,
+    ]);
 
     return NextResponse.json({
       summary: {
