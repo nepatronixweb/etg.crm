@@ -4,6 +4,12 @@ import { getToken } from "next-auth/jwt";
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  // API routes use auth() in Route Handlers and return 401 JSON. Redirecting
+  // /api/* to /login breaks client fetch() (HTML body, no leads/total JSON).
+  if (pathname.startsWith("/api")) {
+    return NextResponse.next();
+  }
+
   const token = await getToken({
     req,
     secret: process.env.NEXTAUTH_SECRET,
