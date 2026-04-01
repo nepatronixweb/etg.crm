@@ -1,11 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // API routes use auth() in Route Handlers and return 401 JSON. Redirecting
-  // /api/* to /login breaks client fetch() (HTML body, no leads/total JSON).
+  // API routes authenticate in Route Handlers; redirecting /api/* to login
+  // returns HTML and breaks client JSON parsing (empty lists / broken dashboard).
   if (pathname.startsWith("/api")) {
     return NextResponse.next();
   }
@@ -17,8 +18,7 @@ export async function proxy(req: NextRequest) {
 
   const isLoggedIn = !!token;
 
-  const publicRoutes = ["/login"];
-  if (publicRoutes.includes(pathname)) {
+  if (pathname === "/login") {
     if (isLoggedIn) return NextResponse.redirect(new URL("/dashboard", req.url));
     return NextResponse.next();
   }
@@ -31,5 +31,5 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|uploads).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|uploads).*)"],
 };
