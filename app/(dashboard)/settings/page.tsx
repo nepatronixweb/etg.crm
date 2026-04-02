@@ -7,7 +7,7 @@ import {
   Users, Tag, List, ToggleLeft, ToggleRight, Server,
   FileText, Image as ImageIcon, ChevronRight, X,
   Flame, Zap, Target, Layers, GitBranch, GraduationCap, ChevronDown, Pencil,
-  UserCog, Loader2, Paperclip,
+  UserCog, Loader2, Paperclip, BookOpen, Languages, ExternalLink,
 } from "lucide-react";
 import { useBrandingRefresh } from "@/app/branding-context";
 import { ALL_PERMISSIONS, SETTINGS_SUB_PERMISSIONS } from "@/lib/utils";
@@ -17,6 +17,7 @@ import type { TelecallerTransferOutcome } from "@/types/telecallerTransfer";
 import {
   universityEntriesFromNames,
   normalizeUniversitiesArray,
+  safeExternalUrl,
   type UniversityEntry,
   type UniversityAttachment,
 } from "@/lib/countryUniversities";
@@ -334,6 +335,8 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [uniCardSavingKey, setUniCardSavingKey] = useState<string | null>(null);
+  const [uniCardSavedKey, setUniCardSavedKey] = useState<string | null>(null);
   const [editingStage, setEditingStage] = useState<string | null>(null);
   const [editingStageLabel, setEditingStageLabel] = useState("");
   const [expandedCountryStage, setExpandedCountryStage] = useState<string | null>(null);
@@ -434,6 +437,8 @@ export default function SettingsPage() {
   const addUniversityWithDetails = useCallback(async (ci: number) => {
     const nameEl = document.getElementById(`new-uni-name-${ci}`) as HTMLInputElement | null;
     const reqEl = document.getElementById(`new-uni-req-${ci}`) as HTMLTextAreaElement | null;
+    const courseUrlEl = document.getElementById(`new-uni-course-url-${ci}`) as HTMLInputElement | null;
+    const engUrlEl = document.getElementById(`new-uni-eng-url-${ci}`) as HTMLInputElement | null;
     const fileEl = document.getElementById(`new-uni-files-${ci}`) as HTMLInputElement | null;
     const name = nameEl?.value?.trim() ?? "";
     if (!name) return;
@@ -447,19 +452,26 @@ export default function SettingsPage() {
         }
       }
       const requirements = reqEl?.value ?? "";
+      const findCourseUrl = courseUrlEl?.value?.trim() ?? "";
+      const englishRequirementsUrl = engUrlEl?.value?.trim() ?? "";
       setSettings((prev) => {
         const countries = [...prev.countries];
         const row = countries[ci];
         if (!row || row.universities.some((u) => u.name === name)) return prev;
         countries[ci] = {
           ...row,
-          universities: [...row.universities, { name, requirements, attachments }],
+          universities: [
+            ...row.universities,
+            { name, requirements, attachments, findCourseUrl, englishRequirementsUrl },
+          ],
         };
         return { ...prev, countries };
       });
       setSaved(false);
       if (nameEl) nameEl.value = "";
       if (reqEl) reqEl.value = "";
+      if (courseUrlEl) courseUrlEl.value = "";
+      if (engUrlEl) engUrlEl.value = "";
       if (fileEl) fileEl.value = "";
     } finally {
       setUniDocBusy(null);
@@ -487,6 +499,35 @@ export default function SettingsPage() {
       alert(`Network error saving settings: ${e}`);
     } finally { setSaving(false); }
   };
+
+  /** Persist destination countries / universities (partial PUT). One row per card for UX. */
+  const saveCountriesOnly = useCallback(
+    async (cardKey: string) => {
+      setUniCardSavingKey(cardKey);
+      setUniCardSavedKey(null);
+      try {
+        const res = await fetch("/api/settings/app", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ countries: settings.countries }),
+        });
+        if (res.ok) {
+          setUniCardSavedKey(cardKey);
+          setTimeout(() => {
+            setUniCardSavedKey((k) => (k === cardKey ? null : k));
+          }, 2500);
+        } else {
+          const err = await res.json().catch(() => ({}));
+          alert(`Failed to update: ${err.error || res.status}`);
+        }
+      } catch (e) {
+        alert(`Network error: ${e}`);
+      } finally {
+        setUniCardSavingKey(null);
+      }
+    },
+    [settings.countries]
+  );
 
   // ── Logo upload ──
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1487,7 +1528,7 @@ export default function SettingsPage() {
           {/* ── Destination Countries with Universities ── */}
           <SectionCard
             title="Destination Countries & Universities"
-            description="Each university can include entry requirements (one bullet per line, or use •) and multiple reference documents (PDF, Word, Excel, images). Files upload to secure storage. Save settings after changes. Universities still appear as choices in lead and student forms."
+            description="Each university can include entry requirements, optional Find course / English requirements URLs (buttons open in a new tab), and reference documents (PDF, Word, Excel, images). Save settings after changes. Universities still appear as choices in lead and student forms."
           >
             <div className="space-y-3">
               {settings.countries.map((country, ci) => (
@@ -1555,6 +1596,73 @@ export default function SettingsPage() {
                             placeholder={"• IELTS not less than 7\n• Official transcripts required"}
                             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder-gray-400 resize-y min-h-[88px]"
                           />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wide">
+                            External links
+                          </label>
+                          <p className="text-[10px] text-gray-500 leading-snug">
+                            Shown as buttons on the University requirements page and here for quick test.
+                          </p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <input
+                              type="url"
+                              inputMode="url"
+                              value={uni.findCourseUrl ?? ""}
+                              onChange={(e) =>
+                                updateCountryUniversities(ci, (list) => {
+                                  const next = [...list];
+                                  next[ui] = { ...next[ui], findCourseUrl: e.target.value };
+                                  return next;
+                                })
+                              }
+                              placeholder="Find course URL (https://…)"
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 placeholder:text-gray-400"
+                            />
+                            <input
+                              type="url"
+                              inputMode="url"
+                              value={uni.englishRequirementsUrl ?? ""}
+                              onChange={(e) =>
+                                updateCountryUniversities(ci, (list) => {
+                                  const next = [...list];
+                                  next[ui] = { ...next[ui], englishRequirementsUrl: e.target.value };
+                                  return next;
+                                })
+                              }
+                              placeholder="English requirements URL"
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 placeholder:text-gray-400"
+                            />
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              disabled={!safeExternalUrl(uni.findCourseUrl ?? "")}
+                              onClick={() => {
+                                const href = safeExternalUrl(uni.findCourseUrl ?? "");
+                                if (href) window.open(href, "_blank", "noopener,noreferrer");
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+                              style={{ backgroundColor: settings.brandColor || "#2563eb" }}
+                            >
+                              <BookOpen size={12} />
+                              Find course
+                              <ExternalLink size={11} className="opacity-80" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!safeExternalUrl(uni.englishRequirementsUrl ?? "")}
+                              onClick={() => {
+                                const href = safeExternalUrl(uni.englishRequirementsUrl ?? "");
+                                if (href) window.open(href, "_blank", "noopener,noreferrer");
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              <Languages size={12} />
+                              English requirements
+                              <ExternalLink size={11} className="opacity-80" />
+                            </button>
+                          </div>
                         </div>
                         <div>
                           <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-1">
@@ -1625,6 +1733,28 @@ export default function SettingsPage() {
                             </label>
                           </div>
                         </div>
+                        <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-blue-100/80">
+                          <button
+                            type="button"
+                            disabled={uniCardSavingKey === `${ci}-${ui}` || saving}
+                            onClick={() => void saveCountriesOnly(`${ci}-${ui}`)}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                            style={{ backgroundColor: settings.brandColor || "#2563eb" }}
+                          >
+                            {uniCardSavingKey === `${ci}-${ui}` ? (
+                              <Loader2 size={14} className="animate-spin shrink-0" />
+                            ) : (
+                              <Save size={14} className="shrink-0" strokeWidth={2.25} />
+                            )}
+                            Update
+                          </button>
+                          {uniCardSavedKey === `${ci}-${ui}` && (
+                            <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
+                              <CheckCircle size={14} />
+                              Saved
+                            </span>
+                          )}
+                        </div>
                       </div>
                     ))}
                     {country.universities.length === 0 && (
@@ -1643,6 +1773,22 @@ export default function SettingsPage() {
                         placeholder="Requirements (optional), e.g. one bullet per line"
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 resize-y min-h-[72px] placeholder-gray-400"
                       />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input
+                          id={`new-uni-course-url-${ci}`}
+                          type="url"
+                          inputMode="url"
+                          placeholder="Find course URL (optional)"
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 placeholder:text-gray-400"
+                        />
+                        <input
+                          id={`new-uni-eng-url-${ci}`}
+                          type="url"
+                          inputMode="url"
+                          placeholder="English requirements URL (optional)"
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 placeholder:text-gray-400"
+                        />
+                      </div>
                       <input
                         type="file"
                         multiple

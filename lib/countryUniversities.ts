@@ -9,12 +9,26 @@ export type UniversityEntry = {
   name: string;
   requirements: string;
   attachments: UniversityAttachment[];
+  /** Course search / programme finder (opens in new tab from university cards). */
+  findCourseUrl: string;
+  /** Official English / language requirements page. */
+  englishRequirementsUrl: string;
 };
+
+/** Safe href for opening user-entered URLs in a new tab (blocks javascript: / data:). */
+export function safeExternalUrl(raw: string): string | null {
+  const t = raw.trim();
+  if (!t) return null;
+  const lower = t.toLowerCase();
+  if (lower.startsWith("javascript:") || lower.startsWith("data:")) return null;
+  if (/^https?:\/\//i.test(t)) return t;
+  return `https://${t}`;
+}
 
 export function normalizeUniversityEntry(u: unknown): UniversityEntry {
   if (typeof u === "string") {
     const name = u.trim();
-    return { name, requirements: "", attachments: [] };
+    return { name, requirements: "", attachments: [], findCourseUrl: "", englishRequirementsUrl: "" };
   }
   if (u && typeof u === "object") {
     const o = u as Record<string, unknown>;
@@ -37,9 +51,11 @@ export function normalizeUniversityEntry(u: unknown): UniversityEntry {
       name: String(o.name ?? "").trim(),
       requirements: String(o.requirements ?? ""),
       attachments,
+      findCourseUrl: String(o.findCourseUrl ?? "").trim(),
+      englishRequirementsUrl: String(o.englishRequirementsUrl ?? "").trim(),
     };
   }
-  return { name: "", requirements: "", attachments: [] };
+  return { name: "", requirements: "", attachments: [], findCourseUrl: "", englishRequirementsUrl: "" };
 }
 
 export function normalizeUniversitiesArray(arr: unknown): UniversityEntry[] {
@@ -53,5 +69,11 @@ export function universityEntryNames(entries: UniversityEntry[]): string[] {
 
 /** Shorthand for default settings seed data. */
 export function universityEntriesFromNames(names: string[]): UniversityEntry[] {
-  return names.map((name) => ({ name, requirements: "", attachments: [] }));
+  return names.map((name) => ({
+    name,
+    requirements: "",
+    attachments: [],
+    findCourseUrl: "",
+    englishRequirementsUrl: "",
+  }));
 }

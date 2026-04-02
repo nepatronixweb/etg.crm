@@ -1,5 +1,5 @@
-import { GraduationCap, FileText, ExternalLink } from "lucide-react";
-import type { UniversityEntry } from "@/lib/countryUniversities";
+import { GraduationCap, FileText, ExternalLink, BookOpen, Languages } from "lucide-react";
+import { safeExternalUrl, type UniversityEntry } from "@/lib/countryUniversities";
 
 function formatRequirementLines(text: string): string[] {
   return text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -31,8 +31,18 @@ export function UniRequirementsRich({ text }: { text: string }) {
   return <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{text.trim()}</p>;
 }
 
+const pillRow =
+  "inline-flex items-center justify-center gap-2 min-h-[42px] px-4 py-2 rounded-full text-xs font-bold text-white shadow-sm transition-opacity shrink-0";
+const pillCourseOn = "bg-[#8b9ee8] hover:opacity-95 active:scale-[0.99]";
+const pillCourseOff = "bg-[#8b9ee8]/35 cursor-not-allowed opacity-80";
+const pillEnglishOn = "bg-[#9ca3af] hover:bg-[#8b9099] active:scale-[0.99]";
+const pillEnglishOff = "bg-[#9ca3af]/40 cursor-not-allowed opacity-80";
+
 export function UniversityRequirementCard({ uni, brandColor }: { uni: UniversityEntry; brandColor: string }) {
   const hasDocs = uni.attachments && uni.attachments.length > 0;
+  const courseHref = safeExternalUrl(uni.findCourseUrl ?? "");
+  const englishHref = safeExternalUrl(uni.englishRequirementsUrl ?? "");
+  const missingUrlHint = "Add this URL in Settings → Countries & Services → External links.";
   return (
     <article className="rounded-2xl border border-gray-200/90 bg-white shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden h-full flex flex-col">
       <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-slate-50/90 to-white flex items-start gap-2.5">
@@ -50,6 +60,44 @@ export function UniversityRequirementCard({ uni, brandColor }: { uni: University
           <div className="rounded-xl bg-gradient-to-br from-amber-50/80 to-orange-50/30 border border-amber-100/70 px-3 py-2.5">
             <UniRequirementsRich text={uni.requirements} />
           </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {courseHref ? (
+            <a
+              href={courseHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`${pillRow} ${pillCourseOn}`}
+            >
+              <BookOpen size={14} className="shrink-0" strokeWidth={2.25} />
+              Find course
+              <ExternalLink size={12} className="opacity-90 shrink-0" strokeWidth={2.25} />
+            </a>
+          ) : (
+            <span className={`${pillRow} ${pillCourseOff}`} title={missingUrlHint}>
+              <BookOpen size={14} className="shrink-0" strokeWidth={2.25} />
+              Find course
+              <ExternalLink size={12} className="opacity-50 shrink-0" strokeWidth={2.25} />
+            </span>
+          )}
+          {englishHref ? (
+            <a
+              href={englishHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`${pillRow} ${pillEnglishOn}`}
+            >
+              <Languages size={14} className="shrink-0" strokeWidth={2.25} />
+              English requirements
+              <ExternalLink size={12} className="opacity-90 shrink-0" strokeWidth={2.25} />
+            </a>
+          ) : (
+            <span className={`${pillRow} ${pillEnglishOff}`} title={missingUrlHint}>
+              <Languages size={14} className="shrink-0" strokeWidth={2.25} />
+              English requirements
+              <ExternalLink size={12} className="opacity-50 shrink-0" strokeWidth={2.25} />
+            </span>
+          )}
         </div>
         <div>
           <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-2">Documents</p>
