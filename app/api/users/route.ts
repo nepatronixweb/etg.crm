@@ -48,7 +48,22 @@ export async function POST(req: NextRequest) {
     }
     await connectDB();
     const body = await req.json();
-    const { name, email, password, role, branch, dateOfBirth, phone, target, permissions } = body;
+    const {
+      name,
+      email,
+      password,
+      role,
+      branch,
+      dateOfBirth,
+      phone,
+      target,
+      permissions,
+      hrRole,
+      monthlySalary,
+      workingDays,
+      workingHoursPerDay,
+      officeNetworkIp,
+    } = body;
 
     if (role === "super_admin" && session.user.role !== "super_admin") {
       return NextResponse.json({ error: "Only super admins can create super admin accounts" }, { status: 403 });
@@ -64,10 +79,29 @@ export async function POST(req: NextRequest) {
     if (existing) return NextResponse.json({ error: "Email already exists" }, { status: 400 });
 
     const hashed = await bcrypt.hash(password, 10);
+    const hrPayload: Record<string, unknown> = {};
+    if (session.user.role === "super_admin") {
+      if (hrRole === "admin" || hrRole === "employee") hrPayload.hrRole = hrRole;
+      if (typeof monthlySalary === "number" && monthlySalary >= 0) hrPayload.monthlySalary = monthlySalary;
+      if (typeof workingDays === "number" && workingDays >= 1) hrPayload.workingDays = workingDays;
+      if (typeof workingHoursPerDay === "number" && workingHoursPerDay >= 0 && workingHoursPerDay <= 24) {
+        hrPayload.workingHoursPerDay = workingHoursPerDay;
+      }
+      if (typeof officeNetworkIp === "string") {
+        hrPayload.officeNetworkIp = officeNetworkIp.trim().slice(0, 128);
+      }
+    }
     const user = await User.create({
-      name, email, password: hashed, role,
+      name,
+      email,
+      password: hashed,
+      role,
       permissions: Array.isArray(permissions) ? permissions : [],
-      branch, dateOfBirth, phone, target,
+      branch,
+      dateOfBirth,
+      phone,
+      target,
+      ...hrPayload,
     });
 
     await ActivityLog.create({

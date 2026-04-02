@@ -26,6 +26,7 @@ import { IStudent, UserRole } from "@/types";
 import Link from "next/link";
 import { useBranding } from "@/app/branding-context";
 import CelebrationOverlay from "./CelebrationOverlay";
+import InventorySummaryWidgets from "@/components/inventory/InventorySummaryWidgets";
 
 interface AnalyticsData {
   summary: {
@@ -946,6 +947,12 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {session && hasPermission(userPermissions, "inventory", role) && (
+        <div className="mb-6">
+          <InventorySummaryWidgets />
+        </div>
+      )}
 
       {isAdmin && !loading && !data && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">

@@ -4,6 +4,7 @@ import connectDB from "@/lib/mongodb";
 import AppSettings from "@/models/AppSettings";
 import { DEFAULT_APPLICATION_ROLES, normalizeApplicationRoles } from "@/lib/applicationRoles";
 import { DEFAULT_TELECALLER_TRANSFER_OUTCOMES, normalizeTelecallerTransferOutcomes } from "@/lib/telecallerTransferConfig";
+import { normalizeUniversitiesArray } from "@/lib/countryUniversities";
 
 // GET — public (used by layout for branding)
 export async function GET() {
@@ -36,6 +37,24 @@ export async function GET() {
     // Backfill remarkOptions for documents created before the field existed
     if (!settings.remarkOptions?.length) {
       settings.remarkOptions = DEFAULT_REMARK_OPTIONS;
+      await settings.save();
+    }
+
+    const baseRemarks = settings.remarkOptions?.length ? settings.remarkOptions : DEFAULT_REMARK_OPTIONS;
+    let deptRemarksTouched = false;
+    if (!settings.remarkOptionsApplication?.length) {
+      settings.remarkOptionsApplication = [...baseRemarks];
+      deptRemarksTouched = true;
+    }
+    if (!settings.remarkOptionsAdmission?.length) {
+      settings.remarkOptionsAdmission = [...baseRemarks];
+      deptRemarksTouched = true;
+    }
+    if (!settings.remarkOptionsVisa?.length) {
+      settings.remarkOptionsVisa = [...baseRemarks];
+      deptRemarksTouched = true;
+    }
+    if (deptRemarksTouched) {
       await settings.save();
     }
 
@@ -159,6 +178,17 @@ export async function GET() {
       json.countryStages = {};
     }
 
+    const ro = Array.isArray(json.remarkOptions) && json.remarkOptions.length > 0 ? json.remarkOptions : DEFAULT_REMARK_OPTIONS;
+    if (!Array.isArray(json.remarkOptionsApplication) || json.remarkOptionsApplication.length === 0) {
+      json.remarkOptionsApplication = ro;
+    }
+    if (!Array.isArray(json.remarkOptionsAdmission) || json.remarkOptionsAdmission.length === 0) {
+      json.remarkOptionsAdmission = ro;
+    }
+    if (!Array.isArray(json.remarkOptionsVisa) || json.remarkOptionsVisa.length === 0) {
+      json.remarkOptionsVisa = ro;
+    }
+
     if (!Array.isArray(json.applicationRoles) || json.applicationRoles.length === 0) {
       settings.applicationRoles = DEFAULT_APPLICATION_ROLES.map((r) => ({
         slug: r.slug,
@@ -176,6 +206,20 @@ export async function GET() {
     json.applicationRoles = normalizeApplicationRoles(json.applicationRoles);
     json.telecallerTransferOutcomes = normalizeTelecallerTransferOutcomes(json.telecallerTransferOutcomes);
 
+    if (Array.isArray(json.countries)) {
+      json.countries = json.countries.map((c: unknown) => {
+        if (typeof c === "string") return { name: c, universities: [] };
+        if (c && typeof c === "object" && "name" in c) {
+          const o = c as { name: string; universities?: unknown };
+          return {
+            name: String(o.name ?? ""),
+            universities: normalizeUniversitiesArray(o.universities),
+          };
+        }
+        return { name: "", universities: normalizeUniversitiesArray(undefined) };
+      });
+    }
+
     if (!json.commissionPercentByCountry || typeof json.commissionPercentByCountry !== "object") {
       settings.commissionPercentByCountry = {};
       await settings.save();
@@ -184,6 +228,12 @@ export async function GET() {
     const mods = Array.isArray(json.enabledModules) ? [...json.enabledModules] : [];
     if (!mods.includes("commission")) {
       mods.push("commission");
+      settings.enabledModules = mods;
+      await settings.save();
+      json.enabledModules = mods;
+    }
+    if (!mods.includes("inventory")) {
+      mods.push("inventory");
       settings.enabledModules = mods;
       await settings.save();
       json.enabledModules = mods;
@@ -214,7 +264,7 @@ export async function PUT(req: NextRequest) {
       "address", "phone", "email", "website",
       "leadStatuses", "leadSources", "leadStandings", "fdStatuses",
       "leadStageGroups", "leadStages",
-      "b2bNames", "remarkOptions",
+      "b2bNames", "remarkOptions", "remarkOptionsApplication", "remarkOptionsAdmission", "remarkOptionsVisa",
       "countries", "services", "courses", "educationLevels",
       "enabledModules",
       "commissionPercentByCountry",

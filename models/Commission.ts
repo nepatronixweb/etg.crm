@@ -14,13 +14,41 @@ export interface ICommission extends Document {
   amountFromPercent: string;
   intakeQuarter: "Q1" | "Q2" | "Q3" | "Q4" | "";
   intakeYear: string;
+  /** @deprecated Legacy free-text; new entries use `commissionClaim` only. */
   commission: string;
+  /** @deprecated Legacy free-text; new entries use `commissionClaim` only. */
   claim: string;
-  claimableIntake: "1st_sem" | "2nd_sem" | "1_year" | "";
+  /** Which period is claimed (1st–6th sem, one year). Single “commission claim” field in the form. */
+  claimableIntake:
+    | ""
+    | "1st_sem"
+    | "2nd_sem"
+    | "3rd_sem"
+    | "4th_sem"
+    | "5th_sem"
+    | "6th_sem"
+    | "1_year";
+  /** How commission is spread: one year, entire course, or other. */
+  commissionDuration: "" | "one_year" | "entire_duration" | "other";
+  incentives: string;
+  /** @deprecated Replaced by OSHC fields; kept for legacy rows. */
+  marketingBudget: string;
+  /** OSHC provider (dropdown). */
+  oshcName:
+    | ""
+    | "nb"
+    | "bvpa"
+    | "annalink"
+    | "aisa"
+    | "your_oshc"
+    | "fly_finance";
+  oshcAmount: string;
+  oshcClaim: "" | "proceed" | "received";
   b2bName: string;
   b2bChannel: "direct" | "sub_agent" | "";
   commissionAmount: string;
-  remarksStatus: "yes" | "received" | "";
+  remarksStatus: "yes" | "received" | "processed" | "";
+  commissionStatus: "" | "completed" | "discontinued";
   createdBy: mongoose.Types.ObjectId;
   createdByName: string;
   createdAt: Date;
@@ -44,11 +72,30 @@ const CommissionSchema = new Schema<ICommission>(
     intakeYear: { type: String, default: "" },
     commission: { type: String, default: "" },
     claim: { type: String, default: "" },
-    claimableIntake: { type: String, enum: ["1st_sem", "2nd_sem", "1_year", ""], default: "" },
+    claimableIntake: {
+      type: String,
+      enum: ["1st_sem", "2nd_sem", "3rd_sem", "4th_sem", "5th_sem", "6th_sem", "1_year", ""],
+      default: "",
+    },
+    commissionDuration: {
+      type: String,
+      enum: ["one_year", "entire_duration", "other", ""],
+      default: "",
+    },
+    incentives: { type: String, default: "", trim: true },
+    marketingBudget: { type: String, default: "", trim: true },
+    oshcName: {
+      type: String,
+      enum: ["nb", "bvpa", "annalink", "aisa", "your_oshc", "fly_finance", ""],
+      default: "",
+    },
+    oshcAmount: { type: String, default: "", trim: true },
+    oshcClaim: { type: String, enum: ["proceed", "received", ""], default: "" },
     b2bName: { type: String, default: "" },
     b2bChannel: { type: String, enum: ["direct", "sub_agent", ""], default: "" },
     commissionAmount: { type: String, default: "" },
-    remarksStatus: { type: String, enum: ["yes", "received", ""], default: "" },
+    remarksStatus: { type: String, enum: ["yes", "received", "processed", ""], default: "" },
+    commissionStatus: { type: String, enum: ["completed", "discontinued", ""], default: "" },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
     createdByName: { type: String, default: "" },
   },

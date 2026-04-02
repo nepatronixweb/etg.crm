@@ -2,6 +2,8 @@
 import { useEffect, useState } from "react";
 import { Plane, Search, Phone, Mail } from "lucide-react";
 import Link from "next/link";
+import { mergeRemarksForPipeline, type DeptRemarkLists } from "@/lib/admissionPipelineRemarks";
+import { formatStandingLabel, standingInlineStyle, standingOptionPrefix } from "@/lib/studentStandingUi";
 
 interface AdmissionEntry {
   _id: string;
@@ -36,6 +38,12 @@ export default function VisaPage() {
   const [appLeadStages, setAppLeadStages] = useState<{ value: string; label: string; group: string }[]>([]);
   const [appLeadStageGroups, setAppLeadStageGroups] = useState<string[]>([]);
   const [appRemarkOptions, setAppRemarkOptions] = useState<string[]>([]);
+  const [remarkOptionsByDept, setRemarkOptionsByDept] = useState<DeptRemarkLists>({
+    application: [],
+    admission: [],
+    visa: [],
+  });
+  const [appStandings, setAppStandings] = useState<string[]>([]);
 
   useEffect(() => {
     fetch("/api/students?stage=visa")
@@ -46,7 +54,21 @@ export default function VisaPage() {
       .then((d) => {
         if (d?.leadStages?.length) setAppLeadStages(d.leadStages);
         if (d?.leadStageGroups?.length) setAppLeadStageGroups(d.leadStageGroups);
-        if (d?.remarkOptions?.length) setAppRemarkOptions(d.remarkOptions);
+        const globalR = Array.isArray(d?.remarkOptions) && d.remarkOptions.length > 0 ? d.remarkOptions : [];
+        setAppRemarkOptions(globalR);
+        setRemarkOptionsByDept({
+          application:
+            Array.isArray(d?.remarkOptionsApplication) && d.remarkOptionsApplication.length > 0
+              ? d.remarkOptionsApplication
+              : globalR,
+          admission:
+            Array.isArray(d?.remarkOptionsAdmission) && d.remarkOptionsAdmission.length > 0
+              ? d.remarkOptionsAdmission
+              : globalR,
+          visa:
+            Array.isArray(d?.remarkOptionsVisa) && d.remarkOptionsVisa.length > 0 ? d.remarkOptionsVisa : globalR,
+        });
+        if (d?.leadStandings?.length) setAppStandings(d.leadStandings);
       }).catch(() => {});
   }, []);
 
@@ -237,7 +259,9 @@ export default function VisaPage() {
                         className="w-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-2 py-1 focus:outline-none cursor-pointer disabled:cursor-default"
                       >
                         <option value="">—</option>
-                        {appRemarkOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+                        {mergeRemarksForPipeline(entry.pipeline, appRemarkOptions, remarkOptionsByDept).map((r) => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
                       </select>
                     </div>
                     <div className="px-2 py-2">
@@ -246,18 +270,15 @@ export default function VisaPage() {
                         disabled={entry.closed}
                         onChange={(e) => quickUpdate(s._id, entryIndex, "standing", e.target.value)}
                         className="w-full text-xs font-medium rounded-full px-2 py-1 border focus:outline-none cursor-pointer disabled:cursor-default"
-                        style={{
-                          backgroundColor: entry.standing === "hot" ? "#fee2e2" : entry.standing === "warm" ? "#fed7aa" : entry.standing === "heated" ? "#fef3c7" : entry.standing === "cold" ? "#dbeafe" : "#f3f4f6",
-                          color: entry.standing === "hot" ? "#991b1b" : entry.standing === "warm" ? "#92400e" : entry.standing === "heated" ? "#b45309" : entry.standing === "cold" ? "#1e40af" : "#374151",
-                          borderColor: entry.standing === "hot" ? "#fca5a5" : entry.standing === "warm" ? "#fdba74" : entry.standing === "heated" ? "#fcd34d" : entry.standing === "cold" ? "#93c5fd" : "#e5e7eb",
-                        }}
+                        style={standingInlineStyle(entry.standing)}
                       >
                         <option value="">—</option>
-                        <option value="hot">🔴 Hot</option>
-                        <option value="warm">🟠 Warm</option>
-                        <option value="heated">🟡 Heated</option>
-                        <option value="cold">🔵 Cold</option>
-                        <option value="missed">⚪ Missed</option>
+                        {appStandings.map((st) => (
+                          <option key={st} value={st}>
+                            {standingOptionPrefix(st)}
+                            {formatStandingLabel(st)}
+                          </option>
+                        ))}
                       </select>
                     </div>
                     <div className="px-2 py-2">

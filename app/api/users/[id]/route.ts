@@ -38,6 +38,49 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     await connectDB();
     const body = await req.json();
 
+    if (
+      body.hrRole !== undefined ||
+      body.monthlySalary !== undefined ||
+      body.workingDays !== undefined ||
+      body.workingHoursPerDay !== undefined ||
+      body.officeNetworkIp !== undefined
+    ) {
+      if (session.user.role !== "super_admin") {
+        return NextResponse.json(
+          { error: "Only super admins can edit HR fields (salary, working days, hours, network IP, hrRole)" },
+          { status: 403 }
+        );
+      }
+      if (body.hrRole !== undefined && body.hrRole !== "admin" && body.hrRole !== "employee") {
+        return NextResponse.json({ error: "Invalid hrRole" }, { status: 400 });
+      }
+      if (body.monthlySalary !== undefined && (typeof body.monthlySalary !== "number" || body.monthlySalary < 0)) {
+        return NextResponse.json({ error: "Invalid monthlySalary" }, { status: 400 });
+      }
+      if (body.workingDays !== undefined && (typeof body.workingDays !== "number" || body.workingDays < 1)) {
+        return NextResponse.json({ error: "Invalid workingDays" }, { status: 400 });
+      }
+      if (
+        body.workingHoursPerDay !== undefined &&
+        (typeof body.workingHoursPerDay !== "number" || body.workingHoursPerDay < 0 || body.workingHoursPerDay > 24)
+      ) {
+        return NextResponse.json({ error: "Invalid workingHoursPerDay (0–24)" }, { status: 400 });
+      }
+      if (body.officeNetworkIp !== undefined && typeof body.officeNetworkIp !== "string") {
+        return NextResponse.json({ error: "Invalid officeNetworkIp" }, { status: 400 });
+      }
+    }
+
+    if (session.user.role !== "super_admin") {
+      delete body.hrRole;
+      delete body.monthlySalary;
+      delete body.workingDays;
+      delete body.workingHoursPerDay;
+      delete body.officeNetworkIp;
+    } else if (typeof body.officeNetworkIp === "string") {
+      body.officeNetworkIp = body.officeNetworkIp.trim().slice(0, 128);
+    }
+
     if (body.role !== undefined) {
       const settingsDoc = await AppSettings.findOne().lean();
       const roleCatalog = normalizeApplicationRoles(settingsDoc?.applicationRoles);

@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Search, UserCheck, Plus, X, ChevronDown, MessageSquare, MoreVertical, Phone, Mail, FileSpreadsheet, Trash2 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useBranding } from "@/app/branding-context";
+import { normalizeUniversitiesArray, universityEntryNames } from "@/lib/countryUniversities";
 
 const SOURCES = [
   { value: "walk_in", label: "Walk-in" },
@@ -137,7 +138,9 @@ export default function StudentsPage() {
       if (Array.isArray(d?.countries)) {
         const unis: string[] = [];
         for (const c of d.countries) {
-          if (Array.isArray(c.universities)) unis.push(...c.universities);
+          if (c && typeof c === "object" && Array.isArray(c.universities)) {
+            unis.push(...universityEntryNames(normalizeUniversitiesArray(c.universities)));
+          }
         }
         setAllUniversities([...new Set(unis)].sort());
       }

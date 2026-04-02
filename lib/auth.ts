@@ -68,6 +68,10 @@ export const authOptions: NextAuthOptions = {
             storedPerms.length > 0
               ? storedPerms
               : resolveDefaultPermissionsForSlug(user.role, roleCatalog);
+          const hrRoleRaw = (user as { hrRole?: string }).hrRole;
+          const hrRole =
+            hrRoleRaw === "admin" || hrRoleRaw === "employee" ? hrRoleRaw : "employee";
+
           return {
             id: user._id.toString(),
             name: user.name,
@@ -76,6 +80,7 @@ export const authOptions: NextAuthOptions = {
             permissions,
             branch: user.branch?._id?.toString() || user.branch?.toString(),
             branchName: user.branch?.name || "",
+            hrRole,
           };
         } catch (err) {
           if (err instanceof Error && err.message.includes("Too many login attempts")) {
@@ -95,6 +100,8 @@ export const authOptions: NextAuthOptions = {
         token.permissions = (user as { permissions?: string[] }).permissions ?? [];
         token.branch = (user as { branch?: string }).branch;
         token.branchName = (user as { branchName?: string }).branchName;
+        const hr = (user as { hrRole?: string }).hrRole;
+        token.hrRole = hr === "admin" || hr === "employee" ? hr : "employee";
       }
       return token;
     },
@@ -105,6 +112,8 @@ export const authOptions: NextAuthOptions = {
         session.user.permissions = (token.permissions as string[]) ?? [];
         session.user.branch = token.branch as string;
         session.user.branchName = token.branchName as string;
+        const hr = token.hrRole as string | undefined;
+        session.user.hrRole = hr === "admin" || hr === "employee" ? hr : "employee";
       }
       return session;
     },

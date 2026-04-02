@@ -1,4 +1,7 @@
 import mongoose, { Document, Schema } from "mongoose";
+/** HR module classification — does not replace CRM `role` (counsellor, super_admin, etc.). */
+export type HrRoleType = "admin" | "employee";
+
 export interface IUserDocument extends Document {
   name: string;
   email: string;
@@ -11,6 +14,14 @@ export interface IUserDocument extends Document {
   target?: number;
   currentCount?: number;
   isActive: boolean;
+  /** HR: access to /api/hr/admin/* when "admin" (also super_admin always). */
+  hrRole: HrRoleType;
+  monthlySalary: number;
+  workingDays: number;
+  /** Hours per workday (HR reference; default 8). */
+  workingHoursPerDay: number;
+  /** Optional registered / expected office IP for this employee (HR reference). */
+  officeNetworkIp: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -32,6 +43,15 @@ const UserSchema = new Schema<IUserDocument>(
     target: { type: Number, default: 0 },
     currentCount: { type: Number, default: 0 },
     isActive: { type: Boolean, default: true },
+    hrRole: {
+      type: String,
+      enum: ["admin", "employee"],
+      default: "employee",
+    },
+    monthlySalary: { type: Number, default: 0, min: 0 },
+    workingDays: { type: Number, default: 26, min: 1 },
+    workingHoursPerDay: { type: Number, default: 8, min: 0, max: 24 },
+    officeNetworkIp: { type: String, default: "", trim: true, maxlength: 128 },
   },
   { timestamps: true }
 );

@@ -24,28 +24,50 @@ export async function GET(req: NextRequest) {
     const source = searchParams.get("source");
     const crmStage = searchParams.get("crmStage"); // student.stage (CRM pipeline tag)
     const search = searchParams.get("search");
+    const visaGrantedOnly =
+      searchParams.get("visaGrantedOnly") === "1" || searchParams.get("visaGrantedOnly") === "true";
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
     const limit = Math.min(500, Math.max(1, parseInt(searchParams.get("limit") || "50", 10)));
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const filter: Record<string, any> = {};
-    if (session.user.role === "counsellor") filter.counsellor = session.user.id;
-    else if (session.user.role !== "super_admin") filter.branch = session.user.branch;
+    const parts: Record<string, any>[] = [];
 
-    if (branch) filter.branch = branch;
-    if (stage) filter.currentStage = stage;
-    if (counsellor) filter.counsellor = counsellor;
-    if (country) filter["countries.country"] = country;
-    if (leadId) { filter.lead = leadId; delete filter.branch; delete filter.counsellor; }
-    if (standing) filter.standing = standing;
-    if (enrolled === "true") filter.enrolled = true;
-    if (source) filter.source = source;
-    if (crmStage) filter.stage = crmStage;
+    if (leadId) {
+      parts.push({ lead: leadId });
+    } else {
+      if (session.user.role === "counsellor") parts.push({ counsellor: session.user.id });
+      else if (session.user.role !== "super_admin") parts.push({ branch: session.user.branch });
+      if (branch) parts.push({ branch });
+    }
+
+    if (stage) parts.push({ currentStage: stage });
+    if (counsellor) parts.push({ counsellor });
+    if (country) parts.push({ "countries.country": country });
+    if (standing) parts.push({ standing });
+    if (enrolled === "true") parts.push({ enrolled: true });
+    if (source) parts.push({ source });
+    if (crmStage) parts.push({ stage: crmStage });
+
+    if (visaGrantedOnly) {
+      parts.push({
+        $or: [
+          { stage: "visa_grant" },
+          { "admissionDetails.stage": "visa_grant" },
+          { "countries.visaApprovedAt": { $exists: true, $ne: null } },
+          { "countries.visaStatus": { $regex: /grant|approved|ppr|aip/i } },
+        ],
+      });
+    }
+
     if (search) {
       const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const regex = new RegExp(escaped, "i");
-      filter.$or = [{ name: regex }, { phone: regex }, { email: regex }];
+      parts.push({ $or: [{ name: regex }, { phone: regex }, { email: regex }] });
     }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const filter: Record<string, any> =
+      parts.length === 0 ? {} : parts.length === 1 ? parts[0] : { $and: parts };
 
     const needsLead = !enrolled && !stage;
     const leadPopulate = needsLead

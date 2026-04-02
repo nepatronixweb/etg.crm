@@ -6,6 +6,8 @@ import {
   Filter, X, TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
+import { mergeRemarksForPipeline, type DeptRemarkLists } from "@/lib/admissionPipelineRemarks";
+import { formatStandingLabel, standingInlineStyle, standingOptionPrefix } from "@/lib/studentStandingUi";
 
 interface AdmissionEntry {
   _id: string;
@@ -93,6 +95,12 @@ export default function AdmissionsPage() {
 
   const [appLeadStages, setAppLeadStages] = useState<{ value: string; label: string; group: string }[]>([]);
   const [appRemarkOptions, setAppRemarkOptions] = useState<string[]>([]);
+  const [remarkOptionsByDept, setRemarkOptionsByDept] = useState<DeptRemarkLists>({
+    application: [],
+    admission: [],
+    visa: [],
+  });
+  const [appStandings, setAppStandings] = useState<string[]>([]);
   const [countryStages, setCountryStages] = useState<Record<string, { value: string; label: string; pipeline: string }[]>>({});
 
   useEffect(() => {
@@ -109,7 +117,21 @@ export default function AdmissionsPage() {
       .then((r) => r.json())
       .then((d) => {
         if (d?.leadStages?.length) setAppLeadStages(d.leadStages);
-        if (d?.remarkOptions?.length) setAppRemarkOptions(d.remarkOptions);
+        const globalR = Array.isArray(d?.remarkOptions) && d.remarkOptions.length > 0 ? d.remarkOptions : [];
+        setAppRemarkOptions(globalR);
+        setRemarkOptionsByDept({
+          application:
+            Array.isArray(d?.remarkOptionsApplication) && d.remarkOptionsApplication.length > 0
+              ? d.remarkOptionsApplication
+              : globalR,
+          admission:
+            Array.isArray(d?.remarkOptionsAdmission) && d.remarkOptionsAdmission.length > 0
+              ? d.remarkOptionsAdmission
+              : globalR,
+          visa:
+            Array.isArray(d?.remarkOptionsVisa) && d.remarkOptionsVisa.length > 0 ? d.remarkOptionsVisa : globalR,
+        });
+        if (d?.leadStandings?.length) setAppStandings(d.leadStandings);
         if (d?.countryStages && typeof d.countryStages === "object") setCountryStages(d.countryStages);
       })
       .catch(() => {});
@@ -438,7 +460,6 @@ export default function AdmissionsPage() {
                       {entries.map((entry, entryIndex) => {
                         const cc = COUNTRY_COLORS[entry.country] ?? defaultCountryColor;
                         const pm = PIPELINE_META[entry.pipeline ?? ""];
-                        const sm = STANDING_META[entry.standing ?? ""];
                         const stageList = getStagesForCountry(entry.country);
                         const stageLabel = stageList.find((s) => s.value === entry.stage)?.label ?? entry.stage ?? "";
 
@@ -486,7 +507,7 @@ export default function AdmissionsPage() {
                                 className="w-full text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-300 cursor-pointer disabled:cursor-default transition-all hover:border-amber-300 appearance-none"
                               >
                                 <option value="">— Remark —</option>
-                                {appRemarkOptions.map((r) => (
+                                {mergeRemarksForPipeline(entry.pipeline, appRemarkOptions, remarkOptionsByDept).map((r) => (
                                   <option key={r} value={r}>{r}</option>
                                 ))}
                               </select>
@@ -498,14 +519,16 @@ export default function AdmissionsPage() {
                                 value={entry.standing || ""}
                                 disabled={entry.closed}
                                 onChange={(e) => handleFieldChange(s._id, entryIndex, "standing", e.target.value)}
-                                className={`w-full text-[11px] font-semibold rounded-lg px-2.5 py-1.5 border focus:outline-none focus:ring-2 cursor-pointer disabled:cursor-default transition-all appearance-none ${sm ? `${sm.bg} ${sm.text} ${sm.border} focus:ring-current/20` : "bg-gray-50 text-gray-600 border-gray-200 focus:ring-gray-200"}`}
+                                className="w-full text-[11px] font-semibold rounded-lg px-2.5 py-1.5 border focus:outline-none focus:ring-2 cursor-pointer disabled:cursor-default transition-all appearance-none"
+                                style={standingInlineStyle(entry.standing)}
                               >
                                 <option value="">— Standing —</option>
-                                <option value="hot">🔴 Hot</option>
-                                <option value="warm">🟠 Warm</option>
-                                <option value="heated">🟡 Heated</option>
-                                <option value="cold">🔵 Cold</option>
-                                <option value="missed">⚪ Missed</option>
+                                {appStandings.map((st) => (
+                                  <option key={st} value={st}>
+                                    {standingOptionPrefix(st)}
+                                    {formatStandingLabel(st)}
+                                  </option>
+                                ))}
                               </select>
                             </div>
 

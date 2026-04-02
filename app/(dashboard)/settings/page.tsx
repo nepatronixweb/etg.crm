@@ -7,13 +7,19 @@ import {
   Users, Tag, List, ToggleLeft, ToggleRight, Server,
   FileText, Image as ImageIcon, ChevronRight, X,
   Flame, Zap, Target, Layers, GitBranch, GraduationCap, ChevronDown, Pencil,
-  UserCog,
+  UserCog, Loader2, Paperclip,
 } from "lucide-react";
 import { useBrandingRefresh } from "@/app/branding-context";
 import { ALL_PERMISSIONS, SETTINGS_SUB_PERMISSIONS } from "@/lib/utils";
 import { DEFAULT_APPLICATION_ROLES } from "@/lib/applicationRoles";
 import { DEFAULT_TELECALLER_TRANSFER_OUTCOMES } from "@/lib/telecallerTransferConfig";
 import type { TelecallerTransferOutcome } from "@/types/telecallerTransfer";
+import {
+  universityEntriesFromNames,
+  normalizeUniversitiesArray,
+  type UniversityEntry,
+  type UniversityAttachment,
+} from "@/lib/countryUniversities";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface AppSettings {
@@ -36,9 +42,12 @@ interface AppSettings {
   countryStages: Record<string, { value: string; label: string; pipeline: string }[]>;
   b2bNames: string[];
   remarkOptions: string[];
+  remarkOptionsApplication: string[];
+  remarkOptionsAdmission: string[];
+  remarkOptionsVisa: string[];
   courses: string[];
   educationLevels: string[];
-  countries: { name: string; universities: string[] }[];
+  countries: { name: string; universities: UniversityEntry[] }[];
   services: string[];
   enabledModules: string[];
   smtpHost: string;
@@ -80,6 +89,7 @@ const ALL_MODULES = [
   { key: "activity_logs", label: "Activity Logs" },
   { key: "settings",      label: "Settings" },
   { key: "commission",    label: "Commission" },
+  { key: "inventory",     label: "Inventory" },
 ];
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -141,6 +151,9 @@ const DEFAULT_SETTINGS: AppSettings = {
     "Defer Offer Requested", "Defer CoE Requested",
     "Refund Requested", "Offer Withdrawn", "Done",
   ],
+  remarkOptionsApplication: [],
+  remarkOptionsAdmission: [],
+  remarkOptionsVisa: [],
   courses: [
     "Bachelor of IT",
     "Bachelor of Nursing",
@@ -152,38 +165,38 @@ const DEFAULT_SETTINGS: AppSettings = {
   ],
   educationLevels: ["Diploma", "Bachelor", "Master"],
   countries: [
-    { name: "Australia", universities: ["University of Melbourne","Australian National University","University of Sydney","Monash University","University of New South Wales"] },
-    { name: "Canada", universities: ["University of Toronto","University of British Columbia","McGill University","University of Alberta","McMaster University"] },
-    { name: "United Kingdom", universities: ["University of Oxford","University of Cambridge","Imperial College London","University College London","London School of Economics"] },
-    { name: "United States", universities: ["MIT","Stanford University","Harvard University","Columbia University","Yale University"] },
-    { name: "New Zealand", universities: ["University of Auckland","University of Otago","Victoria University of Wellington"] },
-    { name: "Germany", universities: ["Technical University of Munich","Heidelberg University","Humboldt University of Berlin"] },
-    { name: "France", universities: ["Sorbonne University","Sciences Po","HEC Paris"] },
-    { name: "Japan", universities: ["University of Tokyo","Kyoto University","Osaka University"] },
-    { name: "South Korea", universities: ["Seoul National University","Yonsei University","Korea University"] },
-    { name: "Netherlands", universities: ["University of Amsterdam","Delft University of Technology","Leiden University"] },
-    { name: "Sweden", universities: ["Karolinska Institute","Lund University","Uppsala University"] },
-    { name: "Denmark", universities: ["University of Copenhagen","Technical University of Denmark","Aarhus University"] },
-    { name: "Finland", universities: ["University of Helsinki","Aalto University"] },
-    { name: "Norway", universities: ["University of Oslo","Norwegian University of Science and Technology"] },
-    { name: "Switzerland", universities: ["ETH Zurich","EPFL","University of Zurich"] },
-    { name: "Austria", universities: ["University of Vienna","Vienna University of Technology"] },
-    { name: "Ireland", universities: ["Trinity College Dublin","University College Dublin"] },
-    { name: "Singapore", universities: ["National University of Singapore","Nanyang Technological University"] },
-    { name: "Malaysia", universities: ["University of Malaya","Universiti Putra Malaysia"] },
-    { name: "Dubai (UAE)", universities: ["American University in Dubai","University of Dubai"] },
-    { name: "Cyprus", universities: ["University of Cyprus","European University Cyprus"] },
-    { name: "Malta", universities: ["University of Malta"] },
-    { name: "Hungary", universities: ["Budapest University of Technology and Economics"] },
-    { name: "Poland", universities: ["University of Warsaw","Jagiellonian University"] },
-    { name: "Czech Republic", universities: ["Charles University","Czech Technical University in Prague"] },
+    { name: "Australia", universities: universityEntriesFromNames(["University of Melbourne","Australian National University","University of Sydney","Monash University","University of New South Wales"]) },
+    { name: "Canada", universities: universityEntriesFromNames(["University of Toronto","University of British Columbia","McGill University","University of Alberta","McMaster University"]) },
+    { name: "United Kingdom", universities: universityEntriesFromNames(["University of Oxford","University of Cambridge","Imperial College London","University College London","London School of Economics"]) },
+    { name: "United States", universities: universityEntriesFromNames(["MIT","Stanford University","Harvard University","Columbia University","Yale University"]) },
+    { name: "New Zealand", universities: universityEntriesFromNames(["University of Auckland","University of Otago","Victoria University of Wellington"]) },
+    { name: "Germany", universities: universityEntriesFromNames(["Technical University of Munich","Heidelberg University","Humboldt University of Berlin"]) },
+    { name: "France", universities: universityEntriesFromNames(["Sorbonne University","Sciences Po","HEC Paris"]) },
+    { name: "Japan", universities: universityEntriesFromNames(["University of Tokyo","Kyoto University","Osaka University"]) },
+    { name: "South Korea", universities: universityEntriesFromNames(["Seoul National University","Yonsei University","Korea University"]) },
+    { name: "Netherlands", universities: universityEntriesFromNames(["University of Amsterdam","Delft University of Technology","Leiden University"]) },
+    { name: "Sweden", universities: universityEntriesFromNames(["Karolinska Institute","Lund University","Uppsala University"]) },
+    { name: "Denmark", universities: universityEntriesFromNames(["University of Copenhagen","Technical University of Denmark","Aarhus University"]) },
+    { name: "Finland", universities: universityEntriesFromNames(["University of Helsinki","Aalto University"]) },
+    { name: "Norway", universities: universityEntriesFromNames(["University of Oslo","Norwegian University of Science and Technology"]) },
+    { name: "Switzerland", universities: universityEntriesFromNames(["ETH Zurich","EPFL","University of Zurich"]) },
+    { name: "Austria", universities: universityEntriesFromNames(["University of Vienna","Vienna University of Technology"]) },
+    { name: "Ireland", universities: universityEntriesFromNames(["Trinity College Dublin","University College Dublin"]) },
+    { name: "Singapore", universities: universityEntriesFromNames(["National University of Singapore","Nanyang Technological University"]) },
+    { name: "Malaysia", universities: universityEntriesFromNames(["University of Malaya","Universiti Putra Malaysia"]) },
+    { name: "Dubai (UAE)", universities: universityEntriesFromNames(["American University in Dubai","University of Dubai"]) },
+    { name: "Cyprus", universities: universityEntriesFromNames(["University of Cyprus","European University Cyprus"]) },
+    { name: "Malta", universities: universityEntriesFromNames(["University of Malta"]) },
+    { name: "Hungary", universities: universityEntriesFromNames(["Budapest University of Technology and Economics"]) },
+    { name: "Poland", universities: universityEntriesFromNames(["University of Warsaw","Jagiellonian University"]) },
+    { name: "Czech Republic", universities: universityEntriesFromNames(["Charles University","Czech Technical University in Prague"]) },
   ],
   services: [
     "Study Abroad","Language Courses","University Application",
     "Visa Assistance","Test Preparation (IELTS/TOEFL)","Scholarship Guidance",
     "Career Counselling","Document Verification",
   ],
-  enabledModules: ["leads","students","documents","applications","admissions","visa","analytics","branches","users","activity_logs","settings","commission"],
+  enabledModules: ["leads","students","documents","applications","admissions","visa","analytics","branches","users","activity_logs","settings","commission","inventory"],
   smtpHost: "",
   smtpPort: 587,
   smtpUser: "",
@@ -197,6 +210,15 @@ const DEFAULT_SETTINGS: AppSettings = {
   })),
   telecallerTransferOutcomes: DEFAULT_TELECALLER_TRANSFER_OUTCOMES.map((o) => ({ ...o })),
 };
+
+async function uploadUniversitySettingsDoc(file: File): Promise<UniversityAttachment | null> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch("/api/settings/university-doc", { method: "POST", body: fd });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.path) return null;
+  return { path: data.path, originalName: data.originalName || file.name };
+}
 
 // ─── Tag/Pill List Editor ────────────────────────────────────────────────────
 function TagEditor({
@@ -334,6 +356,7 @@ export default function SettingsPage() {
   const [selectedChecklist, setSelectedChecklist] = useState<Checklist | null>(null);
   const [clSaving, setClSaving] = useState(false);
   const [clSaved, setClSaved] = useState(false);
+  const [uniDocBusy, setUniDocBusy] = useState<string | null>(null);
 
   // ── Load settings ──
   useEffect(() => {
@@ -343,8 +366,10 @@ export default function SettingsPage() {
         if (d && d.companyName) {
           // Normalize countries: handle old string[] format from DB
           if (Array.isArray(d.countries)) {
-            d.countries = d.countries.map((c: string | { name: string; universities?: string[] }) =>
-              typeof c === "string" ? { name: c, universities: [] } : { name: c.name, universities: c.universities || [] }
+            d.countries = d.countries.map((c: string | { name: string; universities?: unknown[] }) =>
+              typeof c === "string"
+                ? { name: c, universities: [] }
+                : { name: c.name, universities: normalizeUniversitiesArray(c.universities) }
             );
           }
           setSettings((prev) => ({ ...prev, ...d }));
@@ -365,6 +390,80 @@ export default function SettingsPage() {
   const set = useCallback(<K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
     setSaved(false);
+  }, []);
+
+  const updateCountryUniversities = useCallback((countryIndex: number, mutator: (list: UniversityEntry[]) => UniversityEntry[]) => {
+    setSettings((prev) => {
+      const countries = [...prev.countries];
+      const row = countries[countryIndex];
+      if (!row) return prev;
+      countries[countryIndex] = {
+        ...row,
+        universities: mutator([...row.universities]),
+      };
+      return { ...prev, countries };
+    });
+    setSaved(false);
+  }, []);
+
+  const appendUniversityDocuments = useCallback(
+    async (ci: number, ui: number, files: FileList | null) => {
+      if (!files?.length) return;
+      setUniDocBusy(`${ci}-${ui}`);
+      try {
+        const added: UniversityAttachment[] = [];
+        for (const f of Array.from(files)) {
+          const up = await uploadUniversitySettingsDoc(f);
+          if (up) added.push(up);
+        }
+        if (added.length === 0) return;
+        updateCountryUniversities(ci, (list) => {
+          const next = [...list];
+          const u = next[ui];
+          if (!u) return list;
+          next[ui] = { ...u, attachments: [...u.attachments, ...added] };
+          return next;
+        });
+      } finally {
+        setUniDocBusy(null);
+      }
+    },
+    [updateCountryUniversities]
+  );
+
+  const addUniversityWithDetails = useCallback(async (ci: number) => {
+    const nameEl = document.getElementById(`new-uni-name-${ci}`) as HTMLInputElement | null;
+    const reqEl = document.getElementById(`new-uni-req-${ci}`) as HTMLTextAreaElement | null;
+    const fileEl = document.getElementById(`new-uni-files-${ci}`) as HTMLInputElement | null;
+    const name = nameEl?.value?.trim() ?? "";
+    if (!name) return;
+    setUniDocBusy(`new-${ci}`);
+    try {
+      const attachments: UniversityAttachment[] = [];
+      if (fileEl?.files?.length) {
+        for (const f of Array.from(fileEl.files)) {
+          const up = await uploadUniversitySettingsDoc(f);
+          if (up) attachments.push(up);
+        }
+      }
+      const requirements = reqEl?.value ?? "";
+      setSettings((prev) => {
+        const countries = [...prev.countries];
+        const row = countries[ci];
+        if (!row || row.universities.some((u) => u.name === name)) return prev;
+        countries[ci] = {
+          ...row,
+          universities: [...row.universities, { name, requirements, attachments }],
+        };
+        return { ...prev, countries };
+      });
+      setSaved(false);
+      if (nameEl) nameEl.value = "";
+      if (reqEl) reqEl.value = "";
+      if (fileEl) fileEl.value = "";
+    } finally {
+      setUniDocBusy(null);
+    }
   }, []);
 
   // ── Save app settings ──
@@ -976,8 +1075,77 @@ export default function SettingsPage() {
                 </button>
               </div>
               <p className="text-[11px] text-gray-400 flex items-center gap-1">
-                <Zap size={10} /> {(settings.remarkOptions || []).length} options configured. These appear in the Remarks dropdown on the students list.
+                <Zap size={10} /> {(settings.remarkOptions || []).length} global options. Shown for every pipeline after department-specific items.
               </p>
+            </div>
+          </SectionCard>
+
+          {/* ── Department remark lists (admission card / module tables) ── */}
+          <SectionCard
+            title="Remarks by department"
+            description="Application, Admission (Offer / GS / COE), and Visa teams each maintain their own list. On student admission cards, the active pipeline picks which department list is merged first with the global remark options above."
+          >
+            <div className="space-y-8">
+              {(
+                [
+                  { key: "remarkOptionsApplication" as const, title: "Application pipeline", inputId: "remarkDeptAppInput" },
+                  { key: "remarkOptionsAdmission" as const, title: "Admission pipeline (Offer, GS, COE)", inputId: "remarkDeptAdmissionInput" },
+                  { key: "remarkOptionsVisa" as const, title: "Visa pipeline", inputId: "remarkDeptVisaInput" },
+                ] as const
+              ).map(({ key, title, inputId }) => (
+                <div key={key} className="space-y-3">
+                  <h4 className="text-xs font-semibold text-gray-800">{title}</h4>
+                  <div className="flex flex-wrap gap-2 p-3 bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200 rounded-xl min-h-[48px] max-h-52 overflow-y-auto">
+                    {(settings[key] || []).map((item) => (
+                      <span key={item} className="group inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all">
+                        <span className="w-2 h-2 rounded-full bg-violet-400" />
+                        {item}
+                        <button
+                          type="button"
+                          onClick={() => set(key, (settings[key] || []).filter((i) => i !== item))}
+                          className="ml-0.5 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))}
+                    {(settings[key] || []).length === 0 && (
+                      <span className="text-xs text-gray-400 self-center">No options — save after adding, or they inherit from global on next load</span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      id={inputId}
+                      placeholder="Add remark"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          const val = (e.target as HTMLInputElement).value.trim();
+                          if (val && !(settings[key] || []).includes(val)) {
+                            set(key, [...(settings[key] || []), val]);
+                            (e.target as HTMLInputElement).value = "";
+                          }
+                        }
+                      }}
+                      className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 transition-all placeholder-gray-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const input = document.getElementById(inputId) as HTMLInputElement;
+                        const val = input?.value?.trim() ?? "";
+                        if (val && !(settings[key] || []).includes(val)) {
+                          set(key, [...(settings[key] || []), val]);
+                          input.value = "";
+                        }
+                      }}
+                      className="px-4 py-2.5 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm"
+                    >
+                      <Plus size={13} /> Add
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           </SectionCard>
 
@@ -1317,16 +1485,21 @@ export default function SettingsPage() {
       {activeTab === "lists" && (
         <div className="space-y-5">
           {/* ── Destination Countries with Universities ── */}
-          <SectionCard title="Destination Countries & Universities" description="Manage countries and their universities. These appear in lead forms, student profiles, and document checklists.">
+          <SectionCard
+            title="Destination Countries & Universities"
+            description="Each university can include entry requirements (one bullet per line, or use •) and multiple reference documents (PDF, Word, Excel, images). Files upload to secure storage. Save settings after changes. Universities still appear as choices in lead and student forms."
+          >
             <div className="space-y-3">
               {settings.countries.map((country, ci) => (
                 <div key={ci} className="border border-gray-200 rounded-xl overflow-hidden transition-all hover:border-gray-300">
-                  {/* Country Header */}
                   <div className="flex items-center gap-3 px-4 py-3 bg-gray-50/80">
                     <Globe size={14} className="text-blue-500 shrink-0" />
                     <span className="text-sm font-semibold text-gray-800 flex-1">{country.name}</span>
-                    <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{country.universities.length} {country.universities.length === 1 ? "uni" : "unis"}</span>
+                    <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                      {country.universities.length} {country.universities.length === 1 ? "uni" : "unis"}
+                    </span>
                     <button
+                      type="button"
                       onClick={() => {
                         const expanded = document.getElementById(`country-${ci}`);
                         if (expanded) expanded.classList.toggle("hidden");
@@ -1336,66 +1509,154 @@ export default function SettingsPage() {
                       <ChevronDown size={14} className="text-gray-400" />
                     </button>
                     <button
+                      type="button"
                       onClick={() => set("countries", settings.countries.filter((_, i) => i !== ci))}
                       className="p-1 hover:bg-red-50 rounded-md transition-colors group"
                     >
                       <X size={13} className="text-gray-300 group-hover:text-red-500" />
                     </button>
                   </div>
-                  {/* Universities (collapsible) */}
-                  <div id={`country-${ci}`} className="hidden px-4 py-3 border-t border-gray-100 bg-white">
-                    <div className="flex flex-wrap gap-1.5 mb-3">
-                      {country.universities.map((uni, ui) => (
-                        <span key={ui} className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
-                          <GraduationCap size={11} className="opacity-60" />
-                          {uni}
-                          <button onClick={() => {
-                            const updated = [...settings.countries];
-                            updated[ci] = { ...updated[ci], universities: updated[ci].universities.filter((_, i) => i !== ui) };
-                            set("countries", updated);
-                          }} className="ml-0.5 hover:text-red-500 transition-colors">
-                            <X size={11} />
-                          </button>
-                        </span>
-                      ))}
-                      {country.universities.length === 0 && (
-                        <p className="text-xs text-gray-400 italic">No universities added yet</p>
-                      )}
-                    </div>
-                    <div className="flex gap-2">
-                      <input
-                        id={`uni-input-${ci}`}
-                        placeholder="Add university name…"
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            const input = e.target as HTMLInputElement;
-                            const val = input.value.trim();
-                            if (val && !country.universities.includes(val)) {
-                              const updated = [...settings.countries];
-                              updated[ci] = { ...updated[ci], universities: [...updated[ci].universities, val] };
-                              set("countries", updated);
-                              input.value = "";
+                  <div id={`country-${ci}`} className="hidden px-4 py-3 border-t border-gray-100 bg-white space-y-3">
+                    {country.universities.map((uni, ui) => (
+                      <div
+                        key={`${ci}-${ui}`}
+                        className="border border-blue-100 rounded-xl p-3 bg-blue-50/30 space-y-2.5"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <GraduationCap size={14} className="text-blue-500 shrink-0" />
+                            <span className="font-semibold text-sm text-gray-900 truncate">{uni.name}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateCountryUniversities(ci, (list) => list.filter((_, i) => i !== ui))
                             }
-                          }
-                        }}
-                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder-gray-400"
+                            className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md shrink-0"
+                            title="Remove university"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">
+                            Requirements
+                          </label>
+                          <textarea
+                            rows={4}
+                            value={uni.requirements}
+                            onChange={(e) =>
+                              updateCountryUniversities(ci, (list) => {
+                                const next = [...list];
+                                next[ui] = { ...next[ui], requirements: e.target.value };
+                                return next;
+                              })
+                            }
+                            placeholder={"• IELTS not less than 7\n• Official transcripts required"}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder-gray-400 resize-y min-h-[88px]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-1">
+                            <Paperclip size={10} /> Documents
+                          </label>
+                          <div className="flex flex-wrap gap-2 mb-2">
+                            {(uni.attachments || []).map((att, ai) => (
+                              <span
+                                key={`${att.path}-${ai}`}
+                                className="inline-flex items-center gap-1.5 max-w-full px-2 py-1 bg-white border border-gray-200 rounded-lg text-xs"
+                              >
+                                <a
+                                  href={att.path}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:underline truncate max-w-[200px]"
+                                >
+                                  {att.originalName || "File"}
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateCountryUniversities(ci, (list) => {
+                                      const next = [...list];
+                                      const u = next[ui];
+                                      if (!u) return list;
+                                      next[ui] = {
+                                        ...u,
+                                        attachments: u.attachments.filter((_, j) => j !== ai),
+                                      };
+                                      return next;
+                                    })
+                                  }
+                                  className="text-gray-400 hover:text-red-500 p-0.5"
+                                  title="Remove file"
+                                >
+                                  <X size={12} />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="file"
+                              multiple
+                              id={`uni-files-${ci}-${ui}`}
+                              className="hidden"
+                              disabled={uniDocBusy === `${ci}-${ui}`}
+                              onChange={(e) => {
+                                void appendUniversityDocuments(ci, ui, e.target.files);
+                                e.target.value = "";
+                              }}
+                            />
+                            <label
+                              htmlFor={`uni-files-${ci}-${ui}`}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
+                                uniDocBusy === `${ci}-${ui}`
+                                  ? "opacity-50 cursor-not-allowed"
+                                  : "hover:bg-gray-50 text-gray-700"
+                              }`}
+                            >
+                              {uniDocBusy === `${ci}-${ui}` ? (
+                                <Loader2 size={12} className="animate-spin" />
+                              ) : (
+                                <Plus size={12} />
+                              )}
+                              Add files
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {country.universities.length === 0 && (
+                      <p className="text-xs text-gray-400 italic">No universities added yet</p>
+                    )}
+                    <div className="border border-dashed border-gray-200 rounded-xl p-3 space-y-2 bg-gray-50/50">
+                      <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Add university</p>
+                      <input
+                        id={`new-uni-name-${ci}`}
+                        placeholder="University name"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      />
+                      <textarea
+                        id={`new-uni-req-${ci}`}
+                        rows={3}
+                        placeholder="Requirements (optional), e.g. one bullet per line"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 resize-y min-h-[72px] placeholder-gray-400"
+                      />
+                      <input
+                        type="file"
+                        multiple
+                        id={`new-uni-files-${ci}`}
+                        className="block w-full text-xs text-gray-600 file:mr-2 file:py-1.5 file:px-2 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700"
                       />
                       <button
                         type="button"
-                        onClick={() => {
-                          const input = document.getElementById(`uni-input-${ci}`) as HTMLInputElement;
-                          const val = input.value.trim();
-                          if (val && !country.universities.includes(val)) {
-                            const updated = [...settings.countries];
-                            updated[ci] = { ...updated[ci], universities: [...updated[ci].universities, val] };
-                            set("countries", updated);
-                            input.value = "";
-                          }
-                        }}
-                        className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-colors"
+                        disabled={uniDocBusy === `new-${ci}`}
+                        onClick={() => void addUniversityWithDetails(ci)}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition-colors"
                       >
-                        + Add
+                        {uniDocBusy === `new-${ci}` ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                        Add university
                       </button>
                     </div>
                   </div>
@@ -1724,146 +1985,166 @@ export default function SettingsPage() {
             title="Telecaller transfer outcomes"
             description="Options in the telecaller leads table. Effect decides what is PATCHed to the lead (assign counsellor, set FD status, or set standing)."
           >
-            <div className="space-y-3 overflow-x-auto">
-              <table className="w-full text-xs text-left min-w-[720px]">
-                <thead>
-                  <tr className="border-b border-gray-200 text-gray-500 uppercase tracking-wide">
-                    <th className="py-2 pr-2 font-semibold">Id</th>
-                    <th className="py-2 pr-2 font-semibold">Label</th>
-                    <th className="py-2 pr-2 font-semibold">Effect</th>
-                    <th className="py-2 pr-2 font-semibold">FD status</th>
-                    <th className="py-2 pr-2 font-semibold">Standing</th>
-                    <th className="py-2 pr-2 font-semibold">Req. counsellor</th>
-                    <th className="py-2 pr-2 font-semibold">Req. date</th>
-                    <th className="py-2 pl-2 font-semibold w-10" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {settings.telecallerTransferOutcomes.map((row, i) => (
-                    <tr key={`${row.id}-${i}`} className="border-b border-gray-100 align-top">
-                      <td className="py-2 pr-2">
-                        <input
-                          value={row.id}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            const next = [...settings.telecallerTransferOutcomes];
-                            next[i] = { ...next[i], id: v };
-                            setSettings((prev) => ({ ...prev, telecallerTransferOutcomes: next }));
-                            setSaved(false);
-                          }}
-                          className="w-full px-2 py-1.5 border border-gray-300 rounded-md bg-white"
-                        />
-                      </td>
-                      <td className="py-2 pr-2">
-                        <input
-                          value={row.label}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            const next = [...settings.telecallerTransferOutcomes];
-                            next[i] = { ...next[i], label: v };
-                            setSettings((prev) => ({ ...prev, telecallerTransferOutcomes: next }));
-                            setSaved(false);
-                          }}
-                          className="w-full px-2 py-1.5 border border-gray-300 rounded-md bg-white"
-                        />
-                      </td>
-                      <td className="py-2 pr-2">
-                        <select
-                          value={row.effect}
-                          onChange={(e) => {
-                            const effect = e.target.value as TelecallerTransferOutcome["effect"];
-                            const next = [...settings.telecallerTransferOutcomes];
-                            next[i] = {
-                              ...next[i],
-                              effect,
-                              fdStatus: effect === "set_standing" ? undefined : next[i].fdStatus,
-                              standing: effect === "set_standing" ? next[i].standing || "cold" : undefined,
-                            };
-                            setSettings((prev) => ({ ...prev, telecallerTransferOutcomes: next }));
-                            setSaved(false);
-                          }}
-                          className="w-full px-2 py-1.5 border border-gray-300 rounded-md bg-white"
-                        >
-                          <option value="assign_counsellor">Assign counsellor</option>
-                          <option value="set_status">Set FD status</option>
-                          <option value="set_standing">Set standing</option>
-                        </select>
-                      </td>
-                      <td className="py-2 pr-2">
-                        <input
-                          value={row.fdStatus ?? ""}
-                          disabled={row.effect === "set_standing"}
-                          onChange={(e) => {
-                            const next = [...settings.telecallerTransferOutcomes];
-                            next[i] = { ...next[i], fdStatus: e.target.value };
-                            setSettings((prev) => ({ ...prev, telecallerTransferOutcomes: next }));
-                            setSaved(false);
-                          }}
-                          className="w-full px-2 py-1.5 border border-gray-300 rounded-md bg-white disabled:bg-gray-100"
-                          placeholder="e.g. Assigned"
-                        />
-                      </td>
-                      <td className="py-2 pr-2">
-                        <input
-                          value={row.standing ?? ""}
-                          disabled={row.effect !== "set_standing"}
-                          onChange={(e) => {
-                            const next = [...settings.telecallerTransferOutcomes];
-                            next[i] = { ...next[i], standing: e.target.value };
-                            setSettings((prev) => ({ ...prev, telecallerTransferOutcomes: next }));
-                            setSaved(false);
-                          }}
-                          className="w-full px-2 py-1.5 border border-gray-300 rounded-md bg-white disabled:bg-gray-100"
-                          placeholder="e.g. cold"
-                        />
-                      </td>
-                      <td className="py-2 pr-2 text-center">
-                        <input
-                          type="checkbox"
-                          checked={!!row.requiresCounsellor}
-                          onChange={(e) => {
-                            const next = [...settings.telecallerTransferOutcomes];
-                            next[i] = { ...next[i], requiresCounsellor: e.target.checked };
-                            setSettings((prev) => ({ ...prev, telecallerTransferOutcomes: next }));
-                            setSaved(false);
-                          }}
-                          className="rounded border-gray-300"
-                        />
-                      </td>
-                      <td className="py-2 pr-2 text-center">
-                        <input
-                          type="checkbox"
-                          checked={!!row.requiresAppointmentDate}
-                          onChange={(e) => {
-                            const next = [...settings.telecallerTransferOutcomes];
-                            next[i] = { ...next[i], requiresAppointmentDate: e.target.checked };
-                            setSettings((prev) => ({ ...prev, telecallerTransferOutcomes: next }));
-                            setSaved(false);
-                          }}
-                          className="rounded border-gray-300"
-                        />
-                      </td>
-                      <td className="py-2 pl-2">
-                        <button
-                          type="button"
-                          disabled={settings.telecallerTransferOutcomes.length <= 1}
-                          onClick={() => {
-                            setSettings((prev) => ({
-                              ...prev,
-                              telecallerTransferOutcomes: prev.telecallerTransferOutcomes.filter((_, j) => j !== i),
-                            }));
-                            setSaved(false);
-                          }}
-                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-md disabled:opacity-30"
-                          title="Remove row"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="space-y-4">
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm ring-1 ring-black/[0.04] overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left min-w-[800px]">
+                    <thead>
+                      <tr className="bg-gray-100 border-b border-gray-200">
+                        <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-gray-600 w-[140px]">
+                          Id
+                        </th>
+                        <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-gray-600 min-w-[140px]">
+                          Label
+                        </th>
+                        <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-gray-600 min-w-[160px]">
+                          Effect
+                        </th>
+                        <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-gray-600 min-w-[140px]">
+                          FD status
+                        </th>
+                        <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-gray-600 min-w-[120px]">
+                          Standing
+                        </th>
+                        <th className="px-3 py-3 text-center text-[11px] font-bold uppercase tracking-wide text-gray-600 w-[100px]">
+                          Req. counsellor
+                        </th>
+                        <th className="px-3 py-3 text-center text-[11px] font-bold uppercase tracking-wide text-gray-600 w-[88px]">
+                          Req. date
+                        </th>
+                        <th className="px-2 py-3 w-12" aria-label="Actions" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {settings.telecallerTransferOutcomes.map((row, i) => (
+                        <tr key={`${row.id}-${i}`} className="align-top hover:bg-slate-50/70 transition-colors">
+                          <td className="px-3 py-2.5">
+                            <input
+                              value={row.id}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                const next = [...settings.telecallerTransferOutcomes];
+                                next[i] = { ...next[i], id: v };
+                                setSettings((prev) => ({ ...prev, telecallerTransferOutcomes: next }));
+                                setSaved(false);
+                              }}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-mono text-gray-900 placeholder:text-gray-500 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                              placeholder="outcome_id"
+                            />
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <input
+                              value={row.label}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                const next = [...settings.telecallerTransferOutcomes];
+                                next[i] = { ...next[i], label: v };
+                                setSettings((prev) => ({ ...prev, telecallerTransferOutcomes: next }));
+                                setSaved(false);
+                              }}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-500 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                              placeholder="Display name"
+                            />
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <select
+                              value={row.effect}
+                              onChange={(e) => {
+                                const effect = e.target.value as TelecallerTransferOutcome["effect"];
+                                const next = [...settings.telecallerTransferOutcomes];
+                                next[i] = {
+                                  ...next[i],
+                                  effect,
+                                  fdStatus: effect === "set_standing" ? undefined : next[i].fdStatus,
+                                  standing: effect === "set_standing" ? next[i].standing || "cold" : undefined,
+                                };
+                                setSettings((prev) => ({ ...prev, telecallerTransferOutcomes: next }));
+                                setSaved(false);
+                              }}
+                              className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                            >
+                              <option value="assign_counsellor">Assign counsellor</option>
+                              <option value="set_status">Set FD status</option>
+                              <option value="set_standing">Set standing</option>
+                            </select>
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <input
+                              value={row.fdStatus ?? ""}
+                              disabled={row.effect === "set_standing"}
+                              onChange={(e) => {
+                                const next = [...settings.telecallerTransferOutcomes];
+                                next[i] = { ...next[i], fdStatus: e.target.value };
+                                setSettings((prev) => ({ ...prev, telecallerTransferOutcomes: next }));
+                                setSaved(false);
+                              }}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-500 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-500"
+                              placeholder="e.g. Assigned"
+                            />
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <input
+                              value={row.standing ?? ""}
+                              disabled={row.effect !== "set_standing"}
+                              onChange={(e) => {
+                                const next = [...settings.telecallerTransferOutcomes];
+                                next[i] = { ...next[i], standing: e.target.value };
+                                setSettings((prev) => ({ ...prev, telecallerTransferOutcomes: next }));
+                                setSaved(false);
+                              }}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-500 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-500"
+                              placeholder="e.g. cold"
+                            />
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <input
+                              type="checkbox"
+                              checked={!!row.requiresCounsellor}
+                              onChange={(e) => {
+                                const next = [...settings.telecallerTransferOutcomes];
+                                next[i] = { ...next[i], requiresCounsellor: e.target.checked };
+                                setSettings((prev) => ({ ...prev, telecallerTransferOutcomes: next }));
+                                setSaved(false);
+                              }}
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 accent-blue-600"
+                            />
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <input
+                              type="checkbox"
+                              checked={!!row.requiresAppointmentDate}
+                              onChange={(e) => {
+                                const next = [...settings.telecallerTransferOutcomes];
+                                next[i] = { ...next[i], requiresAppointmentDate: e.target.checked };
+                                setSettings((prev) => ({ ...prev, telecallerTransferOutcomes: next }));
+                                setSaved(false);
+                              }}
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 accent-blue-600"
+                            />
+                          </td>
+                          <td className="px-2 py-2.5">
+                            <button
+                              type="button"
+                              disabled={settings.telecallerTransferOutcomes.length <= 1}
+                              onClick={() => {
+                                setSettings((prev) => ({
+                                  ...prev,
+                                  telecallerTransferOutcomes: prev.telecallerTransferOutcomes.filter((_, j) => j !== i),
+                                }));
+                                setSaved(false);
+                              }}
+                              className="inline-flex p-2 text-red-600 hover:bg-red-50 rounded-lg border border-transparent hover:border-red-100 transition-colors disabled:opacity-25 disabled:pointer-events-none"
+                              title="Remove row"
+                            >
+                              <Trash2 size={16} strokeWidth={2} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => {
@@ -1883,9 +2164,9 @@ export default function SettingsPage() {
                   }));
                   setSaved(false);
                 }}
-                className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-gray-800 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-gray-800 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 hover:border-gray-400 transition-colors"
               >
-                <Plus size={14} />
+                <Plus size={16} strokeWidth={2.5} />
                 Add outcome
               </button>
             </div>

@@ -10,6 +10,14 @@ declare module "next-auth" {
       branch: string;
       branchName: string;
       permissions: string[];
+      /** HR module: "admin" | "employee" — separate from CRM role. */
+      hrRole?: "admin" | "employee";
     };
+  }
+}
+
+declare module "next-auth/jwt" {
+  interface JWT {
+    hrRole?: "admin" | "employee";
   }
 }

@@ -204,7 +204,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
   super_admin: [
     "leads", "students", "documents", "applications",
     "admissions", "visa", "analytics", "branches",
-    "users", "settings", "activity_logs", "chat", "commission",
+    "users", "settings", "activity_logs", "chat", "commission", "inventory",
   ],
   counsellor: ["leads", "students", "documents", "applications", "chat"],
   telecaller: ["leads", "chat"],
@@ -229,6 +229,7 @@ export const ALL_PERMISSIONS: { key: Permission; label: string; description: str
   { key: "activity_logs", label: "Activity Logs",     description: "Full audit trail of all actions" },
   { key: "settings",      label: "Settings",          description: "System-wide configuration" },
   { key: "commission",    label: "Commission",        description: "Record partner commissions by destination" },
+  { key: "inventory",     label: "Inventory",         description: "Office assets, assignments & consumable stock" },
 ];
 
 // ─── Settings sub-permissions (which tabs inside Settings a user can access) ─

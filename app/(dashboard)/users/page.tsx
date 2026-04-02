@@ -5,7 +5,8 @@ import {
   Plus, Users, Search, KeyRound, X, UserPlus,
   Mail, Phone, Shield, Building2, Target, Calendar,
   Lock, Eye, EyeOff, CheckCircle2, AlertCircle,
-  RotateCcw, UserCog, ChevronDown, Settings,
+  RotateCcw, UserCog, ChevronDown, Settings, Info,
+  Banknote, Clock, Globe,
 } from "lucide-react";
 import { formatDate, getRoleBadgeColor, getRoleLabel, ALL_PERMISSIONS, ROLE_DEFAULT_PERMISSIONS, SETTINGS_SUB_PERMISSIONS, ALL_SETTINGS_SUB_KEYS } from "@/lib/utils";
 import { useBranding } from "@/app/branding-context";
@@ -24,7 +25,27 @@ interface User {
   isActive: boolean;
   createdAt: string;
   permissions: string[];
+  monthlySalary?: number;
+  workingDays?: number;
+  workingHoursPerDay?: number;
+  officeNetworkIp?: string;
 }
+
+type UserFormState = {
+  name: string;
+  email: string;
+  password: string;
+  role: string;
+  branch: string;
+  phone: string;
+  dateOfBirth: string;
+  target: string;
+  permissions: string[];
+  monthlySalary: string;
+  workingHoursPerDay: string;
+  workingDays: string;
+  officeNetworkIp: string;
+};
 
 /* ─── Role icon color (unknown slugs fall back) ─── */
 const roleIconMap: Record<string, string> = {
@@ -73,20 +94,21 @@ export default function UsersPage() {
     [applicationRoles]
   );
 
-  const buildEmptyForm = useCallback(
-    () => ({
-      name: "",
-      email: "",
-      password: "",
-      role: defaultCreatableRole,
-      branch: "",
-      phone: "",
-      dateOfBirth: "",
-      target: "0",
-      permissions: defaultPermissionsForSlug(defaultCreatableRole),
-    }),
-    [defaultCreatableRole, defaultPermissionsForSlug]
-  );
+  const buildEmptyForm = useCallback((): UserFormState => ({
+    name: "",
+    email: "",
+    password: "",
+    role: defaultCreatableRole,
+    branch: "",
+    phone: "",
+    dateOfBirth: "",
+    target: "0",
+    permissions: defaultPermissionsForSlug(defaultCreatableRole),
+    monthlySalary: "0",
+    workingHoursPerDay: "8",
+    workingDays: "26",
+    officeNetworkIp: "",
+  }), [defaultCreatableRole, defaultPermissionsForSlug]);
 
   /* ─── State ─── */
   const [users, setUsers] = useState<User[]>([]);
@@ -99,7 +121,8 @@ export default function UsersPage() {
   /* form modals */
   const [showForm, setShowForm] = useState(false);
   const [editUser, setEditUser] = useState<User | null>(null);
-  const [form, setForm] = useState(() => ({
+  const [adminSessionIp, setAdminSessionIp] = useState<string | null>(null);
+  const [form, setForm] = useState<UserFormState>(() => ({
     name: "",
     email: "",
     password: "",
@@ -109,6 +132,10 @@ export default function UsersPage() {
     dateOfBirth: "",
     target: "0",
     permissions: [...ROLE_DEFAULT_PERMISSIONS.counsellor] as string[],
+    monthlySalary: "0",
+    workingHoursPerDay: "8",
+    workingDays: "26",
+    officeNetworkIp: "",
   }));
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState("");
@@ -145,6 +172,25 @@ export default function UsersPage() {
       });
   }, [fetchUsers]);
 
+  useEffect(() => {
+    if (!showForm || !isSuperAdmin) {
+      setAdminSessionIp(null);
+      return;
+    }
+    let cancelled = false;
+    void fetch("/api/users/client-ip")
+      .then((r) => r.json())
+      .then((d: { ip?: string }) => {
+        if (!cancelled && typeof d.ip === "string") setAdminSessionIp(d.ip);
+      })
+      .catch(() => {
+        if (!cancelled) setAdminSessionIp(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showForm, isSuperAdmin]);
+
   const roleFilterOptions = useMemo(() => {
     const fromCatalog = applicationRoles.map((r) => r.slug);
     const fromUsers = [...new Set(users.map((u) => u.role))];
@@ -170,15 +216,29 @@ export default function UsersPage() {
     setFormSuccess("");
     setFormLoading(true);
 
-    const payload = { ...form, target: Number(form.target) };
+    const basePayload: Record<string, unknown> = {
+      name: form.name,
+      email: form.email,
+      role: form.role,
+      branch: form.branch,
+      phone: form.phone,
+      dateOfBirth: form.dateOfBirth,
+      target: Number(form.target),
+      permissions: form.permissions,
+    };
+    if (isSuperAdmin) {
+      basePayload.monthlySalary = Number(form.monthlySalary) || 0;
+      basePayload.workingDays = Math.max(1, Math.min(31, Number(form.workingDays) || 26));
+      const wh = Number(form.workingHoursPerDay);
+      basePayload.workingHoursPerDay = Number.isFinite(wh) ? Math.min(24, Math.max(0, wh)) : 8;
+      basePayload.officeNetworkIp = (form.officeNetworkIp || "").trim().slice(0, 128);
+    }
 
     if (editUser) {
-      /* edit mode — don't send password */
-      const { password: _, ...rest } = payload; // eslint-disable-line @typescript-eslint/no-unused-vars
       const res = await fetch(`/api/users/${editUser._id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(rest),
+        body: JSON.stringify(basePayload),
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
@@ -197,7 +257,7 @@ export default function UsersPage() {
       const res = await fetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...basePayload, password: form.password }),
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
@@ -224,6 +284,10 @@ export default function UsersPage() {
       dateOfBirth: u.dateOfBirth || "",
       target: String(u.target || 0),
       permissions: u.permissions?.length ? [...u.permissions] : defaultPermissionsForSlug(u.role),
+      monthlySalary: String(u.monthlySalary ?? 0),
+      workingHoursPerDay: String(u.workingHoursPerDay ?? 8),
+      workingDays: String(u.workingDays ?? 26),
+      officeNetworkIp: u.officeNetworkIp ?? "",
     });
     setFormError("");
     setFormSuccess("");
@@ -296,74 +360,115 @@ export default function UsersPage() {
   /* ─── Render ─── */
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2.5">
-            <div className="p-2 rounded-xl" style={{ backgroundColor: `${branding.brandColor}15` }}>
-              <Users size={22} style={{ color: branding.brandColor }} />
+      {/* Header + stats + filters */}
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm ring-1 ring-black/[0.04] overflow-hidden">
+        <div className="px-5 py-5 sm:px-6 sm:py-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between border-b border-gray-100">
+          <div className="flex items-start gap-3 min-w-0">
+            <div
+              className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
+              style={{ backgroundColor: `${branding.brandColor}18` }}
+            >
+              <Users size={22} style={{ color: branding.brandColor }} strokeWidth={2} />
             </div>
-            Team Members
-          </h1>
-          <p className="text-gray-500 text-sm mt-1">Manage your team — {users.length} members</p>
-        </div>
-        <button
-          onClick={() => { closeForm(); setShowForm(true); }}
-          className="flex items-center gap-2 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-blue-500/25 transition-all hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
-          style={{ backgroundColor: branding.brandColor }}
-        >
-          <UserPlus size={16} /> Add Team Member
-        </button>
-      </div>
-
-      {/* Stat pills */}
-      <div className="flex flex-wrap gap-3">
-        {[
-          { label: "Total", value: users.length, color: "bg-blue-50 text-blue-700 border-blue-100" },
-          { label: "Active", value: activeCount, color: "bg-green-50 text-green-700 border-green-100" },
-          { label: "Inactive", value: inactiveCount, color: "bg-gray-50 text-gray-600 border-gray-200" },
-        ].map((s) => (
-          <div key={s.label} className={`px-4 py-2 rounded-xl border text-sm font-medium ${s.color}`}>
-            {s.label}: <span className="font-bold">{s.value}</span>
+            <div className="min-w-0">
+              <h1 className="text-xl font-semibold text-gray-900 tracking-tight">Team Members</h1>
+              <p className="text-sm text-gray-600 mt-0.5">
+                Manage your team — <span className="font-semibold text-gray-800 tabular-nums">{users.length}</span>{" "}
+                {users.length === 1 ? "member" : "members"}
+              </p>
+              <div className="flex flex-wrap gap-2 mt-3">
+                {[
+                  {
+                    label: "Total",
+                    value: users.length,
+                    className: "bg-slate-100 text-slate-800 border-slate-200",
+                  },
+                  {
+                    label: "Active",
+                    value: activeCount,
+                    className: "bg-emerald-50 text-emerald-900 border-emerald-200",
+                  },
+                  {
+                    label: "Inactive",
+                    value: inactiveCount,
+                    className: "bg-gray-100 text-gray-800 border-gray-300",
+                  },
+                ].map((s) => (
+                  <div
+                    key={s.label}
+                    className={`inline-flex items-baseline gap-1.5 px-3 py-1.5 rounded-lg border text-xs sm:text-sm ${s.className}`}
+                  >
+                    <span className="font-medium opacity-90">{s.label}</span>
+                    <span className="font-bold tabular-nums text-[13px] sm:text-sm">{s.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-        ))}
-      </div>
+          <button
+            type="button"
+            onClick={() => {
+              closeForm();
+              setShowForm(true);
+            }}
+            className="inline-flex items-center justify-center gap-2 text-white px-4 py-2.5 sm:px-5 rounded-lg text-sm font-semibold shadow-md shadow-black/10 hover:brightness-105 active:scale-[0.99] transition-all shrink-0 w-full sm:w-auto"
+            style={{ backgroundColor: branding.brandColor }}
+          >
+            <UserPlus size={17} strokeWidth={2.25} />
+            Add Team Member
+          </button>
+        </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name or email…"
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 bg-white"
-          />
-        </div>
-        <div className="relative">
-          <select
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
-            className="appearance-none pl-4 pr-9 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 bg-white cursor-pointer"
-          >
-            <option value="all">All Roles</option>
-            {roleFilterOptions.map((r) => (
-              <option key={r} value={r}>{getRoleLabel(r, applicationRoles)}</option>
-            ))}
-          </select>
-          <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-        </div>
-        <div className="relative">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "inactive")}
-            className="appearance-none pl-4 pr-9 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 bg-white cursor-pointer"
-          >
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
-          <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        <div className="px-5 py-4 sm:px-6 bg-gray-50/90 border-b border-gray-100">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2">Search & filter</p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1 min-w-0">
+              <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name or email"
+                className="w-full pl-10 pr-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-900 placeholder:text-gray-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              />
+            </div>
+            <div className="flex flex-col gap-3 sm:contents">
+              <div className="relative sm:min-w-[160px]">
+                <label htmlFor="users-filter-role" className="sr-only">
+                  Role
+                </label>
+                <select
+                  id="users-filter-role"
+                  value={roleFilter}
+                  onChange={(e) => setRoleFilter(e.target.value)}
+                  className="appearance-none w-full pl-3 pr-9 py-2.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+                >
+                  <option value="all">All roles</option>
+                  {roleFilterOptions.map((r) => (
+                    <option key={r} value={r}>
+                      {getRoleLabel(r, applicationRoles)}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+              </div>
+              <div className="relative sm:min-w-[140px]">
+                <label htmlFor="users-filter-status" className="sr-only">
+                  Status
+                </label>
+                <select
+                  id="users-filter-status"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "inactive")}
+                  className="appearance-none w-full pl-3 pr-9 py-2.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+                >
+                  <option value="all">All status</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+                <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -483,316 +588,504 @@ export default function UsersPage() {
       {/* ─── Add / Edit User Modal ─── */}
       {showForm && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={closeForm}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[92vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
-            {/* Modal header */}
-            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white" style={{ backgroundColor: branding.brandColor }}>
-                  {editUser ? <UserCog size={20} /> : <UserPlus size={20} />}
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col ring-1 ring-black/[0.06] animate-in fade-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 py-4 sm:px-7 sm:py-5 border-b border-gray-200/90 bg-gradient-to-r from-gray-50/80 to-white flex items-center justify-between gap-4 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div
+                  className="w-11 h-11 rounded-xl flex items-center justify-center text-white shadow-sm shrink-0"
+                  style={{ backgroundColor: branding.brandColor }}
+                >
+                  {editUser ? <UserCog size={22} /> : <UserPlus size={22} />}
                 </div>
-                <div>
-                  <h2 className="font-bold text-gray-900 text-lg">{editUser ? "Edit Team Member" : "Add Team Member"}</h2>
-                  <p className="text-xs text-gray-500">{editUser ? "Update member details" : "Fill in the details to create a new user"}</p>
+                <div className="min-w-0">
+                  <h2 className="font-semibold text-gray-900 text-lg tracking-tight">
+                    {editUser ? "Edit Team Member" : "Add Team Member"}
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-0.5 leading-snug">
+                    {editUser ? "Update member details" : "Fill in the details to create a new user"}
+                  </p>
                 </div>
               </div>
-              <button onClick={closeForm} className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600">
-                <X size={18} />
+              <button
+                type="button"
+                onClick={closeForm}
+                className="p-2 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors shrink-0"
+                aria-label="Close"
+              >
+                <X size={20} />
               </button>
             </div>
 
-            {/* Modal body */}
-            <form onSubmit={handleSubmit} className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
-              {/* Status messages */}
-              {formError && (
-                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
-                  <AlertCircle size={16} className="shrink-0" /> {formError}
-                </div>
-              )}
-              {formSuccess && (
-                <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl text-sm text-green-700">
-                  <CheckCircle2 size={16} className="shrink-0" /> {formSuccess}
-                </div>
-              )}
-
-              {/* Name & Email row */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 mb-1.5">
-                    <UserPlus size={13} className="text-gray-400" /> Full Name <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="text" required value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="John Doe"
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all placeholder:text-gray-300"
-                  />
-                </div>
-                <div>
-                  <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 mb-1.5">
-                    <Mail size={13} className="text-gray-400" /> Email <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="email" required value={form.email}
-                    onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    placeholder="john@company.com"
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all placeholder:text-gray-300"
-                  />
-                </div>
-              </div>
-
-              {/* Password (only for create) */}
-              {!editUser && (
-                <div>
-                  <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 mb-1.5">
-                    <Lock size={13} className="text-gray-400" /> Password <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="password" required value={form.password}
-                    onChange={(e) => setForm({ ...form, password: e.target.value })}
-                    placeholder="Min 6 characters"
-                    minLength={6}
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all placeholder:text-gray-300"
-                  />
-                </div>
-              )}
-
-              {/* Phone & DOB */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 mb-1.5">
-                    <Phone size={13} className="text-gray-400" /> Phone
-                  </label>
-                  <input
-                    type="tel" value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                    placeholder="+91 9876543210"
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all placeholder:text-gray-300"
-                  />
-                </div>
-                <div>
-                  <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 mb-1.5">
-                    <Calendar size={13} className="text-gray-400" /> Date of Birth
-                  </label>
-                  <input
-                    type="date" value={form.dateOfBirth}
-                    onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })}
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all text-gray-700"
-                  />
-                </div>
-              </div>
-
-              {/* Role & Branch */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 mb-1.5">
-                    <Shield size={13} className="text-gray-400" /> Role <span className="text-red-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <select
-                      required value={form.role}
-                      onChange={(e) => {
-                        const newRole = e.target.value;
-                        setForm({
-                          ...form,
-                          role: newRole,
-                          permissions: defaultPermissionsForSlug(newRole),
-                        });
-                      }}
-                      className="appearance-none w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all bg-white cursor-pointer"
-                    >
-                      {availableRoles.map((r) => (
-                        <option key={r} value={r}>{getRoleLabel(r, applicationRoles)}</option>
-                      ))}
-                    </select>
-                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+              <div className="flex-1 overflow-y-auto px-6 sm:px-7 py-6 space-y-8">
+                {formError && (
+                  <div className="flex items-start gap-2.5 p-3.5 bg-red-50 border border-red-200 rounded-xl text-sm text-red-800">
+                    <AlertCircle size={18} className="shrink-0 mt-0.5" /> <span>{formError}</span>
                   </div>
-                </div>
-                <div>
-                  <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 mb-1.5">
-                    <Building2 size={13} className="text-gray-400" /> Branch <span className="text-red-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <select
-                      required value={form.branch}
-                      onChange={(e) => setForm({ ...form, branch: e.target.value })}
-                      className="appearance-none w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all bg-white cursor-pointer"
-                    >
-                      <option value="">Select branch</option>
-                      {branches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
-                    </select>
-                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                )}
+                {formSuccess && (
+                  <div className="flex items-start gap-2.5 p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-800">
+                    <CheckCircle2 size={18} className="shrink-0 mt-0.5" /> <span>{formSuccess}</span>
                   </div>
-                </div>
-              </div>
+                )}
 
-              {/* Module Permissions */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <p className="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
-                      <Shield size={13} className="text-gray-400" /> Module Permissions
-                    </p>
-                    <p className="text-[11px] text-gray-400 mt-0.5">Role defaults pre-filled — customise freely. Changes take effect on the user&apos;s next login.</p>
+                <section className="space-y-4">
+                  <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Account</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4">
+                    <div>
+                      <label htmlFor="user-form-name" className="block text-xs font-semibold text-gray-700 mb-1.5">
+                        Full name <span className="text-red-500 font-bold">*</span>
+                      </label>
+                      <div className="relative">
+                        <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                        <input
+                          id="user-form-name"
+                          type="text"
+                          required
+                          value={form.name}
+                          onChange={(e) => setForm({ ...form, name: e.target.value })}
+                          placeholder="John Doe"
+                          className="w-full pl-10 pr-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-900 placeholder:text-gray-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label htmlFor="user-form-email" className="block text-xs font-semibold text-gray-700 mb-1.5">
+                        Email <span className="text-red-500 font-bold">*</span>
+                      </label>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                        <input
+                          id="user-form-email"
+                          type="email"
+                          required
+                          value={form.email}
+                          onChange={(e) => setForm({ ...form, email: e.target.value })}
+                          placeholder="admin@company.com"
+                          className="w-full pl-10 pr-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-900 placeholder:text-gray-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
+                        />
+                      </div>
+                    </div>
                   </div>
-                  {form.role !== "super_admin" && (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setForm({ ...form, permissions: ALL_PERMISSIONS.map((p) => p.key) })}
-                        className="text-[11px] font-medium text-blue-600 hover:underline"
-                      >
-                        Select all
-                      </button>
-                      <span className="text-gray-300 text-xs">|</span>
-                      <button
-                        type="button"
-                        onClick={() => setForm({ ...form, permissions: [] })}
-                        className="text-[11px] font-medium text-gray-500 hover:underline"
-                      >
-                        Clear
-                      </button>
+                  {!editUser && (
+                    <div>
+                      <label htmlFor="user-form-password" className="block text-xs font-semibold text-gray-700 mb-1.5">
+                        Password <span className="text-red-500 font-bold">*</span>
+                      </label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                        <input
+                          id="user-form-password"
+                          type="password"
+                          required
+                          value={form.password}
+                          onChange={(e) => setForm({ ...form, password: e.target.value })}
+                          placeholder="Minimum 6 characters"
+                          minLength={6}
+                          className="w-full pl-10 pr-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-900 placeholder:text-gray-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
+                        />
+                      </div>
                     </div>
                   )}
-                </div>
+                </section>
 
-                {form.role === "super_admin" ? (
-                  <div className="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl">
-                    <Shield size={16} className="text-red-500 shrink-0" />
+                <section className="space-y-4">
+                  <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Contact</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4">
                     <div>
-                      <p className="text-xs font-semibold text-red-700">Full System Access</p>
-                      <p className="text-[11px] text-red-500 mt-0.5">Super Admins bypass all permission checks automatically.</p>
+                      <label htmlFor="user-form-phone" className="block text-xs font-semibold text-gray-700 mb-1.5">
+                        Phone
+                      </label>
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                        <input
+                          id="user-form-phone"
+                          type="tel"
+                          value={form.phone}
+                          onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                          placeholder="+91 9876543210"
+                          className="w-full pl-10 pr-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-900 placeholder:text-gray-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label htmlFor="user-form-dob" className="block text-xs font-semibold text-gray-700 mb-1.5">
+                        Date of birth
+                      </label>
+                      <div className="relative">
+                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none z-[1]" />
+                        <input
+                          id="user-form-dob"
+                          type="date"
+                          value={form.dateOfBirth}
+                          onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })}
+                          className="w-full pl-10 pr-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors min-h-[42px]"
+                        />
+                      </div>
                     </div>
                   </div>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-2 gap-2">
-                      {ALL_PERMISSIONS.map((perm) => {
-                        const checked = form.permissions.includes(perm.key);
-                        return (
-                          <label
-                            key={perm.key}
-                            className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all select-none ${
-                              checked
-                                ? "bg-blue-50 border-blue-300"
-                                : "bg-gray-50 border-gray-200 hover:border-gray-300"
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => {
-                                let next: string[];
-                                if (checked) {
-                                  next = form.permissions.filter((p) => p !== perm.key);
-                                  if (perm.key === "settings") {
-                                    next = next.filter((p) => !p.startsWith("settings:"));
-                                  }
-                                } else {
-                                  next = [...form.permissions, perm.key];
-                                  if (perm.key === "settings") {
-                                    next = [...next, ...ALL_SETTINGS_SUB_KEYS];
-                                  }
-                                }
-                                setForm({ ...form, permissions: next });
-                              }}
-                              className="mt-0.5 accent-blue-600 shrink-0"
-                            />
-                            <div className="min-w-0">
-                              <p className="text-xs font-semibold text-gray-800 leading-tight">{perm.label}</p>
-                              <p className="text-[10px] text-gray-500 leading-tight mt-0.5">{perm.description}</p>
-                            </div>
-                          </label>
-                        );
-                      })}
-                    </div>
+                </section>
 
-                    {form.permissions.includes("settings") && (
-                      <div className="mt-3 p-4 bg-gray-50 border border-gray-200 rounded-xl">
-                        <div className="flex items-center justify-between mb-3">
-                          <div>
-                            <p className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
-                              <Settings size={12} className="text-gray-400" /> Settings Sections Access
-                            </p>
-                            <p className="text-[10px] text-gray-400 mt-0.5">Choose which settings tabs this user can access.</p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setForm({ ...form, permissions: [...form.permissions.filter((p) => !p.startsWith("settings:")), ...ALL_SETTINGS_SUB_KEYS] })}
-                              className="text-[10px] font-medium text-blue-600 hover:underline"
-                            >All</button>
-                            <span className="text-gray-300 text-[10px]">|</span>
-                            <button
-                              type="button"
-                              onClick={() => setForm({ ...form, permissions: form.permissions.filter((p) => !p.startsWith("settings:")) })}
-                              className="text-[10px] font-medium text-gray-500 hover:underline"
-                            >None</button>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          {SETTINGS_SUB_PERMISSIONS.map((sub) => {
-                            const subChecked = form.permissions.includes(sub.key);
-                            return (
-                              <label
-                                key={sub.key}
-                                className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-all select-none text-xs ${
-                                  subChecked
-                                    ? "bg-white border-blue-300 text-gray-900 font-medium"
-                                    : "bg-gray-50 border-gray-100 text-gray-500 hover:border-gray-200"
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={subChecked}
-                                  onChange={() => {
-                                    const next = subChecked
-                                      ? form.permissions.filter((p) => p !== sub.key)
-                                      : [...form.permissions, sub.key];
-                                    setForm({ ...form, permissions: next });
-                                  }}
-                                  className="accent-blue-600 shrink-0"
-                                />
-                                {sub.label}
-                              </label>
-                            );
-                          })}
+                <section className="space-y-4">
+                  <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Role & branch</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4">
+                    <div>
+                      <label htmlFor="user-form-role" className="block text-xs font-semibold text-gray-700 mb-1.5">
+                        Role <span className="text-red-500 font-bold">*</span>
+                      </label>
+                      <div className="relative">
+                        <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none z-[1]" />
+                        <select
+                          id="user-form-role"
+                          required
+                          value={form.role}
+                          onChange={(e) => {
+                            const newRole = e.target.value;
+                            setForm({
+                              ...form,
+                              role: newRole,
+                              permissions: defaultPermissionsForSlug(newRole),
+                            });
+                          }}
+                          className="appearance-none w-full pl-10 pr-9 py-2.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors cursor-pointer"
+                        >
+                          {availableRoles.map((r) => (
+                            <option key={r} value={r}>
+                              {getRoleLabel(r, applicationRoles)}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      </div>
+                    </div>
+                    <div>
+                      <label htmlFor="user-form-branch" className="block text-xs font-semibold text-gray-700 mb-1.5">
+                        Branch <span className="text-red-500 font-bold">*</span>
+                      </label>
+                      <div className="relative">
+                        <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none z-[1]" />
+                        <select
+                          id="user-form-branch"
+                          required
+                          value={form.branch}
+                          onChange={(e) => setForm({ ...form, branch: e.target.value })}
+                          className="appearance-none w-full pl-10 pr-9 py-2.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors cursor-pointer"
+                        >
+                          <option value="">Select branch</option>
+                          {branches.map((b) => (
+                            <option key={b._id} value={b._id}>
+                              {b.name}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {isSuperAdmin && (
+                  <section className="space-y-4">
+                    <div>
+                      <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-500">HR & payroll</h3>
+                      <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                        Used in <span className="font-semibold text-gray-800">HR management</span> (salary report). Working days drive
+                        per-day pay. Registered IP is for your records; live check-in IP and GPS still come from attendance.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4">
+                      <div>
+                        <label htmlFor="user-form-salary" className="block text-xs font-semibold text-gray-700 mb-1.5">
+                          Salary (monthly)
+                        </label>
+                        <div className="relative">
+                          <Banknote className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                          <input
+                            id="user-form-salary"
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={form.monthlySalary}
+                            onChange={(e) => setForm({ ...form, monthlySalary: e.target.value })}
+                            placeholder="0.00"
+                            className="w-full pl-10 pr-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-900 tabular-nums placeholder:text-gray-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                          />
                         </div>
                       </div>
+                      <div>
+                        <label htmlFor="user-form-working-hours" className="block text-xs font-semibold text-gray-700 mb-1.5">
+                          Working hours (per day)
+                        </label>
+                        <div className="relative">
+                          <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                          <input
+                            id="user-form-working-hours"
+                            type="number"
+                            min={0}
+                            max={24}
+                            step={0.5}
+                            value={form.workingHoursPerDay}
+                            onChange={(e) => setForm({ ...form, workingHoursPerDay: e.target.value })}
+                            placeholder="8"
+                            className="w-full pl-10 pr-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-900 tabular-nums placeholder:text-gray-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label htmlFor="user-form-working-days" className="block text-xs font-semibold text-gray-700 mb-1.5">
+                          Number of working days (monthly)
+                        </label>
+                        <input
+                          id="user-form-working-days"
+                          type="number"
+                          min={1}
+                          max={31}
+                          value={form.workingDays}
+                          onChange={(e) => setForm({ ...form, workingDays: e.target.value })}
+                          placeholder="26"
+                          className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-900 tabular-nums placeholder:text-gray-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label htmlFor="user-form-office-ip" className="block text-xs font-semibold text-gray-700 mb-1.5">
+                          Registered network IP
+                        </label>
+                        <div className="relative">
+                          <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                          <input
+                            id="user-form-office-ip"
+                            type="text"
+                            value={form.officeNetworkIp}
+                            onChange={(e) => setForm({ ...form, officeNetworkIp: e.target.value })}
+                            placeholder="Expected office / static IP for this member (optional)"
+                            className="w-full pl-10 pr-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-900 font-mono placeholder:text-gray-500 placeholder:font-sans shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                            autoComplete="off"
+                          />
+                        </div>
+                        {adminSessionIp ? (
+                          <p className="text-xs text-gray-600 mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span>
+                              <span className="font-semibold text-gray-700">Your admin session (as seen by server):</span>{" "}
+                              <code className="text-[11px] font-mono bg-gray-100 text-gray-900 px-1.5 py-0.5 rounded border border-gray-200">
+                                {adminSessionIp}
+                              </code>
+                            </span>
+                            <button
+                              type="button"
+                              className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                              onClick={() => setForm((f) => ({ ...f, officeNetworkIp: adminSessionIp }))}
+                            >
+                              Copy into field
+                            </button>
+                          </p>
+                        ) : (
+                          <p className="text-xs text-gray-500 mt-2">Open this form while online to detect your current IP for quick fill.</p>
+                        )}
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                <section className="rounded-xl border border-gray-200 bg-gray-50/60 p-4 sm:p-5 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                    <div className="space-y-1 min-w-0">
+                      <h3 className="text-sm font-semibold text-gray-900">Module permissions</h3>
+                      <p className="text-xs text-gray-600 leading-relaxed max-w-xl">
+                        Role defaults are pre-filled. You can customise below. Updates apply on the user&apos;s next login.
+                      </p>
+                    </div>
+                    {form.role !== "super_admin" && (
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setForm({ ...form, permissions: ALL_PERMISSIONS.map((p) => p.key) })}
+                          className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+                        >
+                          Select all
+                        </button>
+                        <span className="text-gray-300">|</span>
+                        <button
+                          type="button"
+                          onClick={() => setForm({ ...form, permissions: [] })}
+                          className="text-xs font-semibold text-gray-600 hover:text-gray-800"
+                        >
+                          Clear
+                        </button>
+                      </div>
                     )}
-                  </>
+                  </div>
+
+                  {form.role === "super_admin" ? (
+                    <div className="flex gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm">
+                      <Info className="w-5 h-5 text-slate-500 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">Full system access</p>
+                        <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                          Super admins are not restricted by module permissions; checks are skipped automatically.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {ALL_PERMISSIONS.map((perm) => {
+                          const checked = form.permissions.includes(perm.key);
+                          return (
+                            <label
+                              key={perm.key}
+                              className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors select-none ${
+                                checked
+                                  ? "bg-white border-blue-400 shadow-sm"
+                                  : "bg-white/80 border-gray-200 hover:border-gray-300"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => {
+                                  let next: string[];
+                                  if (checked) {
+                                    next = form.permissions.filter((p) => p !== perm.key);
+                                    if (perm.key === "settings") {
+                                      next = next.filter((p) => !p.startsWith("settings:"));
+                                    }
+                                  } else {
+                                    next = [...form.permissions, perm.key];
+                                    if (perm.key === "settings") {
+                                      next = [...next, ...ALL_SETTINGS_SUB_KEYS];
+                                    }
+                                  }
+                                  setForm({ ...form, permissions: next });
+                                }}
+                                className="mt-0.5 accent-blue-600 shrink-0"
+                              />
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-gray-900 leading-snug">{perm.label}</p>
+                                <p className="text-[11px] text-gray-600 leading-snug mt-1">{perm.description}</p>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+
+                      {form.permissions.includes("settings") && (
+                        <div className="mt-1 p-4 bg-white border border-gray-200 rounded-xl shadow-sm">
+                          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-3">
+                            <div>
+                              <p className="text-xs font-semibold text-gray-900 flex items-center gap-1.5">
+                                <Settings size={14} className="text-gray-500" /> Settings sections
+                              </p>
+                              <p className="text-[11px] text-gray-600 mt-1">Choose which settings tabs this user can open.</p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setForm({
+                                    ...form,
+                                    permissions: [...form.permissions.filter((p) => !p.startsWith("settings:")), ...ALL_SETTINGS_SUB_KEYS],
+                                  })
+                                }
+                                className="text-[11px] font-semibold text-blue-600 hover:text-blue-700"
+                              >
+                                All
+                              </button>
+                              <span className="text-gray-300 text-[11px]">|</span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setForm({ ...form, permissions: form.permissions.filter((p) => !p.startsWith("settings:")) })
+                                }
+                                className="text-[11px] font-semibold text-gray-600 hover:text-gray-800"
+                              >
+                                None
+                              </button>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            {SETTINGS_SUB_PERMISSIONS.map((sub) => {
+                              const subChecked = form.permissions.includes(sub.key);
+                              return (
+                                <label
+                                  key={sub.key}
+                                  className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors select-none text-xs ${
+                                    subChecked
+                                      ? "bg-blue-50/80 border-blue-300 text-gray-900 font-medium"
+                                      : "bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-300"
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={subChecked}
+                                    onChange={() => {
+                                      const next = subChecked
+                                        ? form.permissions.filter((p) => p !== sub.key)
+                                        : [...form.permissions, sub.key];
+                                      setForm({ ...form, permissions: next });
+                                    }}
+                                    className="accent-blue-600 shrink-0"
+                                  />
+                                  {sub.label}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </section>
+
+                {form.role === "counsellor" && (
+                  <section className="space-y-4">
+                    <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Targets</h3>
+                    <div className="max-w-full sm:max-w-xs">
+                      <label htmlFor="user-form-target" className="block text-xs font-semibold text-gray-700 mb-1.5">
+                        Monthly visa target
+                      </label>
+                      <div className="relative">
+                        <Target className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                        <input
+                          id="user-form-target"
+                          type="number"
+                          min={0}
+                          value={form.target}
+                          onChange={(e) => setForm({ ...form, target: e.target.value })}
+                          className="w-full pl-10 pr-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
+                        />
+                      </div>
+                    </div>
+                  </section>
                 )}
               </div>
 
-              {/* Target — only for counsellor */}
-              {form.role === "counsellor" && (
-                <div className="max-w-[50%]">
-                  <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 mb-1.5">
-                    <Target size={13} className="text-gray-400" /> Monthly Visa Target
-                  </label>
-                  <input
-                    type="number" min="0" value={form.target}
-                    onChange={(e) => setForm({ ...form, target: e.target.value })}
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all"
-                  />
-                </div>
-              )}
-
-              {/* Footer buttons */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
-                <button type="button" onClick={closeForm}
-                  className="px-5 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+              <div className="shrink-0 px-6 sm:px-7 py-4 border-t border-gray-200 bg-gray-50/90 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeForm}
+                  className="w-full sm:w-auto px-5 py-2.5 border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+                >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={formLoading}
-                  className="px-6 py-2.5 text-white rounded-xl text-sm font-semibold transition-all hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
+                  className="w-full sm:w-auto px-6 py-2.5 text-white rounded-lg text-sm font-semibold shadow-sm transition-all hover:brightness-105 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2"
                   style={{ backgroundColor: branding.brandColor }}
                 >
                   {formLoading ? (
-                    <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Saving…</>
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Saving…
+                    </>
                   ) : (
-                    <><Plus size={16} /> {editUser ? "Update User" : "Create User"}</>
+                    <>
+                      <Plus size={18} strokeWidth={2.5} />
+                      {editUser ? "Update user" : "Create user"}
+                    </>
                   )}
                 </button>
               </div>

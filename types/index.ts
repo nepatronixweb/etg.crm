@@ -25,7 +25,8 @@ export type Permission =
   | "settings"
   | "activity_logs"
   | "chat"
-  | "commission";
+  | "commission"
+  | "inventory";
 
 export type LeadStanding = "warm" | "heated" | "cold" | "missed";
 
@@ -73,6 +74,9 @@ export type LeadSource =
 
 export type AssignmentMethod = "round_robin" | "manual";
 
+/** HR classification; CRM permissions still use `role` + `permissions`. */
+export type HrRole = "admin" | "employee";
+
 export interface IUser {
   _id: string;
   name: string;
@@ -86,6 +90,11 @@ export interface IUser {
   target?: number;
   currentCount?: number;
   isActive: boolean;
+  hrRole?: HrRole;
+  monthlySalary?: number;
+  workingDays?: number;
+  workingHoursPerDay?: number;
+  officeNetworkIp?: string;
   createdAt: Date;
   updatedAt: Date;
 }

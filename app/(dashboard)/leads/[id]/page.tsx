@@ -7,6 +7,7 @@ import { ILead } from "@/types";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useBranding } from "@/app/branding-context";
+import { normalizeUniversitiesArray, universityEntryNames } from "@/lib/countryUniversities";
 
 interface CountryEntry {
   country: string;
@@ -100,9 +101,16 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     fetch("/api/settings/app").then(r => r.json()).then(d => {
       if (d?.leadStandings?.length) setAppStandings(d.leadStandings);
       if (d?.countries?.length) {
-        setAppCountries(d.countries.map((c: string | { name: string; universities?: string[] }) =>
-          typeof c === "string" ? { name: c, universities: [] } : { name: c.name, universities: c.universities || [] }
-        ));
+        setAppCountries(
+          d.countries.map((c: string | { name: string; universities?: unknown[] }) =>
+            typeof c === "string"
+              ? { name: c, universities: [] }
+              : {
+                  name: c.name,
+                  universities: universityEntryNames(normalizeUniversitiesArray(c.universities)),
+                }
+          )
+        );
       }
       if (d?.fdStatuses?.length) {
         setAppFdStatuses(d.fdStatuses.map((s: string) => {

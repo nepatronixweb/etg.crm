@@ -5,8 +5,18 @@ import { getToken } from "next-auth/jwt";
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // API routes authenticate in Route Handlers; redirecting /api/* to login
-  // returns HTML and breaks client JSON parsing (empty lists / broken dashboard).
+  // HR & Inventory APIs: require JWT (JSON 401). Other /api/* auth stays in Route Handlers.
+  if (pathname.startsWith("/api/hr") || pathname.startsWith("/api/inventory")) {
+    const token = await getToken({
+      req,
+      secret: process.env.NEXTAUTH_SECRET,
+    });
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.next();
+  }
+
   if (pathname.startsWith("/api")) {
     return NextResponse.next();
   }

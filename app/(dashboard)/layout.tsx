@@ -7,11 +7,15 @@ import {
   LayoutDashboard, Users, UserCheck, FileText, FolderOpen,
   GraduationCap, Plane, BarChart3, Settings, Building2,
   ScrollText, LogOut, Menu, X, Bell, MessageCircle, Banknote,
+  ClipboardList,
+  Package,
+  Briefcase,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { UserRole } from "@/types";
 import Image from "next/image";
 import { useBranding } from "@/app/branding-context";
+import HeaderAttendance from "@/components/hr/HeaderAttendance";
 
 interface INotif {
   _id: string;
@@ -38,6 +42,7 @@ const navItems = [
   { href: "/applications", label: "Applications", icon: FileText, module: "applications" },
   { href: "/admissions", label: "Admissions", icon: GraduationCap, module: "admissions" },
   { href: "/commission", label: "Commission", icon: Banknote, module: "commission" },
+  { href: "/inventory", label: "Inventory", icon: Package, module: "inventory" },
   { href: "/visa", label: "Visa", icon: Plane, module: "visa" },
   { href: "/chat", label: "Chat", icon: MessageCircle, module: "chat" },
   { href: "/reports", label: "Analytics", icon: BarChart3, module: "analytics" },
@@ -258,6 +263,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   };
 
   const userPermissions = (session?.user?.permissions ?? []) as string[];
+  const canViewUniversityRequirements = hasPermission(userPermissions, "settings", role);
+  const canViewHrManagement = role === "super_admin" || session?.user?.hrRole === "admin";
+
   const visibleNav = navItems.filter((item) => {
     if (item.module === "dashboard") return true;
     if (enabledModules && !enabledModules.includes(item.module) && role !== "super_admin") return false;
@@ -313,6 +321,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </Link>
             );
           })}
+          {canViewUniversityRequirements && (
+            <Link
+              href="/university-requirements"
+              onClick={() => setSidebarOpen(false)}
+              className={`flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors mt-2 border-t border-gray-700/60 pt-3
+                ${pathname === "/university-requirements" ? "text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}
+              style={pathname === "/university-requirements" ? { backgroundColor: branding.brandColor } : undefined}
+            >
+              <ClipboardList size={18} />
+              University / colleges
+            </Link>
+          )}
+          {canViewHrManagement && (
+            <Link
+              href="/hr"
+              onClick={() => setSidebarOpen(false)}
+              className={`flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors
+                ${pathname === "/hr" || pathname.startsWith("/hr/") ? "text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}
+              style={
+                pathname === "/hr" || pathname.startsWith("/hr/")
+                  ? { backgroundColor: branding.brandColor }
+                  : undefined
+              }
+            >
+              <Briefcase size={18} />
+              HR management
+            </Link>
+          )}
         </nav>
 
         <div className="p-3 border-t border-gray-700">
@@ -374,16 +410,37 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* Main Content */}
       <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ease-in-out ${sidebarOpen ? "lg:ml-64" : ""}`}>
-        <header className="no-print h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4">
-          <button onClick={() => setSidebarOpen(true)} className="text-gray-500 hover:text-gray-700">
+        <header className="no-print h-16 bg-white border-b border-gray-200 flex items-center justify-between gap-2 px-3 sm:px-4 min-h-16">
+          <button onClick={() => setSidebarOpen(true)} className="text-gray-500 hover:text-gray-700 shrink-0">
             <Menu size={22} />
           </button>
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <Building2 size={15} />
-            <span>{session?.user?.branchName || "All Branches"}</span>
+          <div className="flex-1 min-w-0 flex justify-center px-1">
+            <div className="flex items-center gap-2 text-sm text-gray-600 truncate max-w-full">
+              <Building2 size={15} className="shrink-0" />
+              <span className="truncate">{session?.user?.branchName || "All Branches"}</span>
+            </div>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
+          <HeaderAttendance />
+          {canViewHrManagement && (
+            <Link
+              href="/hr"
+              className={`p-2 rounded-md transition-colors hidden sm:flex ${
+                pathname === "/hr" || pathname.startsWith("/hr/")
+                  ? "text-white"
+                  : "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
+              }`}
+              style={
+                pathname === "/hr" || pathname.startsWith("/hr/")
+                  ? { backgroundColor: branding.brandColor }
+                  : undefined
+              }
+              title="HR management"
+            >
+              <Briefcase size={18} />
+            </Link>
+          )}
           {/* Chat Icon */}
           {hasPermission(userPermissions, "chat", role) && (!enabledModules || enabledModules.includes("chat") || role === "super_admin") && (
             <Link href="/chat" className="relative p-2 rounded-md text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors">
@@ -494,6 +551,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {children}
         </main>
       </div>
+
     </div>
   );
 }

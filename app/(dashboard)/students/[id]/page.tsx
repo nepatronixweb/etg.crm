@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import {
   ArrowLeft,
@@ -21,6 +21,9 @@ import {
   Clock,
 } from "lucide-react";
 import { formatDate, formatDateTime, getStatusColor, getRoleLabel, COUNTRIES } from "@/lib/utils";
+import { mergeRemarksForPipeline, type DeptRemarkLists } from "@/lib/admissionPipelineRemarks";
+import { normalizeUniversitiesArray, universityEntryNames } from "@/lib/countryUniversities";
+import { formatStandingLabel, standingInlineStyle, standingOptionPrefix } from "@/lib/studentStandingUi";
 
 const DEFAULT_COUNTRIES = COUNTRIES;
 import Link from "next/link";
@@ -143,7 +146,17 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   const [appLeadStageGroups, setAppLeadStageGroups] = useState<string[]>([]);
   const [countryStages, setCountryStages] = useState<Record<string, { value: string; label: string; pipeline: string }[]>>({});
   const [appRemarkOptions, setAppRemarkOptions] = useState<string[]>([]);
-  const [appStandings, setAppStandings] = useState<string[]>(["hot", "warm", "heated", "cold", "missed"]);
+  const [remarkOptionsByDept, setRemarkOptionsByDept] = useState<DeptRemarkLists>({
+    application: [],
+    admission: [],
+    visa: [],
+  });
+  const [appStandings, setAppStandings] = useState<string[]>([]);
+
+  const mergedAdmissionRemarks = useCallback(
+    (pipeline: string | undefined) => mergeRemarksForPipeline(pipeline, appRemarkOptions, remarkOptionsByDept),
+    [appRemarkOptions, remarkOptionsByDept]
+  );
 
   // Returns country-specific stages if available, otherwise global lead stages
   const getStagesForCountry = (country?: string) => {
@@ -179,9 +192,9 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
       if (d?.countries?.length) {
         setAppCountries(d.countries.map((c: string | { name: string }) => typeof c === "string" ? c : c.name));
         const uniMap: Record<string, string[]> = {};
-        d.countries.forEach((c: { name: string; universities: string[] } | string) => {
+        d.countries.forEach((c: { name: string; universities?: unknown[] } | string) => {
           if (typeof c !== "string" && c.universities?.length) {
-            uniMap[c.name] = c.universities;
+            uniMap[c.name] = universityEntryNames(normalizeUniversitiesArray(c.universities));
           }
         });
         setCountryUniversities(uniMap);
@@ -204,9 +217,20 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
       if (d?.countryStages && typeof d.countryStages === "object") {
         setCountryStages(d.countryStages);
       }
-      if (d?.remarkOptions?.length) {
-        setAppRemarkOptions(d.remarkOptions);
-      }
+      const globalR = Array.isArray(d?.remarkOptions) && d.remarkOptions.length > 0 ? d.remarkOptions : [];
+      setAppRemarkOptions(globalR);
+      setRemarkOptionsByDept({
+        application:
+          Array.isArray(d?.remarkOptionsApplication) && d.remarkOptionsApplication.length > 0
+            ? d.remarkOptionsApplication
+            : globalR,
+        admission:
+          Array.isArray(d?.remarkOptionsAdmission) && d.remarkOptionsAdmission.length > 0
+            ? d.remarkOptionsAdmission
+            : globalR,
+        visa:
+          Array.isArray(d?.remarkOptionsVisa) && d.remarkOptionsVisa.length > 0 ? d.remarkOptionsVisa : globalR,
+      });
       if (d?.leadStandings?.length) {
         setAppStandings(d.leadStandings);
       }
@@ -809,7 +833,10 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                             >
                               <option value="">Select standing</option>
                               {appStandings.map((s) => (
-                                <option key={s} value={s}>{s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</option>
+                                <option key={s} value={s}>
+                                  {standingOptionPrefix(s)}
+                                  {formatStandingLabel(s)}
+                                </option>
                               ))}
                             </select>
                           </div>
@@ -821,7 +848,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                               className="w-full px-4 py-3 bg-white border border-emerald-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all"
                             >
                               <option value="">Select remark</option>
-                              {appRemarkOptions.map((r) => (
+                              {mergedAdmissionRemarks(admissionForm.pipeline).map((r) => (
                                 <option key={r} value={r}>{r}</option>
                               ))}
                             </select>
@@ -1193,7 +1220,10 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                   >
                                     <option value="">Select standing</option>
                                     {appStandings.map((s) => (
-                                      <option key={s} value={s}>{s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</option>
+                                      <option key={s} value={s}>
+                                        {standingOptionPrefix(s)}
+                                        {formatStandingLabel(s)}
+                                      </option>
                                     ))}
                                   </select>
                                 </div>
@@ -1205,7 +1235,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                     className="w-full px-4 py-2.5 bg-white border border-amber-200 rounded-xl text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400 transition-all"
                                   >
                                     <option value="">Select remark</option>
-                                    {appRemarkOptions.map((r) => (
+                                    {mergedAdmissionRemarks(editAdmissionForm.pipeline).map((r) => (
                                       <option key={r} value={r}>{r}</option>
                                     ))}
                                   </select>
@@ -1493,7 +1523,9 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                     className="w-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 rounded-lg px-2 py-1.5 focus:outline-none cursor-pointer text-center"
                                   >
                                     <option value="">—</option>
-                                    {appRemarkOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+                                    {mergedAdmissionRemarks(entry.pipeline).map((r) => (
+                                      <option key={r} value={r}>{r}</option>
+                                    ))}
                                   </select>
                                 ) : (
                                   <div className="text-center text-xs font-semibold px-2 py-1.5 bg-amber-50 text-amber-800 rounded-lg border border-amber-100 truncate">
@@ -1509,26 +1541,24 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                     value={entry.standing || ""}
                                     onChange={(e) => quickUpdateAdmission(index, "standing", e.target.value)}
                                     className="w-full text-xs font-semibold rounded-lg px-2 py-1.5 border focus:outline-none cursor-pointer text-center"
-                                    style={{
-                                      backgroundColor: entry.standing === "hot" ? "#fee2e2" : entry.standing === "warm" ? "#fed7aa" : entry.standing === "heated" ? "#fef3c7" : entry.standing === "cold" ? "#dbeafe" : "#f3f4f6",
-                                      color: entry.standing === "hot" ? "#991b1b" : entry.standing === "warm" ? "#92400e" : entry.standing === "heated" ? "#b45309" : entry.standing === "cold" ? "#1e40af" : "#374151",
-                                      borderColor: entry.standing === "hot" ? "#fca5a5" : entry.standing === "warm" ? "#fdba74" : entry.standing === "heated" ? "#fcd34d" : entry.standing === "cold" ? "#93c5fd" : "#e5e7eb",
-                                    }}
+                                    style={standingInlineStyle(entry.standing)}
                                   >
                                     <option value="">—</option>
-                                    <option value="hot">🔴 Hot</option>
-                                    <option value="warm">🟠 Warm</option>
-                                    <option value="heated">🟡 Heated</option>
-                                    <option value="cold">🔵 Cold</option>
-                                    <option value="missed">⚪ Missed</option>
+                                    {appStandings.map((s) => (
+                                      <option key={s} value={s}>
+                                        {standingOptionPrefix(s)}
+                                        {formatStandingLabel(s)}
+                                      </option>
+                                    ))}
                                   </select>
                                 ) : (
-                                  <div className="text-center text-xs font-semibold px-2 py-1.5 rounded-lg border" style={{
-                                    backgroundColor: entry.standing === "hot" ? "#fee2e2" : entry.standing === "warm" ? "#fed7aa" : entry.standing === "heated" ? "#fef3c7" : entry.standing === "cold" ? "#dbeafe" : "#f3f4f6",
-                                    color: entry.standing === "hot" ? "#991b1b" : entry.standing === "warm" ? "#92400e" : entry.standing === "heated" ? "#b45309" : entry.standing === "cold" ? "#1e40af" : "#374151",
-                                    borderColor: entry.standing === "hot" ? "#fca5a5" : entry.standing === "warm" ? "#fdba74" : entry.standing === "heated" ? "#fcd34d" : entry.standing === "cold" ? "#93c5fd" : "#e5e7eb",
-                                  }}>
-                                    {entry.standing ? entry.standing.charAt(0).toUpperCase() + entry.standing.slice(1) : "—"}
+                                  <div
+                                    className="text-center text-xs font-semibold px-2 py-1.5 rounded-lg border truncate"
+                                    style={standingInlineStyle(entry.standing)}
+                                  >
+                                    {entry.standing
+                                      ? `${standingOptionPrefix(entry.standing)}${formatStandingLabel(entry.standing)}`
+                                      : "—"}
                                   </div>
                                 )}
                               </div>
