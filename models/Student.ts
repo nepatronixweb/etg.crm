@@ -23,6 +23,25 @@ const CourseSchema = new Schema(
   { timestamps: false, _id: false }
 );
 
+const AdmissionFieldChangeSchema = new Schema(
+  { from: { type: String, default: "" }, to: { type: String, default: "" } },
+  { _id: false }
+);
+
+const AdmissionTrackingEntrySchema = new Schema(
+  {
+    at: { type: Date, default: Date.now },
+    changedBy: { type: String, default: "" },
+    changedByName: { type: String, default: "" },
+    stage: { type: AdmissionFieldChangeSchema, required: false },
+    pipeline: { type: AdmissionFieldChangeSchema, required: false },
+    standing: { type: AdmissionFieldChangeSchema, required: false },
+    remarks: { type: AdmissionFieldChangeSchema, required: false },
+    statusDate: { type: AdmissionFieldChangeSchema, required: false },
+  },
+  { _id: false }
+);
+
 const AdmissionDetailSchema = new Schema(
   {
     country: { type: String, required: true },
@@ -40,6 +59,7 @@ const AdmissionDetailSchema = new Schema(
     b2bAgentType: { type: String, enum: ["Agent", "Sub-Agent", ""], default: "" },
     b2bName: { type: String, default: "" },
     courses: [CourseSchema],
+    trackingHistory: { type: [AdmissionTrackingEntrySchema], default: [] },
   },
   { timestamps: true }
 );

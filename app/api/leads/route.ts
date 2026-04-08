@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import mongoose from "mongoose";
 import connectDB from "@/lib/mongodb";
 
 /** Leads list must never be served from cache — bucket/status filters must apply per request. */
@@ -13,6 +14,38 @@ import {
   isTelecallerOverviewDashboardBucket,
   mergeTelecallerOverviewBucketFilter,
 } from "@/lib/telecallerLeadOverviewBuckets";
+
+/** ?from / ?to — datetime-local / ISO, or legacy YYYY-MM-DD (UTC day start / end). */
+function parseLeadCreatedAtBound(raw: string, bound: "from" | "to"): Date {
+  const s = raw.trim();
+  if (!s) return new Date(NaN);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    if (bound === "from") return new Date(`${s}T00:00:00.000Z`);
+    return new Date(`${s}T23:59:59.999Z`);
+  }
+  return new Date(s);
+}
+
+/** Aggregation $match does not cast like find()/countDocuments(); normalize string ObjectIds. */
+const LEAD_MATCH_OBJECT_ID_KEYS = new Set(["branch", "assignedTo", "assignedBy"]);
+
+function castObjectIdsForAggregateMatch(obj: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (LEAD_MATCH_OBJECT_ID_KEYS.has(key) && typeof val === "string" && mongoose.Types.ObjectId.isValid(val)) {
+      out[key] = new mongoose.Types.ObjectId(val);
+    } else if ((key === "$and" || key === "$or") && Array.isArray(val)) {
+      out[key] = val.map((item) =>
+        item && typeof item === "object" && !Array.isArray(item) && !(item instanceof Date)
+          ? castObjectIdsForAggregateMatch(item as Record<string, unknown>)
+          : item
+      );
+    } else {
+      out[key] = val;
+    }
+  }
+  return out;
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -57,9 +90,16 @@ export async function GET(req: NextRequest) {
     if (country) filter.interestedCountry = country;
     if (status) filter.status = status;
     if (from || to) {
-      filter.createdAt = {};
-      if (from) filter.createdAt.$gte = new Date(from);
-      if (to) filter.createdAt.$lte = new Date(to);
+      const createdRange: { $gte?: Date; $lte?: Date } = {};
+      if (from) {
+        const d = parseLeadCreatedAtBound(from, "from");
+        if (!Number.isNaN(d.getTime())) createdRange.$gte = d;
+      }
+      if (to) {
+        const d = parseLeadCreatedAtBound(to, "to");
+        if (!Number.isNaN(d.getTime())) createdRange.$lte = d;
+      }
+      if (Object.keys(createdRange).length > 0) filter.createdAt = createdRange;
     }
     if (service) filter.interestedService = service;
     if (stage) filter.stage = stage;
@@ -70,10 +110,28 @@ export async function GET(req: NextRequest) {
     let searchOrClause: any[] | undefined;
     const bucketParamRaw = searchParams.get("bucket");
     const bucketParam = bucketParamRaw?.trim() || null;
-    if (search) {
-      const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const regex = new RegExp(escaped, "i");
-      searchOrClause = [{ name: regex }, { phone: regex }, { email: regex }];
+    const searchTrimmed = (search ?? "").trim();
+    if (searchTrimmed) {
+      const escaped = searchTrimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const rx = { $regex: escaped, $options: "i" };
+      searchOrClause = [
+        { name: rx },
+        { phone: rx },
+        { email: rx },
+        { interestedCountry: rx },
+        { course: rx },
+        { comments: rx },
+        { parentName: rx },
+        { senderName: rx },
+        { academicInstitution: rx },
+        {
+          interestedCountries: {
+            $elemMatch: {
+              $or: [{ country: rx }, { universityName: rx }],
+            },
+          },
+        },
+      ];
       const bucketNeedsAndSearch =
         bucketParam === TELECALLER_FRESH_BUCKET || isTelecallerOverviewDashboardBucket(bucketParam);
       if (!bucketNeedsAndSearch) {
@@ -90,17 +148,59 @@ export async function GET(req: NextRequest) {
     }
 
     const skip = (page - 1) * limit;
-    const [leads, total] = await Promise.all([
-      Lead.find(filter)
-        .populate("branch", "name")
-        .populate("assignedTo", "name email")
-        .populate("assignedBy", "name")
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      Lead.countDocuments(filter),
-    ]);
+    const escapedForNameRank = searchTrimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    const fetchPage = async () => {
+      if (!searchTrimmed) {
+        return Lead.find(filter)
+          .populate("branch", "name")
+          .populate("assignedTo", "name email")
+          .populate("assignedBy", "name")
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean();
+      }
+      const matchFilter = castObjectIdsForAggregateMatch(filter) as Record<string, unknown>;
+      const pipeline: mongoose.PipelineStage[] = [
+        { $match: matchFilter },
+        {
+          $addFields: {
+            _nameSearchRank: {
+              $cond: [
+                {
+                  $regexMatch: {
+                    input: { $toString: { $ifNull: ["$name", ""] } },
+                    regex: escapedForNameRank,
+                    options: "i",
+                  },
+                },
+                1,
+                0,
+              ],
+            },
+          },
+        },
+        { $sort: { _nameSearchRank: -1, createdAt: -1 } },
+        { $skip: skip },
+        { $limit: limit },
+      ];
+      let aggLeads = await Lead.aggregate(pipeline);
+      aggLeads = await Lead.populate(aggLeads, [
+        { path: "branch", select: "name" },
+        { path: "assignedTo", select: "name email" },
+        { path: "assignedBy", select: "name" },
+      ]);
+      return aggLeads.map((doc: Record<string, unknown>) => {
+        const { _nameSearchRank: _r, ...rest } = doc;
+        return rest;
+      });
+    };
+
+    const countFilter = searchTrimmed
+      ? (castObjectIdsForAggregateMatch(filter) as Record<string, unknown>)
+      : filter;
+    const [leads, total] = await Promise.all([fetchPage(), Lead.countDocuments(countFilter)]);
     return NextResponse.json({ leads, total, page, pages: Math.ceil(total / limit) });
   } catch {
     return NextResponse.json({ error: "Failed to fetch leads" }, { status: 500 });

@@ -1,5 +1,5 @@
 "use client";
-import React, { Suspense, useEffect, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -38,6 +38,13 @@ const FIELD_CLASS =
   "w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-colors";
 
 const LABEL_CLASS = "block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide";
+
+/** datetime-local value (no TZ) → UTC ISO for API (Mongo createdAt is UTC). */
+function localDateTimeInputToUtcIsoParam(v: string): string {
+  const ms = new Date(v.trim()).getTime();
+  if (Number.isNaN(ms)) return "";
+  return new Date(ms).toISOString();
+}
 
 function LeadsPageContent() {
   const { data: session } = useSession();
@@ -111,17 +118,28 @@ function LeadsPageContent() {
     academicYear: "", applyLevel: "", course: "", intakeYear: "", intakeQuarter: "",
   });
 
-  const fetchLeads = async (page = 1) => {
+  const searchRef = useRef(search);
+  searchRef.current = search;
+
+  const fetchLeads = useCallback(async (page = 1) => {
     setLoading(true);
     const params = new URLSearchParams();
     params.set("page", page.toString());
     params.set("limit", "50");
+    const q = searchRef.current.trim();
+    if (q) params.set("search", q);
     if (filterStatus) params.set("standing", filterStatus);
     if (filterCountry) params.set("country", filterCountry);
     if (filterAssignedTo) params.set("assignedTo", filterAssignedTo);
     if (filterSource) params.set("source", filterSource);
-    if (filterDateFrom) params.set("from", filterDateFrom);
-    if (filterDateTo) params.set("to", filterDateTo);
+    if (filterDateFrom) {
+      const iso = localDateTimeInputToUtcIsoParam(filterDateFrom);
+      if (iso) params.set("from", iso);
+    }
+    if (filterDateTo) {
+      const iso = localDateTimeInputToUtcIsoParam(filterDateTo);
+      if (iso) params.set("to", iso);
+    }
     if (filterService) params.set("service", filterService);
     if (filterLeadStage) params.set("stage", filterLeadStage);
     if (filterAcademicYear) params.set("academicYear", filterAcademicYear);
@@ -145,7 +163,23 @@ function LeadsPageContent() {
       setLeads(Array.isArray(data) ? data : []);
     }
     setLoading(false);
-  };
+  }, [
+    filterStatus,
+    filterCountry,
+    filterAssignedTo,
+    filterSource,
+    filterDateFrom,
+    filterDateTo,
+    filterService,
+    filterLeadStage,
+    filterAcademicYear,
+    filterApplyLevel,
+    filterFdStatus,
+    searchParams,
+  ]);
+
+  const fetchLeadsRef = useRef(fetchLeads);
+  fetchLeadsRef.current = fetchLeads;
 
   // Mount-only: load settings, branches, users
   useEffect(() => {
@@ -196,8 +230,38 @@ function LeadsPageContent() {
   }, []);
 
   // Refetch leads whenever any filter changes (also fires on initial mount)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { fetchLeads(1); }, [filterStatus, filterCountry, filterAssignedTo, filterSource, filterDateFrom, filterDateTo, filterService, filterLeadStage, filterAcademicYear, filterApplyLevel, filterFdStatus, searchParams.toString()]);
+  useEffect(() => {
+    fetchLeads(1);
+  }, [
+    filterStatus,
+    filterCountry,
+    filterAssignedTo,
+    filterSource,
+    filterDateFrom,
+    filterDateTo,
+    filterService,
+    filterLeadStage,
+    filterAcademicYear,
+    filterApplyLevel,
+    filterFdStatus,
+    searchParams.toString(),
+    fetchLeads,
+  ]);
+
+  /** Debounced server search: name matches are sorted first on page 1 (see GET /api/leads). */
+  const skipSearchEffectOnMount = useRef(true);
+  useEffect(() => {
+    if (!search.trim()) {
+      if (skipSearchEffectOnMount.current) {
+        skipSearchEffectOnMount.current = false;
+        return;
+      }
+      fetchLeadsRef.current(1);
+      return;
+    }
+    const t = setTimeout(() => fetchLeadsRef.current(1), 320);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const clearFilters = () => {
     setFilterStatus("");
@@ -395,31 +459,35 @@ function LeadsPageContent() {
     }
   };
 
-  // Text-only client-side filter (structural filters are handled server-side)
-  const filtered = leads.filter((l) => {
-    if (!search) return true;
+  // Text search: server returns matching leads with name hits first (see GET /api/leads). Empty search: client-only extras (assigned counsellor, intake, formatted date, etc.) on the current page.
+  const filtered = useMemo(() => {
+    if (search.trim()) {
+      return leads;
+    }
     const q = search.toLowerCase();
-    const assignedName = (l.assignedTo as unknown as { name: string } | undefined)?.name ?? "";
-    const dateStr = formatDate(l.createdAt).toLowerCase();
-    const intakeText = `${l.intakeQuarter || ""} ${l.intakeYear || ""}`.trim().toLowerCase();
-    const destinationAndUniversity = (l.interestedCountries || []).some((entry) =>
-      [entry.country, entry.universityName]
-        .filter(Boolean)
-        .some((value) => (value || "").toLowerCase().includes(q))
-    );
-    return (
-      l.name.toLowerCase().includes(q) ||
-      l.email.toLowerCase().includes(q) ||
-      l.phone.includes(q) ||
-      (l.interestedCountry || "").toLowerCase().includes(q) ||
-      destinationAndUniversity ||
-      intakeText.includes(q) ||
-      (l.course || "").toLowerCase().includes(q) ||
-      (l.standing || "").replace("_", " ").toLowerCase().includes(q) ||
-      assignedName.toLowerCase().includes(q) ||
-      dateStr.includes(q)
-    );
-  });
+    return leads.filter((l) => {
+      const assignedName = (l.assignedTo as unknown as { name: string } | undefined)?.name ?? "";
+      const dateStr = formatDate(l.createdAt).toLowerCase();
+      const intakeText = `${l.intakeQuarter || ""} ${l.intakeYear || ""}`.trim().toLowerCase();
+      const destinationAndUniversity = (l.interestedCountries || []).some((entry) =>
+        [entry.country, entry.universityName]
+          .filter(Boolean)
+          .some((value) => (value || "").toLowerCase().includes(q))
+      );
+      return (
+        l.name.toLowerCase().includes(q) ||
+        l.email.toLowerCase().includes(q) ||
+        l.phone.includes(q) ||
+        (l.interestedCountry || "").toLowerCase().includes(q) ||
+        destinationAndUniversity ||
+        intakeText.includes(q) ||
+        (l.course || "").toLowerCase().includes(q) ||
+        (l.standing || "").replace("_", " ").toLowerCase().includes(q) ||
+        assignedName.toLowerCase().includes(q) ||
+        dateStr.includes(q)
+      );
+    });
+  }, [leads, search]);
 
   const canCreate = ["super_admin", "telecaller", "front_desk", "counsellor"].includes(session?.user?.role || "");
   const canAssign = ["super_admin", "telecaller", "front_desk"].includes(session?.user?.role || "");
@@ -500,7 +568,7 @@ function LeadsPageContent() {
   const openDatePicker = () => {
     if (dateButtonRef.current) {
       const rect = dateButtonRef.current.getBoundingClientRect();
-      const popoverWidth = 288; // w-72
+      const popoverWidth = 320; // w-80
       // Right-align to button, but clamp so it never goes left of the button's container
       const idealLeft = rect.right - popoverWidth;
       const clampedLeft = Math.max(rect.left, Math.min(idealLeft, window.innerWidth - popoverWidth - 8));
@@ -644,6 +712,15 @@ function LeadsPageContent() {
     return `${dd}-${mm}-${yyyy} ${hh}:${min}`;
   };
 
+  /** Display value from filter string (YYYY-MM-DD or datetime-local) in the chip row. */
+  const formatDateFilterChip = (v: string) => {
+    if (!v) return "";
+    const parsed = v.length <= 10 && !v.includes("T") ? `${v}T00:00:00` : v;
+    const dt = new Date(parsed);
+    if (Number.isNaN(dt.getTime())) return v;
+    return formatLeadDateTime(dt);
+  };
+
   // ── Export filtered leads to Excel (CSV) ──
   const exportToExcel = () => {
     const headers = [
@@ -741,7 +818,7 @@ function LeadsPageContent() {
                         ? `${filtered.length} of ${t} lead${pl} match search`
                         : `${t} lead${pl}`;
                     })()
-                  : `${filtered.length} of ${leads.length} leads`}
+                  : `${filtered.length} of ${totalLeads || leads.length} leads`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -934,8 +1011,18 @@ function LeadsPageContent() {
             {filterService && <span className="flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-0.5 rounded-full font-medium">{filterService}<button onClick={() => setFilterService("")}><X size={10} /></button></span>}
             {filterLeadStage && <span className={`flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-medium ${getLeadStageColor(filterLeadStage)}`}>{appLeadStages.find((s) => s.value === filterLeadStage)?.label ?? filterLeadStage}<button onClick={() => setFilterLeadStage("")}><X size={10} /></button></span>}
             {filterAssignedTo && <span className="flex items-center gap-1 text-xs bg-amber-50 text-amber-700 border border-amber-100 px-2.5 py-0.5 rounded-full font-medium">{counsellors.find((c) => c._id === filterAssignedTo)?.name ?? "Assigned"}<button onClick={() => setFilterAssignedTo("")}><X size={10} /></button></span>}
-            {filterDateFrom && <span className="flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full font-medium">From: {filterDateFrom}<button onClick={() => setFilterDateFrom("")}><X size={10} /></button></span>}
-            {filterDateTo && <span className="flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full font-medium">To: {filterDateTo}<button onClick={() => setFilterDateTo("")}><X size={10} /></button></span>}
+            {filterDateFrom && (
+              <span className="flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full font-medium max-w-[min(100%,14rem)] truncate" title={filterDateFrom}>
+                From: {formatDateFilterChip(filterDateFrom)}
+                <button type="button" onClick={() => setFilterDateFrom("")}><X size={10} /></button>
+              </span>
+            )}
+            {filterDateTo && (
+              <span className="flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full font-medium max-w-[min(100%,14rem)] truncate" title={filterDateTo}>
+                To: {formatDateFilterChip(filterDateTo)}
+                <button type="button" onClick={() => setFilterDateTo("")}><X size={10} /></button>
+              </span>
+            )}
             {filterAcademicYear && <span className="flex items-center gap-1 text-xs bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-0.5 rounded-full font-medium">Year: {filterAcademicYear}<button onClick={() => setFilterAcademicYear("")}><X size={10} /></button></span>}
             {filterApplyLevel && <span className="flex items-center gap-1 text-xs bg-teal-50 text-teal-700 border border-teal-100 px-2.5 py-0.5 rounded-full font-medium capitalize">{filterApplyLevel}<button onClick={() => setFilterApplyLevel("")}><X size={10} /></button></span>}
             {filterFdStatus && <span className="flex items-center gap-1 text-xs bg-orange-50 text-orange-700 border border-orange-100 px-2.5 py-0.5 rounded-full font-medium">{appFdStatuses.find((s) => s.value === filterFdStatus)?.label ?? filterFdStatus}<button onClick={() => setFilterFdStatus("")}><X size={10} /></button></span>}
@@ -2305,14 +2392,16 @@ function LeadsPageContent() {
         <div
           ref={datePickerRef}
           style={{ position: "fixed", insetBlockStart: datePickerPos.insetBlockStart, insetInlineStart: datePickerPos.insetInlineStart, zIndex: 9999 }}
-          className="w-72 bg-white border border-gray-200 rounded-2xl shadow-2xl p-5"
+          className="w-80 bg-white border border-gray-200 rounded-2xl shadow-2xl p-5"
         >
-          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-4">Filter by Date</p>
+          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">Filter by date &amp; time</p>
+          <p className="text-[10px] text-gray-400 mb-4 leading-snug">Uses lead <span className="font-semibold text-gray-500">created</span> time (your local timezone).</p>
           <div className="space-y-3">
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1.5">From</label>
               <input
-                type="date"
+                type="datetime-local"
+                step={60}
                 value={filterDateFrom}
                 onChange={(e) => setFilterDateFrom(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-colors"
@@ -2321,7 +2410,8 @@ function LeadsPageContent() {
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1.5">To</label>
               <input
-                type="date"
+                type="datetime-local"
+                step={60}
                 value={filterDateTo}
                 onChange={(e) => setFilterDateTo(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-colors"

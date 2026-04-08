@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { userHasChatAccess } from "@/lib/chatPermissions";
 import connectDB from "@/lib/mongodb";
 import Conversation from "@/models/Conversation";
 import Message from "@/models/Message";
@@ -9,6 +10,7 @@ import "@/models/User";
 export async function GET() {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!userHasChatAccess(session)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   await connectDB();
 
@@ -36,6 +38,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!userHasChatAccess(session)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   await connectDB();
   const body = await req.json();

@@ -948,7 +948,9 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {session && hasPermission(userPermissions, "inventory", role) && (
+      {session &&
+        !isAdmin &&
+        hasPermission(userPermissions, "inventory", role) && (
         <div className="mb-6">
           <InventorySummaryWidgets />
         </div>

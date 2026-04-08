@@ -21,6 +21,18 @@ function emailRegexCaseInsensitive(email: string): RegExp {
   return new RegExp(`^${escaped}$`, "i");
 }
 
+/** Same rules as login: stored permissions if non-empty, else role defaults from AppSettings catalog. */
+export async function resolvePermissionsForDbUser(user: {
+  permissions?: unknown;
+  role: string;
+}): Promise<string[]> {
+  const storedPerms: string[] = Array.isArray(user.permissions) ? user.permissions : [];
+  const settingsRow = await AppSettings.findOne().lean();
+  const roleCatalog = normalizeApplicationRoles(settingsRow?.applicationRoles);
+  if (storedPerms.length > 0) return storedPerms;
+  return resolveDefaultPermissionsForSlug(user.role, roleCatalog);
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -61,13 +73,7 @@ export const authOptions: NextAuthOptions = {
           }
 
           clearRateLimit(emailKey);
-          const storedPerms: string[] = Array.isArray(user.permissions) ? user.permissions : [];
-          const settingsRow = await AppSettings.findOne().lean();
-          const roleCatalog = normalizeApplicationRoles(settingsRow?.applicationRoles);
-          const permissions: string[] =
-            storedPerms.length > 0
-              ? storedPerms
-              : resolveDefaultPermissionsForSlug(user.role, roleCatalog);
+          const permissions = await resolvePermissionsForDbUser(user);
           const hrRoleRaw = (user as { hrRole?: string }).hrRole;
           const hrRole =
             hrRoleRaw === "admin" || hrRoleRaw === "employee" ? hrRoleRaw : "employee";
@@ -93,7 +99,7 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger }) {
       if (user) {
         token.id = user.id;
         token.role = (user as { role?: string }).role;
@@ -102,6 +108,33 @@ export const authOptions: NextAuthOptions = {
         token.branchName = (user as { branchName?: string }).branchName;
         const hr = (user as { hrRole?: string }).hrRole;
         token.hrRole = hr === "admin" || hr === "employee" ? hr : "employee";
+        token.permsRefreshedAt = Date.now();
+        return token;
+      }
+
+      // Re-load permissions from DB so module changes (e.g. chat) apply without a new login.
+      const userId = (token.sub as string) || (token.id as string);
+      if (!userId) return token;
+
+      const REFRESH_MS = 45_000;
+      const last = (token.permsRefreshedAt as number) || 0;
+      const shouldRefresh = trigger === "update" || Date.now() - last > REFRESH_MS;
+
+      if (shouldRefresh) {
+        try {
+          await connectDB();
+          const dbUser = await User.findById(userId).select("permissions role").lean();
+          if (dbUser?.role) {
+            token.permissions = await resolvePermissionsForDbUser({
+              permissions: dbUser.permissions,
+              role: String(dbUser.role),
+            });
+            token.role = String(dbUser.role);
+          }
+          token.permsRefreshedAt = Date.now();
+        } catch {
+          /* keep existing token.permissions */
+        }
       }
       return token;
     },

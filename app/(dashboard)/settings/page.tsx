@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, type DragEvent, type ReactNode } from "react";
 import { useSession } from "next-auth/react";
 import {
   Settings, Lock, Upload, Plus, Trash2, Save, CheckCircle,
@@ -7,7 +7,7 @@ import {
   Users, Tag, List, ToggleLeft, ToggleRight, Server,
   FileText, Image as ImageIcon, ChevronRight, X,
   Flame, Zap, Target, Layers, GitBranch, GraduationCap, ChevronDown, Pencil,
-  UserCog, Loader2, Paperclip, BookOpen, Languages, ExternalLink,
+  UserCog, Loader2, Paperclip, BookOpen, Languages, ExternalLink, GripVertical,
 } from "lucide-react";
 import { useBrandingRefresh } from "@/app/branding-context";
 import { ALL_PERMISSIONS, SETTINGS_SUB_PERMISSIONS } from "@/lib/utils";
@@ -221,7 +221,7 @@ async function uploadUniversitySettingsDoc(file: File): Promise<UniversityAttach
   return { path: data.path, originalName: data.originalName || file.name };
 }
 
-// ─── Tag/Pill List Editor ────────────────────────────────────────────────────
+// ─── Tag/Pill List Editor (draggable order) ────────────────────────────────
 function TagEditor({
   label, items, onChange, placeholder,
 }: { label: string; items: string[]; onChange: (v: string[]) => void; placeholder?: string }) {
@@ -237,22 +237,15 @@ function TagEditor({
   return (
     <div>
       <p className="text-xs font-semibold text-gray-600 mb-2">{label}</p>
-      <div className="flex flex-wrap gap-1.5 mb-2 p-3 bg-gray-50 border border-gray-200 rounded-lg min-h-[44px]">
-        {items.map((item) => (
-          <span key={item} className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-gray-300 rounded-full text-xs text-gray-700">
-            {item}
-            <button
-              type="button"
-              onClick={() => onChange(items.filter((i) => i !== item))}
-              className="text-gray-400 hover:text-red-500 transition-colors ml-0.5"
-            >
-              <X size={10} />
-            </button>
-          </span>
-        ))}
-        {items.length === 0 && <span className="text-xs text-gray-400 self-center">No items yet</span>}
-      </div>
-      <div className="flex gap-2">
+      <DraggableChipList
+        items={items}
+        onChange={onChange}
+        onRemoveItem={(item) => onChange(items.filter((i) => i !== item))}
+        emptyLabel="No items yet"
+        accent="slate"
+        containerClassName="flex flex-wrap gap-2 p-3 bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200 rounded-xl min-h-[48px] max-h-52 overflow-y-auto"
+      />
+      <div className="flex gap-2 mt-2">
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -268,6 +261,567 @@ function TagEditor({
           <Plus size={12} /> Add
         </button>
       </div>
+      <p className="text-[11px] text-gray-400 mt-1.5">Drag chips to set dropdown order. Save settings to persist.</p>
+    </div>
+  );
+}
+
+const CHIP_LIST_DND_MIME = "application/x-etg-chip-index";
+
+function reorderArray<T>(arr: T[], fromIndex: number, toIndex: number): T[] {
+  const len = arr.length;
+  if (fromIndex < 0 || fromIndex >= len || toIndex < 0 || toIndex >= len || fromIndex === toIndex) {
+    return [...arr];
+  }
+  const next = [...arr];
+  const [removed] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, removed);
+  return next;
+}
+
+function reorderStringArray(arr: string[], fromIndex: number, toIndex: number): string[] {
+  return reorderArray(arr, fromIndex, toIndex);
+}
+
+const PL_GROUP_DND_MIME = "application/x-etg-pl-group-index";
+const PL_STAGE_DND_MIME = "application/x-etg-pl-stage-pos";
+const CS_STAGE_DND_MIME = "application/x-etg-cs-stage-pos";
+
+type LeadStageRow = { value: string; label: string; group: string };
+type CountryStageRow = { value: string; label: string; pipeline: string };
+
+const COUNTRY_PIPELINE_ORDER = ["Offer", "COE", "Visa"] as const;
+
+function reorderLeadStageGroupsOrder(
+  leadStageGroups: string[],
+  leadStages: LeadStageRow[],
+  fromIndex: number,
+  toIndex: number,
+): { leadStageGroups: string[]; leadStages: LeadStageRow[] } {
+  const newGroups = reorderStringArray(leadStageGroups, fromIndex, toIndex);
+  const byGroup = new Map<string, LeadStageRow[]>();
+  for (const g of newGroups) byGroup.set(g, []);
+  const orphans: LeadStageRow[] = [];
+  for (const s of leadStages) {
+    const list = byGroup.get(s.group);
+    if (list) list.push(s);
+    else orphans.push(s);
+  }
+  const stages: LeadStageRow[] = [];
+  for (const g of newGroups) {
+    stages.push(...(byGroup.get(g) ?? []));
+  }
+  return { leadStageGroups: newGroups, leadStages: [...stages, ...orphans] };
+}
+
+function reorderLeadStageWithinGroup(
+  leadStages: LeadStageRow[],
+  leadStageGroups: string[],
+  group: string,
+  fromIndex: number,
+  toIndex: number,
+): LeadStageRow[] {
+  const inGroup = leadStages.filter((s) => s.group === group);
+  if (
+    fromIndex < 0 ||
+    fromIndex >= inGroup.length ||
+    toIndex < 0 ||
+    toIndex >= inGroup.length ||
+    fromIndex === toIndex
+  ) {
+    return leadStages;
+  }
+  const newInGroup = reorderArray(inGroup, fromIndex, toIndex);
+  const without = leadStages.filter((s) => s.group !== group);
+  const byGroup = new Map<string, LeadStageRow[]>();
+  for (const g of leadStageGroups) byGroup.set(g, []);
+  for (const s of without) {
+    byGroup.get(s.group)?.push(s);
+  }
+  byGroup.set(group, newInGroup);
+  const out: LeadStageRow[] = [];
+  for (const g of leadStageGroups) {
+    out.push(...(byGroup.get(g) ?? []));
+  }
+  const orphaned = without.filter((s) => !leadStageGroups.includes(s.group));
+  return [...out, ...orphaned];
+}
+
+function reorderCountryStageWithinPipeline(
+  stages: CountryStageRow[],
+  pipeline: string,
+  pipelineOrder: readonly string[],
+  fromIndex: number,
+  toIndex: number,
+): CountryStageRow[] {
+  const inPipe = stages.filter((s) => s.pipeline === pipeline);
+  if (
+    fromIndex < 0 ||
+    fromIndex >= inPipe.length ||
+    toIndex < 0 ||
+    toIndex >= inPipe.length ||
+    fromIndex === toIndex
+  ) {
+    return stages;
+  }
+  const newInPipe = reorderArray(inPipe, fromIndex, toIndex);
+  const byP = new Map<string, CountryStageRow[]>();
+  for (const p of pipelineOrder) byP.set(p, []);
+  for (const s of stages) {
+    if (s.pipeline === pipeline) continue;
+    const list = byP.get(s.pipeline);
+    if (list) list.push(s);
+  }
+  byP.set(pipeline, newInPipe);
+  const out: CountryStageRow[] = [];
+  for (const p of pipelineOrder) {
+    out.push(...(byP.get(p) ?? []));
+  }
+  const other = stages.filter((s) => !pipelineOrder.includes(s.pipeline));
+  return [...out, ...other];
+}
+
+type ChipListAccent = "indigo" | "violet" | "blue" | "purple" | "teal" | "slate";
+
+const CHIP_LIST_THEME: Record<ChipListAccent, { overRing: string; dragging: string; defaultDot: string }> = {
+  indigo: {
+    overRing: "ring-2 ring-indigo-400 ring-offset-1 border-indigo-300",
+    dragging: "opacity-50 border-dashed border-indigo-300",
+    defaultDot: "bg-indigo-400",
+  },
+  violet: {
+    overRing: "ring-2 ring-violet-400 ring-offset-1 border-violet-300",
+    dragging: "opacity-50 border-dashed border-violet-300",
+    defaultDot: "bg-violet-400",
+  },
+  blue: {
+    overRing: "ring-2 ring-blue-400 ring-offset-1 border-blue-300",
+    dragging: "opacity-50 border-dashed border-blue-300",
+    defaultDot: "bg-blue-400",
+  },
+  purple: {
+    overRing: "ring-2 ring-purple-400 ring-offset-1 border-purple-300",
+    dragging: "opacity-50 border-dashed border-purple-300",
+    defaultDot: "bg-purple-400",
+  },
+  teal: {
+    overRing: "ring-2 ring-teal-400 ring-offset-1 border-teal-300",
+    dragging: "opacity-50 border-dashed border-teal-300",
+    defaultDot: "bg-teal-400",
+  },
+  slate: {
+    overRing: "ring-2 ring-slate-400 ring-offset-1 border-slate-300",
+    dragging: "opacity-50 border-dashed border-slate-300",
+    defaultDot: "bg-slate-400",
+  },
+};
+
+function standingTemperatureDot(item: string): string {
+  if (item === "heated") return "bg-red-500";
+  if (item === "hot") return "bg-orange-500";
+  if (item === "warm") return "bg-yellow-500";
+  if (item === "cold") return "bg-blue-500";
+  return "bg-gray-400";
+}
+
+function DraggableChipList({
+  items,
+  onChange,
+  onRemoveItem,
+  emptyLabel,
+  accent,
+  leading,
+  formatLabel = (s) => s,
+  labelClassName = "",
+  containerClassName = "flex flex-wrap gap-2 p-3 bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200 rounded-xl min-h-[48px] max-h-52 overflow-y-auto",
+}: {
+  items: string[];
+  onChange: (items: string[]) => void;
+  onRemoveItem: (item: string) => void;
+  emptyLabel: string;
+  accent: ChipListAccent;
+  leading?: (item: string) => ReactNode;
+  formatLabel?: (item: string) => string;
+  labelClassName?: string;
+  containerClassName?: string;
+}) {
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
+  const theme = CHIP_LIST_THEME[accent];
+
+  const onDragStart = (e: DragEvent<HTMLSpanElement>, index: number) => {
+    setDraggingIndex(index);
+    e.dataTransfer.setData(CHIP_LIST_DND_MIME, String(index));
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const onDragOverChip = (e: DragEvent<HTMLSpanElement>, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setOverIndex(index);
+  };
+
+  const onDropChip = (e: DragEvent<HTMLSpanElement>, dropIndex: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const raw = e.dataTransfer.getData(CHIP_LIST_DND_MIME);
+    const fromIndex = parseInt(raw, 10);
+    if (Number.isNaN(fromIndex) || fromIndex === dropIndex) {
+      setDraggingIndex(null);
+      setOverIndex(null);
+      return;
+    }
+    onChange(reorderStringArray(items, fromIndex, dropIndex));
+    setDraggingIndex(null);
+    setOverIndex(null);
+  };
+
+  const clearDrag = () => {
+    setDraggingIndex(null);
+    setOverIndex(null);
+  };
+
+  return (
+    <div
+      className={containerClassName}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => e.preventDefault()}
+    >
+      {items.length === 0 ? (
+        <span className="text-xs text-gray-400 self-center">{emptyLabel}</span>
+      ) : (
+        items.map((item, index) => (
+          <span
+            key={`${index}-${item}`}
+            draggable
+            onDragStart={(e) => onDragStart(e, index)}
+            onDragOver={(e) => onDragOverChip(e, index)}
+            onDragLeave={() => setOverIndex((o) => (o === index ? null : o))}
+            onDrop={(e) => onDropChip(e, index)}
+            onDragEnd={clearDrag}
+            title="Drag to reorder"
+            className={`group inline-flex items-center gap-1 px-3 py-1.5 bg-white border rounded-lg text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all cursor-grab active:cursor-grabbing select-none ${
+              draggingIndex === index ? theme.dragging : "border-gray-200"
+            } ${overIndex === index && draggingIndex !== null && draggingIndex !== index ? theme.overRing : ""}`}
+          >
+            <GripVertical size={14} className="text-gray-400 shrink-0" aria-hidden />
+            {leading ? (
+              leading(item)
+            ) : (
+              <span className={`w-2 h-2 rounded-full shrink-0 ${theme.defaultDot}`} />
+            )}
+            <span className={`max-w-[min(220px,100%)] break-words ${labelClassName}`}>{formatLabel(item)}</span>
+            <button
+              type="button"
+              draggable={false}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemoveItem(item);
+              }}
+              className="ml-0.5 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+              aria-label={`Remove ${item}`}
+            >
+              <X size={12} />
+            </button>
+          </span>
+        ))
+      )}
+    </div>
+  );
+}
+
+function LeadStageChipsInGroup({
+  group,
+  groupStages,
+  leadStages,
+  leadStageGroups,
+  onReorderStages,
+  editingStage,
+  editingStageLabel,
+  onEditingStageChange,
+  onEditingLabelChange,
+  onSaveLabel,
+  onDeleteStage,
+}: {
+  group: string;
+  groupStages: LeadStageRow[];
+  leadStages: LeadStageRow[];
+  leadStageGroups: string[];
+  onReorderStages: (next: LeadStageRow[]) => void;
+  editingStage: string | null;
+  editingStageLabel: string;
+  onEditingStageChange: (v: string | null) => void;
+  onEditingLabelChange: (v: string) => void;
+  onSaveLabel: (value: string, newLabel: string) => void;
+  onDeleteStage: (value: string) => void;
+}) {
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [overIdx, setOverIdx] = useState<number | null>(null);
+  const clearDrag = () => {
+    setDragIdx(null);
+    setOverIdx(null);
+  };
+
+  return (
+    <div
+      className="flex flex-wrap gap-1.5 mb-3"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => e.preventDefault()}
+    >
+      {groupStages.map((stage, si) => (
+        <span
+          key={stage.value}
+          draggable={editingStage !== stage.value}
+          title="Drag to reorder"
+          onDragStart={(e) => {
+            setDragIdx(si);
+            e.dataTransfer.setData(PL_STAGE_DND_MIME, JSON.stringify({ g: group, i: si }));
+            e.dataTransfer.effectAllowed = "move";
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = "move";
+            setOverIdx(si);
+          }}
+          onDragLeave={() => setOverIdx((o) => (o === si ? null : o))}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            let parsed: { g: string; i: number };
+            try {
+              parsed = JSON.parse(e.dataTransfer.getData(PL_STAGE_DND_MIME)) as { g: string; i: number };
+            } catch {
+              clearDrag();
+              return;
+            }
+            if (parsed.g !== group || typeof parsed.i !== "number") {
+              clearDrag();
+              return;
+            }
+            const from = parsed.i;
+            if (from === si) {
+              clearDrag();
+              return;
+            }
+            onReorderStages(reorderLeadStageWithinGroup(leadStages, leadStageGroups, group, from, si));
+            clearDrag();
+          }}
+          onDragEnd={clearDrag}
+          className={`group inline-flex items-center gap-1 px-2.5 py-1 bg-white/80 backdrop-blur border border-white rounded-md text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all select-none ${
+            editingStage === stage.value ? "" : "cursor-grab active:cursor-grabbing"
+          } ${dragIdx === si ? "opacity-50 border-dashed border-indigo-300" : ""} ${
+            overIdx === si && dragIdx !== null && dragIdx !== si ? "ring-2 ring-indigo-400 ring-offset-1 border-indigo-200" : ""
+          }`}
+        >
+          {editingStage !== stage.value && (
+            <GripVertical size={12} className="text-gray-400 shrink-0" aria-hidden />
+          )}
+          {editingStage === stage.value ? (
+            <input
+              autoFocus
+              value={editingStageLabel}
+              onChange={(e) => onEditingLabelChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const newLabel = editingStageLabel.trim();
+                  if (newLabel) onSaveLabel(stage.value, newLabel);
+                  onEditingStageChange(null);
+                } else if (e.key === "Escape") {
+                  onEditingStageChange(null);
+                }
+              }}
+              onBlur={() => {
+                const newLabel = editingStageLabel.trim();
+                if (newLabel) onSaveLabel(stage.value, newLabel);
+                onEditingStageChange(null);
+              }}
+              className="w-28 px-1.5 py-0.5 text-xs border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
+            />
+          ) : (
+            <>
+              {stage.label}
+              <button
+                type="button"
+                draggable={false}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => {
+                  onEditingStageChange(stage.value);
+                  onEditingLabelChange(stage.label);
+                }}
+                className="text-gray-300 hover:text-blue-500 transition-colors opacity-0 group-hover:opacity-100"
+              >
+                <Pencil size={10} />
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            draggable={false}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => onDeleteStage(stage.value)}
+            className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+          >
+            <X size={10} />
+          </button>
+        </span>
+      ))}
+      {groupStages.length === 0 && <span className="text-[11px] text-gray-400 italic">No stages in this group</span>}
+    </div>
+  );
+}
+
+function CountryPipelineStageChips({
+  countryName,
+  pipeline,
+  pipeStages,
+  stages,
+  onReorderStages,
+  editingCsStage,
+  editingCsLabel,
+  onEditingCsChange,
+  onEditingLabelChange,
+  onSaveLabel,
+  onDeleteStage,
+}: {
+  countryName: string;
+  pipeline: string;
+  pipeStages: CountryStageRow[];
+  stages: CountryStageRow[];
+  onReorderStages: (next: CountryStageRow[]) => void;
+  editingCsStage: string | null;
+  editingCsLabel: string;
+  onEditingCsChange: (v: string | null) => void;
+  onEditingLabelChange: (v: string) => void;
+  onSaveLabel: (value: string, newLabel: string) => void;
+  onDeleteStage: (value: string) => void;
+}) {
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [overIdx, setOverIdx] = useState<number | null>(null);
+  const clearDrag = () => {
+    setDragIdx(null);
+    setOverIdx(null);
+  };
+  const order = COUNTRY_PIPELINE_ORDER as readonly string[];
+
+  return (
+    <div
+      className="flex flex-wrap gap-1.5 min-h-[32px] mb-1"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => e.preventDefault()}
+    >
+      {pipeStages.map((stage, si) => {
+        const editKey = `${countryName}::${stage.value}`;
+        return (
+          <span
+            key={stage.value}
+            draggable={editingCsStage !== editKey}
+            title="Drag to reorder"
+            onDragStart={(e) => {
+              setDragIdx(si);
+              e.dataTransfer.setData(
+                CS_STAGE_DND_MIME,
+                JSON.stringify({ c: countryName, p: pipeline, i: si }),
+              );
+              e.dataTransfer.effectAllowed = "move";
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              e.dataTransfer.dropEffect = "move";
+              setOverIdx(si);
+            }}
+            onDragLeave={() => setOverIdx((o) => (o === si ? null : o))}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              let parsed: { c: string; p: string; i: number };
+              try {
+                parsed = JSON.parse(e.dataTransfer.getData(CS_STAGE_DND_MIME)) as {
+                  c: string;
+                  p: string;
+                  i: number;
+                };
+              } catch {
+                clearDrag();
+                return;
+              }
+              if (parsed.c !== countryName || parsed.p !== pipeline || typeof parsed.i !== "number") {
+                clearDrag();
+                return;
+              }
+              const from = parsed.i;
+              if (from === si) {
+                clearDrag();
+                return;
+              }
+              onReorderStages(reorderCountryStageWithinPipeline(stages, pipeline, order, from, si));
+              clearDrag();
+            }}
+            onDragEnd={clearDrag}
+            className={`group inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-gray-200 rounded-md text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all select-none ${
+              editingCsStage === editKey ? "" : "cursor-grab active:cursor-grabbing"
+            } ${dragIdx === si ? "opacity-50 border-dashed border-emerald-300" : ""} ${
+              overIdx === si && dragIdx !== null && dragIdx !== si
+                ? "ring-2 ring-emerald-400 ring-offset-1 border-emerald-200"
+                : ""
+            }`}
+          >
+            {editingCsStage !== editKey && (
+              <GripVertical size={12} className="text-gray-400 shrink-0" aria-hidden />
+            )}
+            {editingCsStage === editKey ? (
+              <input
+                autoFocus
+                value={editingCsLabel}
+                onChange={(e) => onEditingLabelChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const newLabel = editingCsLabel.trim();
+                    if (newLabel) onSaveLabel(stage.value, newLabel);
+                    onEditingCsChange(null);
+                  } else if (e.key === "Escape") {
+                    onEditingCsChange(null);
+                  }
+                }}
+                onBlur={() => {
+                  const newLabel = editingCsLabel.trim();
+                  if (newLabel) onSaveLabel(stage.value, newLabel);
+                  onEditingCsChange(null);
+                }}
+                className="w-28 px-1.5 py-0.5 text-xs border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
+              />
+            ) : (
+              <>
+                {stage.label}
+                <button
+                  type="button"
+                  draggable={false}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={() => {
+                    onEditingCsChange(editKey);
+                    onEditingLabelChange(stage.label);
+                  }}
+                  className="text-gray-300 hover:text-blue-500 transition-colors opacity-0 group-hover:opacity-100"
+                >
+                  <Pencil size={10} />
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              draggable={false}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={() => onDeleteStage(stage.value)}
+              className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+            >
+              <X size={10} />
+            </button>
+          </span>
+        );
+      })}
+      {pipeStages.length === 0 && <span className="text-[11px] text-gray-400 italic self-center">No {pipeline} stages</span>}
     </div>
   );
 }
@@ -342,6 +896,7 @@ export default function SettingsPage() {
   const [expandedCountryStage, setExpandedCountryStage] = useState<string | null>(null);
   const [editingCsStage, setEditingCsStage] = useState<string | null>(null); // "country::value"
   const [editingCsLabel, setEditingCsLabel] = useState("");
+  const [plGroupDropTarget, setPlGroupDropTarget] = useState<string | null>(null);
 
   // Logo upload
   const [logoPreview, setLogoPreview] = useState<string>("");
@@ -879,27 +1434,20 @@ export default function SettingsPage() {
           </div>
 
           {/* ── Lead Standings ── */}
-          <SectionCard title="Lead Standings" description="Categorize leads by temperature / priority. These labels appear everywhere leads are displayed.">
+          <SectionCard title="Lead Standings" description="Categorize leads by temperature / priority. These labels appear everywhere leads are displayed. Drag chips to set dropdown order.">
             <div className="space-y-3">
-              <div className="flex flex-wrap gap-2 p-3 bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200 rounded-xl min-h-[48px]">
-                {settings.leadStandings.map((item) => (
-                  <span key={item} className="group inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all">
-                    <span className={`w-2 h-2 rounded-full ${
-                      item === "heated" ? "bg-red-500" :
-                      item === "hot" ? "bg-orange-500" :
-                      item === "warm" ? "bg-yellow-500" :
-                      item === "cold" ? "bg-blue-500" :
-                      "bg-gray-400"
-                    }`} />
-                    <span className="capitalize">{item.replace(/_/g, " ")}</span>
-                    <button type="button" onClick={() => set("leadStandings", settings.leadStandings.filter(i => i !== item))}
-                      className="ml-0.5 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
-                      <X size={12} />
-                    </button>
-                  </span>
-                ))}
-                {settings.leadStandings.length === 0 && <span className="text-xs text-gray-400 self-center">No standings defined</span>}
-              </div>
+              <DraggableChipList
+                items={settings.leadStandings}
+                onChange={(next) => set("leadStandings", next)}
+                onRemoveItem={(item) => set("leadStandings", settings.leadStandings.filter((i) => i !== item))}
+                emptyLabel="No standings defined"
+                accent="slate"
+                leading={(item) => (
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${standingTemperatureDot(item)}`} />
+                )}
+                formatLabel={(item) => item.replace(/_/g, " ")}
+                labelClassName="capitalize"
+              />
               <div className="flex gap-2">
                 <input id="standingInput"
                   placeholder="e.g. cold, lukewarm"
@@ -933,21 +1481,15 @@ export default function SettingsPage() {
           </SectionCard>
 
           {/* ── Lead Sources ── */}
-          <SectionCard title="Lead Sources" description="Where your leads come from. Shown in dropdowns when creating or editing leads.">
+          <SectionCard title="Lead Sources" description="Where your leads come from. Shown in dropdowns when creating or editing leads. Drag to reorder.">
             <div className="space-y-3">
-              <div className="flex flex-wrap gap-2 p-3 bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200 rounded-xl min-h-[48px]">
-                {settings.leadSources.map((item) => (
-                  <span key={item} className="group inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all">
-                    <span className="w-2 h-2 rounded-full bg-blue-400" />
-                    {item}
-                    <button type="button" onClick={() => set("leadSources", settings.leadSources.filter(i => i !== item))}
-                      className="ml-0.5 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
-                      <X size={12} />
-                    </button>
-                  </span>
-                ))}
-                {settings.leadSources.length === 0 && <span className="text-xs text-gray-400 self-center">No sources defined</span>}
-              </div>
+              <DraggableChipList
+                items={settings.leadSources}
+                onChange={(next) => set("leadSources", next)}
+                onRemoveItem={(item) => set("leadSources", settings.leadSources.filter((i) => i !== item))}
+                emptyLabel="No sources defined"
+                accent="blue"
+              />
               <div className="flex gap-2">
                 <input id="sourceInput"
                   placeholder="e.g. LinkedIn, TikTok, Billboard"
@@ -978,21 +1520,15 @@ export default function SettingsPage() {
           </SectionCard>
 
           {/* ── Front Desk Statuses ── */}
-          <SectionCard title="Front Desk Statuses" description="Status labels used by the Front Desk team. Visible in the FD status dropdown on lead detail pages.">
+          <SectionCard title="Front Desk Statuses" description="Status labels used by the Front Desk team. Visible in the FD status dropdown on lead detail pages. Drag to reorder.">
             <div className="space-y-3">
-              <div className="flex flex-wrap gap-2 p-3 bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200 rounded-xl min-h-[48px] max-h-52 overflow-y-auto">
-                {settings.fdStatuses.map((item) => (
-                  <span key={item} className="group inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all">
-                    <span className="w-2 h-2 rounded-full bg-purple-400" />
-                    {item}
-                    <button type="button" onClick={() => set("fdStatuses", settings.fdStatuses.filter(i => i !== item))}
-                      className="ml-0.5 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
-                      <X size={12} />
-                    </button>
-                  </span>
-                ))}
-                {settings.fdStatuses.length === 0 && <span className="text-xs text-gray-400 self-center">No statuses defined</span>}
-              </div>
+              <DraggableChipList
+                items={settings.fdStatuses}
+                onChange={(next) => set("fdStatuses", next)}
+                onRemoveItem={(item) => set("fdStatuses", settings.fdStatuses.filter((i) => i !== item))}
+                emptyLabel="No statuses defined"
+                accent="purple"
+              />
               <div className="flex gap-2">
                 <input id="fdStatusInput"
                   placeholder="e.g. Follow Up Required, Callback Scheduled"
@@ -1026,21 +1562,15 @@ export default function SettingsPage() {
           </SectionCard>
 
           {/* ── B2B Agent Names ── */}
-          <SectionCard title="B2B Agent Names" description="Pre-defined B2B agent/sub-agent names. These will appear as autocomplete suggestions when adding admission details.">
+          <SectionCard title="B2B Agent Names" description="Pre-defined B2B agent/sub-agent names. These will appear as autocomplete suggestions when adding admission details. Drag to reorder.">
             <div className="space-y-3">
-              <div className="flex flex-wrap gap-2 p-3 bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200 rounded-xl min-h-[48px] max-h-52 overflow-y-auto">
-                {(settings.b2bNames || []).map((item) => (
-                  <span key={item} className="group inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all">
-                    <span className="w-2 h-2 rounded-full bg-teal-400" />
-                    {item}
-                    <button type="button" onClick={() => set("b2bNames", (settings.b2bNames || []).filter(i => i !== item))}
-                      className="ml-0.5 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
-                      <X size={12} />
-                    </button>
-                  </span>
-                ))}
-                {(settings.b2bNames || []).length === 0 && <span className="text-xs text-gray-400 self-center">No B2B names defined</span>}
-              </div>
+              <DraggableChipList
+                items={settings.b2bNames || []}
+                onChange={(next) => set("b2bNames", next)}
+                onRemoveItem={(item) => set("b2bNames", (settings.b2bNames || []).filter((i) => i !== item))}
+                emptyLabel="No B2B names defined"
+                accent="teal"
+              />
               <div className="flex gap-2">
                 <input id="b2bNameInput"
                   placeholder="e.g. ABC Education, XYZ Consultancy"
@@ -1074,21 +1604,17 @@ export default function SettingsPage() {
           </SectionCard>
 
           {/* ── Remark Options ── */}
-          <SectionCard title="Remark Options" description="Pre-defined remarks for the student remarks column. These will appear as dropdown options in the students list.">
+          <SectionCard title="Remark Options" description="Pre-defined remarks for the student remarks column. These will appear as dropdown options in the students list. Drag chips to change order (top-left = first in the dropdown).">
             <div className="space-y-3">
-              <div className="flex flex-wrap gap-2 p-3 bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200 rounded-xl min-h-[48px] max-h-52 overflow-y-auto">
-                {(settings.remarkOptions || []).map((item) => (
-                  <span key={item} className="group inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all">
-                    <span className="w-2 h-2 rounded-full bg-indigo-400" />
-                    {item}
-                    <button type="button" onClick={() => set("remarkOptions", (settings.remarkOptions || []).filter(i => i !== item))}
-                      className="ml-0.5 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
-                      <X size={12} />
-                    </button>
-                  </span>
-                ))}
-                {(settings.remarkOptions || []).length === 0 && <span className="text-xs text-gray-400 self-center">No remark options defined</span>}
-              </div>
+              <DraggableChipList
+                items={settings.remarkOptions || []}
+                onChange={(next) => set("remarkOptions", next)}
+                onRemoveItem={(item) =>
+                  set("remarkOptions", (settings.remarkOptions || []).filter((i) => i !== item))
+                }
+                emptyLabel="No remark options defined"
+                accent="indigo"
+              />
               <div className="flex gap-2">
                 <input id="remarkOptionInput"
                   placeholder="e.g. Additional Documents Requested"
@@ -1116,7 +1642,7 @@ export default function SettingsPage() {
                 </button>
               </div>
               <p className="text-[11px] text-gray-400 flex items-center gap-1">
-                <Zap size={10} /> {(settings.remarkOptions || []).length} global options. Shown for every pipeline after department-specific items.
+                <Zap size={10} /> {(settings.remarkOptions || []).length} global options. Shown for every pipeline after department-specific items. Save settings after reordering.
               </p>
             </div>
           </SectionCard>
@@ -1124,7 +1650,7 @@ export default function SettingsPage() {
           {/* ── Department remark lists (admission card / module tables) ── */}
           <SectionCard
             title="Remarks by department"
-            description="Application, Admission (Offer / GS / COE), and Visa teams each maintain their own list. On student admission cards, the active pipeline picks which department list is merged first with the global remark options above."
+            description="Application, Admission (Offer / GS / COE), and Visa teams each maintain their own list. On student admission cards, the active pipeline picks which department list is merged first with the global remark options above. Drag chips to set option order; save settings to persist."
           >
             <div className="space-y-8">
               {(
@@ -1136,24 +1662,13 @@ export default function SettingsPage() {
               ).map(({ key, title, inputId }) => (
                 <div key={key} className="space-y-3">
                   <h4 className="text-xs font-semibold text-gray-800">{title}</h4>
-                  <div className="flex flex-wrap gap-2 p-3 bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200 rounded-xl min-h-[48px] max-h-52 overflow-y-auto">
-                    {(settings[key] || []).map((item) => (
-                      <span key={item} className="group inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all">
-                        <span className="w-2 h-2 rounded-full bg-violet-400" />
-                        {item}
-                        <button
-                          type="button"
-                          onClick={() => set(key, (settings[key] || []).filter((i) => i !== item))}
-                          className="ml-0.5 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-                        >
-                          <X size={12} />
-                        </button>
-                      </span>
-                    ))}
-                    {(settings[key] || []).length === 0 && (
-                      <span className="text-xs text-gray-400 self-center">No options — save after adding, or they inherit from global on next load</span>
-                    )}
-                  </div>
+                  <DraggableChipList
+                    items={settings[key] || []}
+                    onChange={(next) => set(key, next)}
+                    onRemoveItem={(item) => set(key, (settings[key] || []).filter((i) => i !== item))}
+                    emptyLabel="No options — save after adding, or they inherit from global on next load"
+                    accent="violet"
+                  />
                   <div className="flex gap-2">
                     <input
                       id={inputId}
@@ -1228,66 +1743,102 @@ export default function SettingsPage() {
                 const dotColor = dotColors[group] || "bg-gray-400";
 
                 return (
-                  <div key={group} className={`border rounded-xl overflow-hidden ${borderColor}`}>
-                    <div className="flex items-center justify-between px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-3 h-3 rounded-full ${dotColor}`} />
-                        <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wide">{group}</h4>
-                        <span className="text-[10px] text-gray-400 font-medium">{groupStages.length} stages</span>
+                  <div
+                    key={group}
+                    className={`border rounded-xl overflow-hidden ${borderColor} ${
+                      plGroupDropTarget === group ? "ring-2 ring-indigo-400 ring-offset-1" : ""
+                    }`}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (Array.from(e.dataTransfer.types).includes(PL_GROUP_DND_MIME)) {
+                        e.dataTransfer.dropEffect = "move";
+                        setPlGroupDropTarget(group);
+                      }
+                    }}
+                    onDragLeave={(e) => {
+                      const rel = e.relatedTarget as Node | null;
+                      if (rel && e.currentTarget.contains(rel)) return;
+                      setPlGroupDropTarget((g) => (g === group ? null : g));
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setPlGroupDropTarget(null);
+                      const raw = e.dataTransfer.getData(PL_GROUP_DND_MIME);
+                      const from = parseInt(raw, 10);
+                      setSettings((prev) => {
+                        const to = prev.leadStageGroups.indexOf(group);
+                        if (Number.isNaN(from) || from < 0 || from >= prev.leadStageGroups.length || from === to) {
+                          return prev;
+                        }
+                        const res = reorderLeadStageGroupsOrder(
+                          prev.leadStageGroups,
+                          prev.leadStages,
+                          from,
+                          to,
+                        );
+                        return { ...prev, leadStageGroups: res.leadStageGroups, leadStages: res.leadStages };
+                      });
+                      setSaved(false);
+                    }}
+                  >
+                    <div className="flex items-center justify-between px-4 py-3 gap-2">
+                      <div
+                        className="flex items-center gap-2 min-w-0 flex-1 cursor-grab active:cursor-grabbing select-none"
+                        draggable
+                        title="Drag to reorder group"
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData(
+                            PL_GROUP_DND_MIME,
+                            String(settings.leadStageGroups.indexOf(group)),
+                          );
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onDragEnd={() => setPlGroupDropTarget(null)}
+                      >
+                        <GripVertical size={14} className="text-gray-400 shrink-0" aria-hidden />
+                        <span className={`w-3 h-3 rounded-full shrink-0 ${dotColor}`} />
+                        <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wide truncate">{group}</h4>
+                        <span className="text-[10px] text-gray-400 font-medium shrink-0">{groupStages.length} stages</span>
                       </div>
-                      <button type="button" onClick={() => {
-                        set("leadStageGroups", settings.leadStageGroups.filter(g => g !== group));
-                        set("leadStages", settings.leadStages.filter(s => s.group !== group));
-                      }} className="text-gray-300 hover:text-red-500 transition-colors p-1 rounded-md hover:bg-white/60">
+                      <button
+                        type="button"
+                        draggable={false}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={() => {
+                          set("leadStageGroups", settings.leadStageGroups.filter((g) => g !== group));
+                          set("leadStages", settings.leadStages.filter((s) => s.group !== group));
+                        }}
+                        className="text-gray-300 hover:text-red-500 transition-colors p-1 rounded-md hover:bg-white/60 shrink-0"
+                      >
                         <Trash2 size={12} />
                       </button>
                     </div>
                     <div className="px-4 pb-3">
-                      <div className="flex flex-wrap gap-1.5 mb-3">
-                        {groupStages.map((stage) => (
-                          <span key={stage.value} className="group inline-flex items-center gap-1.5 px-2.5 py-1 bg-white/80 backdrop-blur border border-white rounded-md text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all">
-                            {editingStage === stage.value ? (
-                              <input
-                                autoFocus
-                                value={editingStageLabel}
-                                onChange={(e) => setEditingStageLabel(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    const newLabel = editingStageLabel.trim();
-                                    if (newLabel) {
-                                      set("leadStages", settings.leadStages.map(s => s.value === stage.value ? { ...s, label: newLabel } : s));
-                                    }
-                                    setEditingStage(null);
-                                  } else if (e.key === "Escape") {
-                                    setEditingStage(null);
-                                  }
-                                }}
-                                onBlur={() => {
-                                  const newLabel = editingStageLabel.trim();
-                                  if (newLabel) {
-                                    set("leadStages", settings.leadStages.map(s => s.value === stage.value ? { ...s, label: newLabel } : s));
-                                  }
-                                  setEditingStage(null);
-                                }}
-                                className="w-28 px-1.5 py-0.5 text-xs border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
-                              />
-                            ) : (
-                              <>
-                                {stage.label}
-                                <button type="button" onClick={() => { setEditingStage(stage.value); setEditingStageLabel(stage.label); }}
-                                  className="text-gray-300 hover:text-blue-500 transition-colors opacity-0 group-hover:opacity-100">
-                                  <Pencil size={10} />
-                                </button>
-                              </>
-                            )}
-                            <button type="button" onClick={() => set("leadStages", settings.leadStages.filter(s => s.value !== stage.value))}
-                              className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
-                              <X size={10} />
-                            </button>
-                          </span>
-                        ))}
-                        {groupStages.length === 0 && <span className="text-[11px] text-gray-400 italic">No stages in this group</span>}
-                      </div>
+                      <LeadStageChipsInGroup
+                        group={group}
+                        groupStages={groupStages}
+                        leadStages={settings.leadStages}
+                        leadStageGroups={settings.leadStageGroups}
+                        onReorderStages={(next) => set("leadStages", next)}
+                        editingStage={editingStage}
+                        editingStageLabel={editingStageLabel}
+                        onEditingStageChange={setEditingStage}
+                        onEditingLabelChange={setEditingStageLabel}
+                        onSaveLabel={(value, newLabel) =>
+                          set(
+                            "leadStages",
+                            settings.leadStages.map((s) =>
+                              s.value === value ? { ...s, label: newLabel } : s,
+                            ),
+                          )
+                        }
+                        onDeleteStage={(value) =>
+                          set(
+                            "leadStages",
+                            settings.leadStages.filter((s) => s.value !== value),
+                          )
+                        }
+                      />
                       <div className="flex gap-2">
                         <input id={`stageInput-${group}`}
                           placeholder={`Add stage to ${group}...`}
@@ -1413,56 +1964,36 @@ export default function SettingsPage() {
                           return (
                             <div key={pipeline} className="mb-3">
                               <p className={`text-[10px] font-black uppercase tracking-widest mb-1.5 px-2 py-0.5 rounded w-fit border ${pipelineColors[pipeline] || "bg-gray-100 text-gray-500 border-gray-200"}`}>{pipeline}</p>
-                              <div className="flex flex-wrap gap-1.5 min-h-[32px] mb-1">
-                                {pipeStages.map((stage) => {
-                                  const editKey = `${countryName}::${stage.value}`;
-                                  return (
-                                    <span key={stage.value} className="group inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-gray-200 rounded-md text-xs font-medium text-gray-700 shadow-sm hover:shadow transition-all">
-                                      {editingCsStage === editKey ? (
-                                        <input
-                                          autoFocus
-                                          value={editingCsLabel}
-                                          onChange={(e) => setEditingCsLabel(e.target.value)}
-                                          onKeyDown={(e) => {
-                                            if (e.key === "Enter") {
-                                              const newLabel = editingCsLabel.trim();
-                                              if (newLabel) {
-                                                const updated = stages.map(s => s.value === stage.value ? { ...s, label: newLabel } : s);
-                                                set("countryStages", { ...(settings.countryStages || {}), [countryName]: updated });
-                                              }
-                                              setEditingCsStage(null);
-                                            } else if (e.key === "Escape") { setEditingCsStage(null); }
-                                          }}
-                                          onBlur={() => {
-                                            const newLabel = editingCsLabel.trim();
-                                            if (newLabel) {
-                                              const updated = stages.map(s => s.value === stage.value ? { ...s, label: newLabel } : s);
-                                              set("countryStages", { ...(settings.countryStages || {}), [countryName]: updated });
-                                            }
-                                            setEditingCsStage(null);
-                                          }}
-                                          className="w-28 px-1.5 py-0.5 text-xs border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
-                                        />
-                                      ) : (
-                                        <>
-                                          {stage.label}
-                                          <button type="button" onClick={() => { setEditingCsStage(editKey); setEditingCsLabel(stage.label); }}
-                                            className="text-gray-300 hover:text-blue-500 transition-colors opacity-0 group-hover:opacity-100">
-                                            <Pencil size={10} />
-                                          </button>
-                                        </>
-                                      )}
-                                      <button type="button" onClick={() => {
-                                        const updated = stages.filter(s => s.value !== stage.value);
-                                        set("countryStages", { ...(settings.countryStages || {}), [countryName]: updated });
-                                      }} className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
-                                        <X size={10} />
-                                      </button>
-                                    </span>
-                                  );
-                                })}
-                                {pipeStages.length === 0 && <span className="text-[11px] text-gray-400 italic self-center">No {pipeline} stages</span>}
-                              </div>
+                              <CountryPipelineStageChips
+                                countryName={countryName}
+                                pipeline={pipeline}
+                                pipeStages={pipeStages}
+                                stages={stages}
+                                onReorderStages={(next) =>
+                                  set("countryStages", {
+                                    ...(settings.countryStages || {}),
+                                    [countryName]: next,
+                                  })
+                                }
+                                editingCsStage={editingCsStage}
+                                editingCsLabel={editingCsLabel}
+                                onEditingCsChange={setEditingCsStage}
+                                onEditingLabelChange={setEditingCsLabel}
+                                onSaveLabel={(value, newLabel) =>
+                                  set("countryStages", {
+                                    ...(settings.countryStages || {}),
+                                    [countryName]: stages.map((s) =>
+                                      s.value === value ? { ...s, label: newLabel } : s,
+                                    ),
+                                  })
+                                }
+                                onDeleteStage={(value) =>
+                                  set("countryStages", {
+                                    ...(settings.countryStages || {}),
+                                    [countryName]: stages.filter((s) => s.value !== value),
+                                  })
+                                }
+                              />
                               {/* Add stage to this pipeline */}
                               <div className="flex gap-2 mt-1">
                                 <input

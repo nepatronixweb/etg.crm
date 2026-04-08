@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
+import { userHasChatAccess } from "@/lib/chatPermissions";
 import connectDB from "@/lib/mongodb";
 import Message from "@/models/Message";
 import Conversation from "@/models/Conversation";
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return new Response("Unauthorized", { status: 401 });
+  if (!userHasChatAccess(session)) return new Response("Forbidden", { status: 403 });
 
   const userId = session.user.id;
   const encoder = new TextEncoder();

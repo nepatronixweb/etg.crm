@@ -22,6 +22,12 @@ const SOURCES = [
 const FIELD = "w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-colors";
 const LABEL = "block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide";
 
+/** True once any admission row exists — remarks then belong to Admission Details, not the list. */
+function hasAdmissionDetailsEntries(student: IStudent): boolean {
+  const d = student.admissionDetails;
+  return Array.isArray(d) && d.length > 0;
+}
+
 const DOT_TO_BADGE: Record<string, string> = {
   "bg-amber-400": "bg-amber-100 text-amber-800",
   "bg-blue-400": "bg-blue-100 text-blue-800",
@@ -356,10 +362,17 @@ export default function StudentsPage() {
 
   const canCreate = ["super_admin", "counsellor", "front_desk"].includes(session?.user?.role || "");
   const canExport = ["super_admin", "telecaller"].includes(session?.user?.role || "");
-  // Stage / Remarks / Standing / Pipeline are locked in the list view.
-  // All changes must be made from inside the individual student detail page.
-  const canUpdateStage = false;
   const isAdmin = session?.user?.role === "super_admin";
+  /** Remarks dropdown on the list is allowed only before any Admission Details row exists. */
+  const canEditRemarksOnList = (student: IStudent) => {
+    const role = session?.user?.role ?? "";
+    if (
+      !["super_admin", "counsellor", "front_desk", "admission_team", "application_team", "visa_team"].includes(role)
+    ) {
+      return false;
+    }
+    return !hasAdmissionDetailsEntries(student);
+  };
 
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -801,11 +814,12 @@ export default function StudentsPage() {
                         })()}
                       </td>
 
-                      {/* REMARKS column */}
+                      {/* REMARKS column — editable here only until Admission Details has at least one entry */}
                       <td className="px-2.5 py-2 min-w-36">
-                        {canUpdateStage ? (
+                        {canEditRemarksOnList(student) ? (
                           <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
                             <button
+                              type="button"
                               onClick={(e) => openRemarksPortal(e, student._id)}
                               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border transition-colors cursor-pointer hover:opacity-80 ${
                                 student.remarks
@@ -818,9 +832,18 @@ export default function StudentsPage() {
                             </button>
                           </div>
                         ) : (
-                          <span className={`inline-block px-3 py-1.5 rounded-md text-xs font-semibold border ${
-                            student.remarks ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "text-gray-400"
-                          }`}>{student.remarks || "—"}</span>
+                          <span
+                            className={`inline-block px-3 py-1.5 rounded-md text-xs font-semibold border ${
+                              student.remarks ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "text-gray-400 border-gray-200 bg-gray-50"
+                            }`}
+                            title={
+                              hasAdmissionDetailsEntries(student)
+                                ? "Remarks are set per university in Admission Details on the student profile."
+                                : undefined
+                            }
+                          >
+                            {student.remarks || "—"}
+                          </span>
                         )}
                       </td>
 

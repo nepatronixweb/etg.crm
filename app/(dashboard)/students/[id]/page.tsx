@@ -19,6 +19,8 @@ import {
   BookOpen,
   MapPin,
   Clock,
+  History,
+  X,
 } from "lucide-react";
 import { formatDate, formatDateTime, getStatusColor, getRoleLabel, COUNTRIES } from "@/lib/utils";
 import { mergeRemarksForPipeline, type DeptRemarkLists } from "@/lib/admissionPipelineRemarks";
@@ -36,6 +38,22 @@ interface AdmissionCourse {
   intakeYear: string;
   commencementDate: string;
   courseEndDate: string;
+}
+
+interface AdmissionFieldChange {
+  from: string;
+  to: string;
+}
+
+interface AdmissionTrackingEntry {
+  at: string;
+  changedBy?: string;
+  changedByName?: string;
+  stage?: AdmissionFieldChange;
+  pipeline?: AdmissionFieldChange;
+  standing?: AdmissionFieldChange;
+  remarks?: AdmissionFieldChange;
+  statusDate?: AdmissionFieldChange;
 }
 
 interface AdmissionDetail {
@@ -56,6 +74,39 @@ interface AdmissionDetail {
   tuitionFeesPaid?: string;
   courses: AdmissionCourse[];
   createdAt: string;
+  trackingHistory?: AdmissionTrackingEntry[];
+}
+
+const TRACKING_FIELD_LABELS = {
+  stage: "Stage",
+  pipeline: "Pipeline",
+  standing: "Standing",
+  remarks: "Remarks",
+  statusDate: "Status date",
+} as const;
+
+const ADMISSION_SUMMARY_FIELD_ORDER = [
+  "stage",
+  "remarks",
+  "standing",
+  "pipeline",
+  "statusDate",
+] as const satisfies readonly (keyof typeof TRACKING_FIELD_LABELS)[];
+
+/** When the save was recorded (e.g. 04/07/2026, 15:30). */
+function formatTrackingEventWhen(at: unknown): string {
+  const raw = typeof at === "string" ? at : at != null ? String(at) : "";
+  if (!raw) return "—";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 interface StudentDetail {
@@ -134,6 +185,8 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   const [dirtyAdmissionRows, setDirtyAdmissionRows] = useState<Set<number>>(new Set());
   const [editingAdmission, setEditingAdmission] = useState<number | null>(null);
   const [editAdmissionForm, setEditAdmissionForm] = useState(EMPTY_ADMISSION_FORM);
+  const [admissionSummaryIndex, setAdmissionSummaryIndex] = useState<number | null>(null);
+  const [visaApproving, setVisaApproving] = useState(false);
   const [appCountries, setAppCountries] = useState<string[]>(DEFAULT_COUNTRIES);
   const [countryUniversities, setCountryUniversities] = useState<Record<string, string[]>>({});
   const [b2bNames, setB2bNames] = useState<string[]>([]);
@@ -156,6 +209,36 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   const mergedAdmissionRemarks = useCallback(
     (pipeline: string | undefined) => mergeRemarksForPipeline(pipeline, appRemarkOptions, remarkOptionsByDept),
     [appRemarkOptions, remarkOptionsByDept]
+  );
+
+  const formatAdmissionTrackingValue = useCallback(
+    (
+      field: keyof typeof TRACKING_FIELD_LABELS,
+      value: string,
+      country: string,
+      opts?: { fullRemarks?: boolean },
+    ) => {
+      if (!value) return "—";
+      if (field === "stage") {
+        const list =
+          country && countryStages[country]?.length
+            ? countryStages[country].map((s) => ({ value: s.value, label: s.label, group: s.pipeline }))
+            : appLeadStages;
+        return list.find((s) => s.value === value)?.label || value;
+      }
+      if (field === "standing") {
+        return `${standingOptionPrefix(value)}${formatStandingLabel(value)}`;
+      }
+      if (field === "statusDate") {
+        const t = Date.parse(value);
+        return Number.isNaN(t) ? value : formatDate(value);
+      }
+      if (field === "remarks" && !opts?.fullRemarks && value.length > 120) {
+        return `${value.slice(0, 117)}…`;
+      }
+      return value;
+    },
+    [countryStages, appLeadStages],
   );
 
   // Returns country-specific stages if available, otherwise global lead stages
@@ -330,12 +413,24 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   };
 
   const approveVisa = async (country: string) => {
-    await fetch(`/api/students/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ visaApproved: true, country }),
-    });
-    fetchData();
+    setVisaApproving(true);
+    try {
+      const res = await fetch(`/api/students/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ visaApproved: true, country }),
+      });
+      if (res.ok) {
+        await fetchData();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err?.error || "Could not record visa approval.");
+      }
+    } catch {
+      alert("Network error while approving visa.");
+    } finally {
+      setVisaApproving(false);
+    }
   };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -513,6 +608,8 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   const canViewAdmission = ["super_admin", "admission_team", "application_team", "visa_team"].includes(role);
   const canEditAdmission = canViewAdmission;
   const canVisa = ["super_admin", "visa_team"].includes(role);
+  const isCountryVisaApproved = (country: string) =>
+    !!student.countries?.find((c) => c.country === country)?.visaApprovedAt;
   const filteredDocs = docs.filter((doc) => !selectedCountry || doc.country === selectedCountry);
 
   return (
@@ -1044,7 +1141,10 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
               )}
 
               <div className="space-y-3">
-                {student.admissionDetails?.map((entry, index) => (
+                {student.admissionDetails?.map((entry, index) => {
+                  const rowVisaLocked = isCountryVisaApproved(entry.country);
+                  const canEditAdmissionRow = canEditAdmission && !rowVisaLocked;
+                  return (
                   <div key={entry._id ?? index} className={`p-4 rounded-xl border transition-all duration-300 ${entry.closed ? "bg-gray-100 border-gray-300" : "bg-gray-50 border-gray-100"}`}>
                     {canEditAdmission && editingAdmission === index ? (
                       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
@@ -1060,6 +1160,12 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                         </div>
 
                         <div className="p-6 space-y-6">
+                          {isCountryVisaApproved(editAdmissionForm.country) && (
+                            <p className="text-xs text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 leading-relaxed">
+                              <Lock size={12} className="inline-block mr-1.5 align-text-bottom text-emerald-700" />
+                              Visa approved for this country — <strong>stage</strong>, <strong>standing</strong>, <strong>remarks</strong>, and <strong>pipeline</strong> are locked. You can still update other fields below.
+                            </p>
+                          )}
                           {/* Section: Institution */}
                           <div>
                             <div className="flex items-center gap-2 mb-4">
@@ -1166,8 +1272,9 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Stage</label>
                                   <select
                                     value={editAdmissionForm.stage}
+                                    disabled={isCountryVisaApproved(editAdmissionForm.country)}
                                     onChange={(e) => setEditAdmissionForm((form) => ({ ...form, stage: e.target.value, statusDate: new Date().toISOString().split("T")[0] }))}
-                                    className="w-full px-4 py-2.5 bg-white border border-yellow-200 rounded-xl text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition-all"
+                                    className="w-full px-4 py-2.5 bg-white border border-yellow-200 rounded-xl text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                                   >
                                     <option value="">Select stage</option>
                                     {getStagesForCountry(editAdmissionForm.country).map((s) => (
@@ -1215,8 +1322,9 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Standing</label>
                                   <select
                                     value={editAdmissionForm.standing}
+                                    disabled={isCountryVisaApproved(editAdmissionForm.country)}
                                     onChange={(e) => setEditAdmissionForm((form) => ({ ...form, standing: e.target.value }))}
-                                    className="w-full px-4 py-2.5 bg-white border border-orange-200 rounded-xl text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all"
+                                    className="w-full px-4 py-2.5 bg-white border border-orange-200 rounded-xl text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                                   >
                                     <option value="">Select standing</option>
                                     {appStandings.map((s) => (
@@ -1231,8 +1339,9 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Remarks</label>
                                   <select
                                     value={editAdmissionForm.remarks}
+                                    disabled={isCountryVisaApproved(editAdmissionForm.country)}
                                     onChange={(e) => setEditAdmissionForm((form) => ({ ...form, remarks: e.target.value }))}
-                                    className="w-full px-4 py-2.5 bg-white border border-amber-200 rounded-xl text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400 transition-all"
+                                    className="w-full px-4 py-2.5 bg-white border border-amber-200 rounded-xl text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                                   >
                                     <option value="">Select remark</option>
                                     {mergedAdmissionRemarks(editAdmissionForm.pipeline).map((r) => (
@@ -1244,8 +1353,9 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Pipeline</label>
                                   <select
                                     value={editAdmissionForm.pipeline ?? ""}
+                                    disabled={isCountryVisaApproved(editAdmissionForm.country)}
                                     onChange={(e) => setEditAdmissionForm((form) => ({ ...form, pipeline: e.target.value }))}
-                                    className="w-full px-4 py-2.5 bg-white border border-purple-200 rounded-xl text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all"
+                                    className="w-full px-4 py-2.5 bg-white border border-purple-200 rounded-xl text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                                   >
                                     <option value="">Select pipeline</option>
                                     {appLeadStageGroups.map((g) => (
@@ -1498,7 +1608,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                               {/* STAGE */}
                               <div>
                                 <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 text-center">Stage</p>
-                                {canEditAdmission ? (
+                                {canEditAdmissionRow ? (
                                   <select
                                     value={entry.stage || ""}
                                     onChange={(e) => quickUpdateAdmission(index, "stage", e.target.value)}
@@ -1508,7 +1618,10 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                     {getStagesForCountry(entry.country).map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                                   </select>
                                 ) : (
-                                  <div className="text-center text-xs font-semibold px-2 py-1.5 bg-yellow-50 text-yellow-800 rounded-lg border border-yellow-100 truncate">
+                                  <div
+                                    className={`text-center text-xs font-semibold px-2 py-1.5 bg-yellow-50 text-yellow-800 rounded-lg border border-yellow-100 truncate ${rowVisaLocked ? "opacity-90" : ""}`}
+                                    title={rowVisaLocked ? "Locked after visa approval" : undefined}
+                                  >
                                     {getStagesForCountry(entry.country).find((s) => s.value === entry.stage)?.label || entry.stage || "—"}
                                   </div>
                                 )}
@@ -1516,7 +1629,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                               {/* REMARKS */}
                               <div>
                                 <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 text-center">Remarks</p>
-                                {canEditAdmission ? (
+                                {canEditAdmissionRow ? (
                                   <select
                                     value={entry.remarks || ""}
                                     onChange={(e) => quickUpdateAdmission(index, "remarks", e.target.value)}
@@ -1528,7 +1641,10 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                     ))}
                                   </select>
                                 ) : (
-                                  <div className="text-center text-xs font-semibold px-2 py-1.5 bg-amber-50 text-amber-800 rounded-lg border border-amber-100 truncate">
+                                  <div
+                                    className={`text-center text-xs font-semibold px-2 py-1.5 bg-amber-50 text-amber-800 rounded-lg border border-amber-100 truncate ${rowVisaLocked ? "opacity-90" : ""}`}
+                                    title={rowVisaLocked ? "Locked after visa approval" : undefined}
+                                  >
                                     {entry.remarks || "—"}
                                   </div>
                                 )}
@@ -1536,7 +1652,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                               {/* STANDING */}
                               <div>
                                 <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 text-center">Standing</p>
-                                {canEditAdmission ? (
+                                {canEditAdmissionRow ? (
                                   <select
                                     value={entry.standing || ""}
                                     onChange={(e) => quickUpdateAdmission(index, "standing", e.target.value)}
@@ -1553,8 +1669,9 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                   </select>
                                 ) : (
                                   <div
-                                    className="text-center text-xs font-semibold px-2 py-1.5 rounded-lg border truncate"
+                                    className={`text-center text-xs font-semibold px-2 py-1.5 rounded-lg border truncate ${rowVisaLocked ? "opacity-90" : ""}`}
                                     style={standingInlineStyle(entry.standing)}
+                                    title={rowVisaLocked ? "Locked after visa approval" : undefined}
                                   >
                                     {entry.standing
                                       ? `${standingOptionPrefix(entry.standing)}${formatStandingLabel(entry.standing)}`
@@ -1566,8 +1683,8 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                               <div>
                                 <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 text-center">Pipeline</p>
                                 <div
-                                  className="text-center text-xs font-semibold px-2 py-1.5 bg-purple-50 text-purple-800 rounded-lg border border-purple-100 truncate cursor-not-allowed"
-                                  title="Automatically set based on stage"
+                                  className={`text-center text-xs font-semibold px-2 py-1.5 bg-purple-50 text-purple-800 rounded-lg border border-purple-100 truncate cursor-not-allowed ${rowVisaLocked ? "ring-1 ring-emerald-200/80" : ""}`}
+                                  title={rowVisaLocked ? "Locked after visa approval" : "Automatically set based on stage"}
                                 >
                                   {entry.pipeline || "—"}
                                 </div>
@@ -1589,6 +1706,21 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                 )}
                               </div>
                             </div>
+                            {canViewAdmission && (
+                              <div className="mt-2 flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => setAdmissionSummaryIndex(index)}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-800 hover:bg-indigo-100 transition-colors"
+                                >
+                                  <History size={14} className="shrink-0 text-indigo-600" />
+                                  Summary
+                                  {entry.trackingHistory && entry.trackingHistory.length > 0 && (
+                                    <span className="font-normal text-indigo-600/80">({entry.trackingHistory.length})</span>
+                                  )}
+                                </button>
+                              </div>
+                            )}
                           </div>
 
                           {/* Update button — shown when any field in this row has been changed */}
@@ -1655,8 +1787,130 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                       </div>
                     )}
                   </div>
-                ))}
+                );
+                })}
               </div>
+
+              {admissionSummaryIndex !== null && student.admissionDetails[admissionSummaryIndex] != null && (() => {
+                const sumEntry = student.admissionDetails[admissionSummaryIndex]!;
+                const hist = sumEntry.trackingHistory ?? [];
+                return (
+                  <div
+                    className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="admission-summary-title"
+                    onClick={() => setAdmissionSummaryIndex(null)}
+                  >
+                    <div
+                      className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[85vh] flex flex-col border border-gray-200"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-gray-100 shrink-0">
+                        <div className="min-w-0">
+                          <h3 id="admission-summary-title" className="text-sm font-bold text-gray-900">
+                            Stage &amp; status summary
+                          </h3>
+                          <p className="text-xs text-gray-500 mt-0.5 truncate">
+                            {[sumEntry.universityName, sumEntry.country].filter(Boolean).join(" · ") || "Admission entry"}
+                            {hist.length > 0 && (
+                              <span className="text-gray-400"> · {hist.length} update{hist.length !== 1 ? "s" : ""}</span>
+                            )}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setAdmissionSummaryIndex(null)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 shrink-0"
+                          aria-label="Close"
+                        >
+                          <X size={18} />
+                        </button>
+                      </div>
+                      <div className="overflow-y-auto px-5 py-4 space-y-4 min-h-0">
+                        {hist.length === 0 ? (
+                          <p className="text-sm text-gray-600 leading-relaxed">
+                            No history yet. After you change <strong>stage</strong>, <strong>remarks</strong>,{" "}
+                            <strong>standing</strong>, <strong>pipeline</strong>, or <strong>status date</strong>, click{" "}
+                            <strong>Update</strong> on this card — each save is listed below with the exact{" "}
+                            <strong>date and time</strong> (for example: Stage changed to COE · 04/07/2026, 15:30).
+                          </p>
+                        ) : (
+                          [...hist].reverse().map((ev, hi) => {
+                            const whenStr = formatTrackingEventWhen(ev.at);
+                            return (
+                            <div
+                              key={`sum-${hi}-${String(ev.at)}`}
+                              className="rounded-xl border border-slate-200 bg-slate-50/90 p-4"
+                            >
+                              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Update</p>
+                                <p className="text-sm font-bold text-gray-900 tabular-nums">{whenStr}</p>
+                              </div>
+                              {ev.changedByName ? (
+                                <p className="text-[11px] text-gray-500 mt-1">By {ev.changedByName}</p>
+                              ) : null}
+                              <ul className="mt-3 space-y-2.5 border-t border-slate-200/80 pt-3">
+                                {ADMISSION_SUMMARY_FIELD_ORDER.map((field) => {
+                                  const ch = ev[field];
+                                  if (!ch) return null;
+                                  const fromFmt = formatAdmissionTrackingValue(field, ch.from, sumEntry.country, {
+                                    fullRemarks: true,
+                                  });
+                                  const toFmt = formatAdmissionTrackingValue(field, ch.to, sumEntry.country, {
+                                    fullRemarks: true,
+                                  });
+                                  const label = TRACKING_FIELD_LABELS[field];
+                                  const hadFrom = (ch.from ?? "").toString().trim() !== "";
+                                  return (
+                                    <li
+                                      key={field}
+                                      className="text-sm text-gray-800 leading-relaxed border-l-2 border-indigo-200/80 pl-3"
+                                      title={hadFrom ? `${label}: ${fromFmt} → ${toFmt} · ${whenStr}` : `${label}: ${toFmt} · ${whenStr}`}
+                                    >
+                                      <span className="font-semibold text-gray-900">{label}</span>
+                                      {hadFrom ? (
+                                        <>
+                                          {" "}
+                                          changed from{" "}
+                                          <span className="text-rose-800/90 line-through decoration-rose-400/70 break-words">
+                                            {fromFmt}
+                                          </span>{" "}
+                                          to{" "}
+                                          <span className="font-semibold text-emerald-900 break-words">{toFmt}</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          {" "}
+                                          set to <span className="font-semibold text-emerald-900 break-words">{toFmt}</span>
+                                        </>
+                                      )}
+                                      <span className="text-gray-500 font-medium tabular-nums whitespace-nowrap">
+                                        {" "}
+                                        · {whenStr}
+                                      </span>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            </div>
+                            );
+                          })
+                        )}
+                      </div>
+                      <div className="px-5 py-3 border-t border-gray-100 flex justify-end shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setAdmissionSummaryIndex(null)}
+                          className="px-4 py-2 rounded-lg bg-gray-900 text-white text-xs font-semibold hover:bg-gray-800 transition-colors"
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -1821,15 +2075,50 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
             </div>
           )}
 
-          {canVisa && selectedCountry && !student.countries.find((country) => country.country === selectedCountry)?.visaApprovedAt && (
-            <div className="bg-white rounded-xl border border-gray-100 p-5">
-              <h2 className="font-semibold text-gray-900 mb-3">Visa Approval</h2>
-              <p className="text-sm text-gray-500 mb-3">Mark visa as approved for {selectedCountry}. This will decrement counsellor target.</p>
-              <button onClick={() => approveVisa(selectedCountry)} className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
-                Approve Visa for {selectedCountry}
-              </button>
-            </div>
-          )}
+          {canVisa && selectedCountry && (() => {
+            const countryRow = student.countries.find((c) => c.country === selectedCountry);
+            const approvedAt = countryRow?.visaApprovedAt;
+            const isApproved = !!approvedAt;
+            return (
+              <div className="bg-white rounded-xl border border-gray-100 p-5">
+                <h2 className="font-semibold text-gray-900 mb-3">Visa Approval</h2>
+                {isApproved ? (
+                  <>
+                    <p className="text-sm text-emerald-800 mb-3 leading-relaxed">
+                      Visa is <strong>approved</strong> for {selectedCountry}.
+                      {approvedAt ? (
+                        <span className="block text-xs text-emerald-700/90 mt-1 tabular-nums">
+                          Recorded {formatDateTime(typeof approvedAt === "string" ? approvedAt : String(approvedAt))}
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="text-xs text-gray-500 mb-3">
+                      Stage, standing, remarks, and pipeline for admission entries in this country are locked. The counsellor target was decremented when this was first approved.
+                    </p>
+                    <button
+                      type="button"
+                      disabled
+                      className="w-full bg-emerald-700/85 text-white px-4 py-2 rounded-lg text-sm font-medium cursor-default opacity-95"
+                    >
+                      Visa approved — {selectedCountry}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-gray-500 mb-3">Mark visa as approved for {selectedCountry}. This will decrement counsellor target.</p>
+                    <button
+                      type="button"
+                      disabled={visaApproving}
+                      onClick={() => approveVisa(selectedCountry)}
+                      className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-500/80 text-white px-4 py-2 rounded-lg text-sm font-medium"
+                    >
+                      {visaApproving ? "Saving…" : `Approve Visa for ${selectedCountry}`}
+                    </button>
+                  </>
+                )}
+              </div>
+            );
+          })()}
 
 
         </div>

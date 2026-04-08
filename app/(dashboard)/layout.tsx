@@ -199,9 +199,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
-  // Chat SSE connection
+  // Chat SSE connection (only when user has chat access — avoids 403 retry loops)
   useEffect(() => {
     if (!session) return;
+    const role = session.user?.role as UserRole;
+    const userPermissions = (session.user?.permissions ?? []) as string[];
+    const chatAllowed =
+      hasPermission(userPermissions, "chat", role) &&
+      (!enabledModules || enabledModules.includes("chat") || role === "super_admin");
+    if (!chatAllowed) return;
+
     // Lazy-init audio element
     if (!chatAudioRef.current) {
       chatAudioRef.current = new Audio("/sounds/message-tone.mp3");
@@ -236,7 +243,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     connectChat();
     return () => { chatEsRef.current?.close(); clearTimeout(retryTimeout); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, pathname]);
+  }, [session, pathname, enabledModules]);
 
   // Close dropdown on outside click
   useEffect(() => {

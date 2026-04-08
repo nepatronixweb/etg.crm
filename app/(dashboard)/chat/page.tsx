@@ -4,7 +4,7 @@ import { useSession } from "next-auth/react";
 import {
   MessageCircle, Send, ArrowLeft, Search, Plus, Users, X,
 } from "lucide-react";
-import { getRoleLabel } from "@/lib/utils";
+import { getRoleLabel, hasPermission } from "@/lib/utils";
 import { UserRole } from "@/types";
 
 interface IUser {
@@ -52,8 +52,12 @@ function formatMsgTime(dateStr: string) {
 }
 
 export default function ChatPage() {
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
   const myId = session?.user?.id;
+  const role = session?.user?.role as UserRole | undefined;
+  const userPermissions = (session?.user?.permissions ?? []) as string[];
+  const canUseChat =
+    !!session?.user && hasPermission(userPermissions, "chat", role);
 
   const [conversations, setConversations] = useState<IConversation[]>([]);
   const [activeConv, setActiveConv] = useState<IConversation | null>(null);
@@ -90,6 +94,12 @@ export default function ChatPage() {
   // Fetch conversations
   const fetchConversations = useCallback(async () => {
     try {
+      const r = session?.user?.role as UserRole | undefined;
+      const perms = (session?.user?.permissions ?? []) as string[];
+      if (!session?.user || !hasPermission(perms, "chat", r)) {
+        setLoading(false);
+        return;
+      }
       const res = await fetch("/api/chat/conversations");
       if (res.ok) {
         const data = await res.json();
@@ -97,7 +107,7 @@ export default function ChatPage() {
       }
     } catch { /* silent */ }
     setLoading(false);
-  }, []);
+  }, [session]);
 
   useEffect(() => { fetchConversations(); }, [fetchConversations]);
 
@@ -162,7 +172,10 @@ export default function ChatPage() {
 
   // SSE for real-time messages
   useEffect(() => {
-    if (!session) return;
+    if (!session?.user) return;
+    const r = session.user.role as UserRole;
+    const perms = (session.user.permissions ?? []) as string[];
+    if (!hasPermission(perms, "chat", r)) return;
     let retryTimeout: ReturnType<typeof setTimeout>;
 
     const connect = () => {
@@ -282,6 +295,32 @@ export default function ChatPage() {
     return u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
       u.email.toLowerCase().includes(userSearch.toLowerCase());
   });
+
+  if (sessionStatus === "loading") {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-700 rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-gray-500">Loading…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (session && !canUseChat) {
+    return (
+      <div className="flex items-center justify-center min-h-[320px] px-4">
+        <div className="max-w-md text-center rounded-xl border border-amber-200 bg-amber-50 px-6 py-8">
+          <MessageCircle size={28} className="text-amber-600 mx-auto mb-3" />
+          <p className="text-sm font-semibold text-amber-900">Chat is not enabled for your account</p>
+          <p className="text-xs text-amber-800/90 mt-2">
+            An administrator can turn it on under User management → Module permissions (Chat). After it is assigned,
+            your access updates within about a minute, or refresh this page.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
