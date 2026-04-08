@@ -96,7 +96,7 @@ const ADMISSION_SUMMARY_FIELD_ORDER = [
 /** When the save was recorded (e.g. 04/07/2026, 15:30). */
 function formatTrackingEventWhen(at: unknown): string {
   const raw = typeof at === "string" ? at : at != null ? String(at) : "";
-  if (!raw) return "—";
+  if (!raw) return "-";
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return raw;
   return d.toLocaleString("en-GB", {
@@ -218,7 +218,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
       country: string,
       opts?: { fullRemarks?: boolean },
     ) => {
-      if (!value) return "—";
+      if (!value) return "-";
       if (field === "stage") {
         const list =
           country && countryStages[country]?.length
@@ -1163,7 +1163,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                           {isCountryVisaApproved(editAdmissionForm.country) && (
                             <p className="text-xs text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 leading-relaxed">
                               <Lock size={12} className="inline-block mr-1.5 align-text-bottom text-emerald-700" />
-                              Visa approved for this country — <strong>stage</strong>, <strong>standing</strong>, <strong>remarks</strong>, and <strong>pipeline</strong> are locked. You can still update other fields below.
+                              Visa approved for this country - <strong>stage</strong>, <strong>standing</strong>, <strong>remarks</strong>, and <strong>pipeline</strong> are locked. You can still update other fields below.
                             </p>
                           )}
                           {/* Section: Institution */}
@@ -1614,7 +1614,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                     onChange={(e) => quickUpdateAdmission(index, "stage", e.target.value)}
                                     className="w-full text-xs font-semibold bg-yellow-50 text-yellow-800 border border-yellow-200 rounded-lg px-2 py-1.5 focus:outline-none cursor-pointer text-center"
                                   >
-                                    <option value="">—</option>
+                                    <option value="">-</option>
                                     {getStagesForCountry(entry.country).map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                                   </select>
                                 ) : (
@@ -1622,7 +1622,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                     className={`text-center text-xs font-semibold px-2 py-1.5 bg-yellow-50 text-yellow-800 rounded-lg border border-yellow-100 truncate ${rowVisaLocked ? "opacity-90" : ""}`}
                                     title={rowVisaLocked ? "Locked after visa approval" : undefined}
                                   >
-                                    {getStagesForCountry(entry.country).find((s) => s.value === entry.stage)?.label || entry.stage || "—"}
+                                    {getStagesForCountry(entry.country).find((s) => s.value === entry.stage)?.label || entry.stage || "-"}
                                   </div>
                                 )}
                               </div>
@@ -1635,7 +1635,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                     onChange={(e) => quickUpdateAdmission(index, "remarks", e.target.value)}
                                     className="w-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 rounded-lg px-2 py-1.5 focus:outline-none cursor-pointer text-center"
                                   >
-                                    <option value="">—</option>
+                                    <option value="">-</option>
                                     {mergedAdmissionRemarks(entry.pipeline).map((r) => (
                                       <option key={r} value={r}>{r}</option>
                                     ))}
@@ -1645,7 +1645,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                     className={`text-center text-xs font-semibold px-2 py-1.5 bg-amber-50 text-amber-800 rounded-lg border border-amber-100 truncate ${rowVisaLocked ? "opacity-90" : ""}`}
                                     title={rowVisaLocked ? "Locked after visa approval" : undefined}
                                   >
-                                    {entry.remarks || "—"}
+                                    {entry.remarks || "-"}
                                   </div>
                                 )}
                               </div>
@@ -1659,7 +1659,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                     className="w-full text-xs font-semibold rounded-lg px-2 py-1.5 border focus:outline-none cursor-pointer text-center"
                                     style={standingInlineStyle(entry.standing)}
                                   >
-                                    <option value="">—</option>
+                                    <option value="">-</option>
                                     {appStandings.map((s) => (
                                       <option key={s} value={s}>
                                         {standingOptionPrefix(s)}
@@ -1675,18 +1675,18 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                   >
                                     {entry.standing
                                       ? `${standingOptionPrefix(entry.standing)}${formatStandingLabel(entry.standing)}`
-                                      : "—"}
+                                      : "-"}
                                   </div>
                                 )}
                               </div>
-                              {/* PIPELINE — auto-set from stage, read-only */}
+                              {/* PIPELINE - auto-set from stage, read-only */}
                               <div>
                                 <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 text-center">Pipeline</p>
                                 <div
                                   className={`text-center text-xs font-semibold px-2 py-1.5 bg-purple-50 text-purple-800 rounded-lg border border-purple-100 truncate cursor-not-allowed ${rowVisaLocked ? "ring-1 ring-emerald-200/80" : ""}`}
                                   title={rowVisaLocked ? "Locked after visa approval" : "Automatically set based on stage"}
                                 >
-                                  {entry.pipeline || "—"}
+                                  {entry.pipeline || "-"}
                                 </div>
                               </div>
                               {/* STATUS DATE */}
@@ -1701,7 +1701,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                   />
                                 ) : (
                                   <div className="text-center text-xs text-gray-600 font-medium px-2 py-1.5 bg-gray-50 rounded-lg border border-gray-100">
-                                    {entry.statusDate ? entry.statusDate.split("T")[0] : "—"}
+                                    {entry.statusDate ? entry.statusDate.split("T")[0] : "-"}
                                   </div>
                                 )}
                               </div>
@@ -1723,7 +1723,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                             )}
                           </div>
 
-                          {/* Update button — shown when any field in this row has been changed */}
+                          {/* Update button - shown when any field in this row has been changed */}
                           {canEditAdmission && dirtyAdmissionRows.has(index) && (
                             <div className="px-4 pb-3">
                               <button
@@ -1832,7 +1832,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                           <p className="text-sm text-gray-600 leading-relaxed">
                             No history yet. After you change <strong>stage</strong>, <strong>remarks</strong>,{" "}
                             <strong>standing</strong>, <strong>pipeline</strong>, or <strong>status date</strong>, click{" "}
-                            <strong>Update</strong> on this card — each save is listed below with the exact{" "}
+                            <strong>Update</strong> on this card - each save is listed below with the exact{" "}
                             <strong>date and time</strong> (for example: Stage changed to COE · 04/07/2026, 15:30).
                           </p>
                         ) : (
@@ -2100,7 +2100,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                       disabled
                       className="w-full bg-emerald-700/85 text-white px-4 py-2 rounded-lg text-sm font-medium cursor-default opacity-95"
                     >
-                      Visa approved — {selectedCountry}
+                      Visa approved - {selectedCountry}
                     </button>
                   </>
                 ) : (

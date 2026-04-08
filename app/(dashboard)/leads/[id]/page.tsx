@@ -1,11 +1,11 @@
 "use client";
-import { use, useEffect, useRef, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { ArrowLeft, UserPlus, MapPin, Phone, Mail, Calendar, Plus, X, GraduationCap, Globe, Trash2, ChevronDown, Users, BookOpen, Home, Award, CreditCard, ClipboardList, Printer, Download, UserCheck } from "lucide-react";
 import { formatDate, formatDateTime, getStatusColor, getRoleLabel, COUNTRIES, LEAD_STAGES, LEAD_STAGE_GROUPS, FD_STATUSES, getLeadStageDotColor } from "@/lib/utils";
 import { ILead } from "@/types";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useBranding } from "@/app/branding-context";
 import { normalizeUniversitiesArray, universityEntryNames } from "@/lib/countryUniversities";
 
@@ -23,6 +23,10 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const { id } = use(params);
   const { data: session } = useSession();
   const router = useRouter();
+  const pathname = usePathname() ?? "";
+  const isEnquiriesRoute = pathname.startsWith("/enquiries");
+  const apiLeadsBase = isEnquiriesRoute ? "/api/enquiries" : "/api/leads";
+  const leadsListPath = isEnquiriesRoute ? "/enquiries" : "/leads";
   const branding = useBranding();
   const [lead, setLead] = useState<ILead | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,12 +65,14 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const [showFdStatusDropdown, setShowFdStatusDropdown] = useState(false);
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const fetchLead = async () => {
-    const res = await fetch(`/api/leads/${id}`);
+  const fetchLead = useCallback(async () => {
+    setLoading(true);
+    const res = await fetch(`${apiLeadsBase}/${id}`);
     const data = await res.json();
     setLead(data);
     if (data.convertedToStudent) {
-      const sRes = await fetch(`/api/students?leadId=${id}`);
+      const originQ = isEnquiriesRoute ? `enquiryId=${encodeURIComponent(id)}` : `leadId=${encodeURIComponent(id)}`;
+      const sRes = await fetch(`/api/students?${originQ}`);
       if (sRes.ok) {
         const sData = await sRes.json();
         const sArr = Array.isArray(sData) ? sData : (Array.isArray(sData?.students) ? sData.students : []);
@@ -76,7 +82,6 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
         }
       }
     }
-    // Populate lead countries from saved data
     if (Array.isArray(data.interestedCountries) && data.interestedCountries.length > 0) {
       setLeadCountries(data.interestedCountries.map((e: CountryEntry) => ({ country: e.country, universityName: e.universityName || "" })));
       setLcSearch(data.interestedCountries.map(() => ""));
@@ -91,10 +96,11 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
       setLcUniSearch([""]);
     }
     setLoading(false);
-  };
+  }, [id, apiLeadsBase, isEnquiriesRoute]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { fetchLead(); }, [id]);
+  useEffect(() => {
+    void fetchLead();
+  }, [fetchLead]);
 
   // Fetch dynamic settings
   useEffect(() => {
@@ -181,14 +187,14 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     if (!note.trim()) return;
     setAddingNote(true);
     const noteContent = note.trim();
-    await fetch(`/api/leads/${id}/notes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: noteContent }) });
+    await fetch(`${apiLeadsBase}/${id}/notes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: noteContent }) });
     setNote("");
     setAddingNote(false);
     fetchLead();
     // Auto-send via WhatsApp and Gmail
     if (lead?.phone) {
       const waPhone = lead.phone.replace(/[^\d]/g, "");
-      const waMsg = encodeURIComponent(`Hi ${lead.name},\n\n${noteContent}\n\n– ${branding.shortCode} Team`);
+      const waMsg = encodeURIComponent(`Hi ${lead.name},\n\n${noteContent}\n\n- ${branding.shortCode} Team`);
       window.open(`https://wa.me/${waPhone}?text=${waMsg}`, "_blank");
     }
     if (lead?.email) {
@@ -199,17 +205,17 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   };
 
   const updateStatus = async (status: string) => {
-    await fetch(`/api/leads/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ standing: status }) });
+    await fetch(`${apiLeadsBase}/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ standing: status }) });
     fetchLead();
   };
 
   const updateLeadStatus = async (status: string) => {
-    await fetch(`/api/leads/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+    await fetch(`${apiLeadsBase}/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
     fetchLead();
   };
 
   const updateLeadStage = async (stage: string) => {
-    await fetch(`/api/leads/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage }) });
+    await fetch(`${apiLeadsBase}/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage }) });
     fetchLead();
   };
 
@@ -217,7 +223,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const saveLeadCountries = async () => {
     const valid = leadCountries.filter((e) => e.country.trim());
     setSavingCountries(true);
-    await fetch(`/api/leads/${id}`, {
+    await fetch(`${apiLeadsBase}/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ interestedCountries: valid }),
@@ -255,7 +261,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
       const res = await fetch("/api/students", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leadId: id }),
+        body: JSON.stringify(isEnquiriesRoute ? { enquiryId: id } : { leadId: id }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -332,7 +338,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const Field = ({ label, value }: { label: string; value?: string | null }) => (
     <div>
       <p className="text-xs text-gray-400 mb-0.5">{label}</p>
-      <p className="text-sm font-semibold text-gray-800">{value || <span className="text-gray-300 font-normal">—</span>}</p>
+      <p className="text-sm font-semibold text-gray-800">{value || <span className="text-gray-300 font-normal">-</span>}</p>
     </div>
   );
 
@@ -341,7 +347,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
 
       {/* ── Page Header ── */}
       <div className="flex items-center gap-3 flex-wrap no-print">
-        <Link href="/leads" className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
+        <Link href={leadsListPath} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
           <ArrowLeft size={18} />
         </Link>
         <div className="flex-1 min-w-0">
@@ -354,7 +360,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
               <span className="bg-emerald-100 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full text-xs font-semibold">✓ Converted to Student</span>
             )}
           </div>
-          <p className="text-gray-400 text-xs mt-0.5">Lead Details</p>
+          <p className="text-gray-400 text-xs mt-0.5">{isEnquiriesRoute ? "Enquiry details" : "Lead details"}</p>
         </div>
         {/* Print + Export PDF buttons */}
         {canPrint && (
@@ -601,7 +607,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
               return (
                 <div key={i} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <p className="text-xs text-gray-400 mb-1">Destination {i + 1} — Country</p>
+                    <p className="text-xs text-gray-400 mb-1">Destination {i + 1} - Country</p>
                     <div className="relative" onClick={(e) => e.stopPropagation()}>
                       <div
                         className={`flex items-center justify-between w-full px-3 py-2 bg-white border rounded-lg text-sm ${canEdit ? "cursor-pointer" : "cursor-default"} transition-colors ${lcOpenDropdown === i ? "border-gray-500 ring-1 ring-gray-400" : "border-gray-200 hover:border-gray-400"}`}

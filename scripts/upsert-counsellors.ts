@@ -50,7 +50,7 @@ async function run() {
       { $set: { name: c.name, email: c.email, password: hashed, role: "counsellor", branch: (mainBranch as any)._id, target: 10, isActive: true } },
       { upsert: true, new: true }
     );
-    console.log(`✅ ${result.name} — ${result.email} (${c.password})`);
+    console.log(`✅ ${result.name} - ${result.email} (${c.password})`);
   }
 
   console.log("\n──────────────────────────────────────────");

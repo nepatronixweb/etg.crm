@@ -3,7 +3,7 @@ import connectDB from "@/lib/mongodb";
 import Notification from "@/models/Notification";
 import { auth } from "@/lib/auth";
 
-// GET /api/notifications  — fetch current user's notifications
+// GET /api/notifications  - fetch current user's notifications
 export async function GET(req: NextRequest) {
   try {
     const session = await auth();
@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// PATCH /api/notifications  — mark all as read (or body { id } for single)
+// PATCH /api/notifications  - mark all as read (or body { id } for single)
 export async function PATCH(req: NextRequest) {
   try {
     const session = await auth();

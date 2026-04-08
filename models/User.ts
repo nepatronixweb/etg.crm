@@ -1,5 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
-/** HR module classification — does not replace CRM `role` (counsellor, super_admin, etc.). */
+/** HR module classification - does not replace CRM `role` (counsellor, super_admin, etc.). */
 export type HrRoleType = "admin" | "employee";
 
 export interface IUserDocument extends Document {

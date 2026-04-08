@@ -126,7 +126,8 @@ export interface ICourse {
 }
 
 interface IStudentDocument extends Document {
-  lead: mongoose.Types.ObjectId;
+  lead?: mongoose.Types.ObjectId;
+  enquiry?: mongoose.Types.ObjectId;
   name: string;
   phone: string;
   email: string;
@@ -175,7 +176,8 @@ interface IStudentDocument extends Document {
 
 const StudentSchema = new Schema<IStudentDocument>(
   {
-    lead: { type: Schema.Types.ObjectId, ref: "Lead", required: true },
+    lead: { type: Schema.Types.ObjectId, ref: "Lead", required: false },
+    enquiry: { type: Schema.Types.ObjectId, ref: "Enquiry", required: false },
     name: { type: String, required: true },
     phone: { type: String, default: "" },
     email: { type: String, default: "", lowercase: true },
@@ -202,10 +204,22 @@ const StudentSchema = new Schema<IStudentDocument>(
   { timestamps: true }
 );
 
+StudentSchema.pre("validate", function () {
+  const hasLead = !!this.lead;
+  const hasEnquiry = !!this.enquiry;
+  if (!hasLead && !hasEnquiry) {
+    throw new Error("Student must reference either a lead or an enquiry");
+  }
+  if (hasLead && hasEnquiry) {
+    throw new Error("Student cannot reference both lead and enquiry");
+  }
+});
+
 // Indexes for fast queries
 StudentSchema.index({ branch: 1, currentStage: 1 });
 StudentSchema.index({ counsellor: 1 });
-StudentSchema.index({ lead: 1 }, { unique: true });
+StudentSchema.index({ lead: 1 }, { unique: true, sparse: true });
+StudentSchema.index({ enquiry: 1 }, { unique: true, sparse: true });
 StudentSchema.index({ createdAt: -1 });
 // Additional indexes for server-side filtering
 StudentSchema.index({ source: 1 });

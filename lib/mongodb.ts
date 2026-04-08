@@ -4,7 +4,7 @@ import { validateEnv } from "@/lib/env";
 interface MongooseCache {
   conn: typeof mongoose | null;
   promise: Promise<typeof mongoose> | null;
-  /** URI used for the active connection — if env changes, we reconnect */
+  /** URI used for the active connection - if env changes, we reconnect */
   uri: string | null;
 }
 

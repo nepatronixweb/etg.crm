@@ -11,7 +11,7 @@ import {
   Package,
   Briefcase,
 } from "lucide-react";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { UserRole } from "@/types";
 import Image from "next/image";
 import { useBranding } from "@/app/branding-context";
@@ -49,7 +49,6 @@ const navItems = [
   { href: "/branches", label: "Branches", icon: Building2, module: "branches" },
   { href: "/users", label: "Users", icon: Users, module: "users" },
   { href: "/activity-logs", label: "Activity Logs", icon: ScrollText, module: "activity_logs" },
-  { href: "/settings", label: "Settings", icon: Settings, module: "settings" },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -150,7 +149,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     } catch { /* silent */ }
   }, [triggerBellShake]);
 
-  // SSE connection — reconnects automatically on failure
+  // SSE connection - reconnects automatically on failure
   useEffect(() => {
     if (!session) return;
 
@@ -164,7 +163,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         try {
           const payload = JSON.parse(e.data);
           if (payload.type === "init") {
-            // Full initial load from SSE — no toast for existing items
+            // Full initial load from SSE - no toast for existing items
             setNotifs(payload.notifications ?? []);
             setUnreadCount(payload.unreadCount ?? 0);
             prevUnreadRef.current = payload.unreadCount ?? 0;
@@ -173,7 +172,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           } else if (payload.type === "heartbeat") {
             const incoming = payload.unreadCount ?? 0;
             if (incoming > prevUnreadRef.current) {
-              // unread increased since last heartbeat — re-fetch full list
+              // unread increased since last heartbeat - re-fetch full list
               fetchNotifs();
             }
             prevUnreadRef.current = incoming;
@@ -199,7 +198,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
-  // Chat SSE connection (only when user has chat access — avoids 403 retry loops)
+  // Chat SSE connection (only when user has chat access - avoids 403 retry loops)
   useEffect(() => {
     if (!session) return;
     const role = session.user?.role as UserRole;
@@ -273,11 +272,31 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const canViewUniversityRequirements = hasPermission(userPermissions, "settings", role);
   const canViewHrManagement = role === "super_admin" || session?.user?.hrRole === "admin";
 
-  const visibleNav = navItems.filter((item) => {
-    if (item.module === "dashboard") return true;
-    if (enabledModules && !enabledModules.includes(item.module) && role !== "super_admin") return false;
-    return hasPermission(userPermissions, item.module, role);
-  });
+  const visibleNav = useMemo(() => {
+    let items = navItems.filter((item) => {
+      if (item.module === "dashboard") return true;
+      if (enabledModules && !enabledModules.includes(item.module) && role !== "super_admin") return false;
+      return hasPermission(userPermissions, item.module, role);
+    });
+    if (role === "telecaller") {
+      items = items.map((item) =>
+        item.href === "/leads" ? { ...item, href: "/enquiries", label: "Enquiries" } : item
+      );
+    } else if (role === "super_admin") {
+      const leadsIdx = items.findIndex((i) => i.href === "/leads");
+      if (leadsIdx !== -1) {
+        const copy = [...items];
+        copy.splice(leadsIdx + 1, 0, {
+          href: "/enquiries",
+          label: "Enquiries",
+          icon: Users,
+          module: "leads",
+        });
+        items = copy;
+      }
+    }
+    return items;
+  }, [enabledModules, role, userPermissions]);
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -354,6 +373,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             >
               <Briefcase size={18} />
               HR management
+            </Link>
+          )}
+          {hasPermission(userPermissions, "settings", role) && (
+            <Link
+              href="/settings"
+              onClick={() => setSidebarOpen(false)}
+              className={`flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors mt-2 border-t border-gray-700/60 pt-3
+                ${pathname === "/settings" || pathname.startsWith("/settings/") ? "text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}
+              style={
+                pathname === "/settings" || pathname.startsWith("/settings/")
+                  ? { backgroundColor: branding.brandColor }
+                  : undefined
+              }
+            >
+              <Settings size={18} />
+              Settings
             </Link>
           )}
         </nav>

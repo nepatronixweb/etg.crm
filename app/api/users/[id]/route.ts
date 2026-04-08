@@ -64,7 +64,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         body.workingHoursPerDay !== undefined &&
         (typeof body.workingHoursPerDay !== "number" || body.workingHoursPerDay < 0 || body.workingHoursPerDay > 24)
       ) {
-        return NextResponse.json({ error: "Invalid workingHoursPerDay (0–24)" }, { status: 400 });
+        return NextResponse.json({ error: "Invalid workingHoursPerDay (0-24)" }, { status: 400 });
       }
       if (body.officeNetworkIp !== undefined && typeof body.officeNetworkIp !== "string") {
         return NextResponse.json({ error: "Invalid officeNetworkIp" }, { status: 400 });

@@ -38,13 +38,13 @@ const COMMISSION_DURATION_OPTIONS = [
 type CommissionDurationValue = (typeof COMMISSION_DURATION_OPTIONS)[number]["value"];
 
 function commissionClaimLabel(raw: unknown): string {
-  if (typeof raw !== "string" || !raw) return "—";
+  if (typeof raw !== "string" || !raw) return "-";
   const hit = COMMISSION_CLAIM_OPTIONS.find((o) => o.value === raw);
   return hit?.label ?? raw;
 }
 
 function commissionDurationLabel(raw: unknown): string {
-  if (typeof raw !== "string" || !raw) return "—";
+  if (typeof raw !== "string" || !raw) return "-";
   const hit = COMMISSION_DURATION_OPTIONS.find((o) => o.value === raw);
   return hit?.label ?? raw;
 }
@@ -72,7 +72,7 @@ const OSHC_CLAIM_OPTIONS = [
 type OshcClaimValue = (typeof OSHC_CLAIM_OPTIONS)[number]["value"];
 
 function oshcNameLabel(raw: unknown): string {
-  if (typeof raw !== "string" || !raw) return "—";
+  if (typeof raw !== "string" || !raw) return "-";
   const hit = OSHC_NAME_OPTIONS.find((o) => o.value === raw);
   return hit?.label ?? raw;
 }
@@ -80,14 +80,14 @@ function oshcNameLabel(raw: unknown): string {
 function oshcClaimLabel(raw: unknown): string {
   if (raw === "proceed") return "Proceed";
   if (raw === "received") return "Received";
-  return "—";
+  return "-";
 }
 
 function remarksStatusLabel(raw: unknown): string {
   if (raw === "processed") return "Processed";
   if (raw === "received") return "Received";
   if (raw === "yes") return "Yes";
-  return "—";
+  return "-";
 }
 
 const COMMISSION_STATUS_OPTIONS = [
@@ -99,7 +99,7 @@ type CommissionStatusValue = (typeof COMMISSION_STATUS_OPTIONS)[number]["value"]
 function commissionStatusLabel(raw: unknown): string {
   if (raw === "completed") return "Completed";
   if (raw === "discontinued") return "Discontinued";
-  return "—";
+  return "-";
 }
 
 const fieldClass =
@@ -547,7 +547,7 @@ export default function CommissionPage() {
           <div className="relative z-20">
             <label className={labelClass}>Applicant name</label>
             <p className="text-[11px] text-gray-400 mb-1">
-              Start typing — suggestions are limited to students in the <span className="font-semibold text-gray-600">visa grant / visa approved</span> pipeline. Pick one to auto-fill the form.
+              Start typing - suggestions are limited to students in the <span className="font-semibold text-gray-600">visa grant / visa approved</span> pipeline. Pick one to auto-fill the form.
             </p>
             <input
               required
@@ -976,18 +976,18 @@ export default function CommissionPage() {
               <tbody className="divide-y divide-gray-50">
                 {list.map((row) => {
                   const claimShow =
-                    commissionClaimLabel(row.claimableIntake) !== "—"
+                    commissionClaimLabel(row.claimableIntake) !== "-"
                       ? commissionClaimLabel(row.claimableIntake)
-                      : [row.commission, row.claim].filter(Boolean).join(" · ") || "—";
+                      : [row.commission, row.claim].filter(Boolean).join(" · ") || "-";
                   const trunc = (s: unknown, n: number) => {
                     const t = String(s ?? "").trim();
-                    if (!t) return "—";
+                    if (!t) return "-";
                     return t.length > n ? `${t.slice(0, n)}…` : t;
                   };
                   return (
                   <tr key={String(row._id)} className="text-gray-700">
                     <td className="px-4 py-2 whitespace-nowrap text-xs text-gray-500">
-                      {row.createdAt ? new Date(String(row.createdAt)).toLocaleDateString() : "—"}
+                      {row.createdAt ? new Date(String(row.createdAt)).toLocaleDateString() : "-"}
                     </td>
                     <td className="px-4 py-2">
                       <button
@@ -1014,7 +1014,7 @@ export default function CommissionPage() {
                       {trunc(row.incentives, 24)}
                     </td>
                     <td className="px-4 py-2 text-xs whitespace-nowrap max-w-[100px] truncate" title={oshcNameLabel(row.oshcName)}>
-                      {oshcNameLabel(row.oshcName) !== "—"
+                      {oshcNameLabel(row.oshcName) !== "-"
                         ? oshcNameLabel(row.oshcName)
                         : trunc(row.marketingBudget, 16)}
                     </td>
@@ -1025,7 +1025,7 @@ export default function CommissionPage() {
                           {String(row.oshcAmount)}
                         </>
                       ) : (
-                        "—"
+                        "-"
                       )}
                     </td>
                     <td className="px-4 py-2 text-xs whitespace-nowrap">{oshcClaimLabel(row.oshcClaim)}</td>
@@ -1033,7 +1033,7 @@ export default function CommissionPage() {
                     <td className="px-4 py-2 tabular-nums">{String(row.commissionPercent ?? "")}</td>
                     <td className="px-4 py-2 tabular-nums">
                       {row.currencySymbol ? `${String(row.currencySymbol)} ` : ""}
-                      {String(row.commissionAmount ?? row.amountFromPercent ?? "—")}
+                      {String(row.commissionAmount ?? row.amountFromPercent ?? "-")}
                     </td>
                     <td className="px-4 py-2 text-xs font-medium whitespace-nowrap">
                       {commissionStatusLabel(row.commissionStatus)}

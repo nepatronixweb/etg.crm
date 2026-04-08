@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
       module: "Commission",
       targetId: doc._id.toString(),
       targetName: doc.applicantName,
-      details: `Commission entry — ${doc.destinationCountry} / ${doc.universityName}`,
+      details: `Commission entry - ${doc.destinationCountry} / ${doc.universityName}`,
     });
 
     return NextResponse.json({ commission: doc }, { status: 201 });

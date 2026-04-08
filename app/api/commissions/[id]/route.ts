@@ -87,7 +87,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       module: "Commission",
       targetId: id,
       targetName: doc.applicantName,
-      details: `Updated commission — ${doc.destinationCountry} / ${doc.universityName}`,
+      details: `Updated commission - ${doc.destinationCountry} / ${doc.universityName}`,
     });
 
     return NextResponse.json({ commission: doc });
@@ -121,7 +121,7 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
       module: "Commission",
       targetId: id,
       targetName: existing.applicantName,
-      details: `Deleted commission — ${existing.destinationCountry} / ${existing.universityName}`,
+      details: `Deleted commission - ${existing.destinationCountry} / ${existing.universityName}`,
     });
 
     return NextResponse.json({ ok: true });

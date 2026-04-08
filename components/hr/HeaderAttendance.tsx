@@ -97,7 +97,7 @@ export default function HeaderAttendance() {
       {open && (
         <div className="absolute right-0 top-full mt-1.5 w-[min(100vw-2rem,18rem)] rounded-xl border border-gray-200 bg-white shadow-xl z-[60] p-3">
           <p className="text-[10px] text-gray-500 mb-2">
-            Server date: <span className="font-semibold text-gray-700">{serverToday ?? "—"}</span>
+            Server date: <span className="font-semibold text-gray-700">{serverToday ?? "-"}</span>
           </p>
           {loading ? (
             <p className="text-xs text-gray-400 py-2">Loading…</p>
@@ -109,11 +109,11 @@ export default function HeaderAttendance() {
                 <>
                   <p>
                     <span className="font-medium text-gray-800">In:</span>{" "}
-                    {todayRow.checkIn ? new Date(todayRow.checkIn).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
+                    {todayRow.checkIn ? new Date(todayRow.checkIn).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"}
                   </p>
                   <p>
                     <span className="font-medium text-gray-800">Out:</span>{" "}
-                    {todayRow.checkOut ? new Date(todayRow.checkOut).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
+                    {todayRow.checkOut ? new Date(todayRow.checkOut).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"}
                   </p>
                   {invalid && (
                     <p className="flex items-center gap-1 text-red-600 font-medium">
@@ -153,7 +153,7 @@ export default function HeaderAttendance() {
               Check out
             </button>
             {checkedOut && (
-              <p className="text-[10px] text-center text-emerald-700 font-medium">Day complete — see you tomorrow.</p>
+              <p className="text-[10px] text-center text-emerald-700 font-medium">Day complete - see you tomorrow.</p>
             )}
           </div>
           <button

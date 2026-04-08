@@ -6,7 +6,7 @@ import { auth } from "@/lib/auth";
 // Chunk size for client uploads (4MB to stay within Vercel's 4.5MB body limit)
 const CHUNK_SIZE = 4 * 1024 * 1024;
 
-// Initialize a chunked upload – returns an uploadId to append chunks to
+// Initialize a chunked upload - returns an uploadId to append chunks to
 export async function POST(req: NextRequest) {
   try {
     const session = await auth();

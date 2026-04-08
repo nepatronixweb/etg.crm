@@ -1,5 +1,5 @@
 /**
- * Telecaller dashboard "Fresh leads" — new & pending contact only.
+ * Telecaller dashboard "Fresh leads" - new & pending contact only.
  * Keep in sync with GET /api/leads?bucket=telecaller_fresh
  */
 export const TELECALLER_FRESH_BUCKET = "telecaller_fresh";

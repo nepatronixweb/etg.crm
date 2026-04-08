@@ -247,7 +247,7 @@ export default function VisaPage() {
                         onChange={(e) => quickUpdate(s._id, entryIndex, "stage", e.target.value)}
                         className="w-full text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-full px-2 py-1 focus:outline-none cursor-pointer disabled:cursor-default"
                       >
-                        <option value="">—</option>
+                        <option value="">-</option>
                         {appLeadStages.map((st) => <option key={st.value} value={st.value}>{st.label}</option>)}
                       </select>
                     </div>
@@ -258,7 +258,7 @@ export default function VisaPage() {
                         onChange={(e) => quickUpdate(s._id, entryIndex, "remarks", e.target.value)}
                         className="w-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-2 py-1 focus:outline-none cursor-pointer disabled:cursor-default"
                       >
-                        <option value="">—</option>
+                        <option value="">-</option>
                         {mergeRemarksForPipeline(entry.pipeline, appRemarkOptions, remarkOptionsByDept).map((r) => (
                           <option key={r} value={r}>{r}</option>
                         ))}
@@ -272,7 +272,7 @@ export default function VisaPage() {
                         className="w-full text-xs font-medium rounded-full px-2 py-1 border focus:outline-none cursor-pointer disabled:cursor-default"
                         style={standingInlineStyle(entry.standing)}
                       >
-                        <option value="">—</option>
+                        <option value="">-</option>
                         {appStandings.map((st) => (
                           <option key={st} value={st}>
                             {standingOptionPrefix(st)}
@@ -288,7 +288,7 @@ export default function VisaPage() {
                         onChange={(e) => quickUpdate(s._id, entryIndex, "pipeline", e.target.value)}
                         className="w-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-2 py-1 focus:outline-none cursor-pointer disabled:cursor-default"
                       >
-                        <option value="">—</option>
+                        <option value="">-</option>
                         {appLeadStageGroups.map((g) => <option key={g} value={g}>{g}</option>)}
                       </select>
                     </div>

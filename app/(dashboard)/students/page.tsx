@@ -1,7 +1,17 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { formatDate, getStatusColor, COUNTRIES, SERVICES, LEAD_STAGES, LEAD_STAGE_GROUPS, getLeadStageColor, getLeadStageDotColor } from "@/lib/utils";
+import {
+  formatDate,
+  getStatusColor,
+  COUNTRIES,
+  SERVICES,
+  LEAD_STAGES,
+  LEAD_STAGE_GROUPS,
+  getLeadStageColor,
+  getLeadStageDotColor,
+  hasModuleAction,
+} from "@/lib/utils";
 import { IStudent } from "@/types";
 import Link from "next/link";
 import { Search, UserCheck, Plus, X, ChevronDown, MessageSquare, MoreVertical, Phone, Mail, FileSpreadsheet, Trash2 } from "lucide-react";
@@ -22,7 +32,7 @@ const SOURCES = [
 const FIELD = "w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-colors";
 const LABEL = "block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide";
 
-/** True once any admission row exists — remarks then belong to Admission Details, not the list. */
+/** True once any admission row exists - remarks then belong to Admission Details, not the list. */
 function hasAdmissionDetailsEntries(student: IStudent): boolean {
   const d = student.admissionDetails;
   return Array.isArray(d) && d.length > 0;
@@ -360,8 +370,11 @@ export default function StudentsPage() {
     }
   };
 
-  const canCreate = ["super_admin", "counsellor", "front_desk"].includes(session?.user?.role || "");
-  const canExport = ["super_admin", "telecaller"].includes(session?.user?.role || "");
+  const userPermissions = (session?.user?.permissions ?? []) as string[];
+  const userRole = session?.user?.role;
+  const canCreateStudentByRole = ["super_admin", "counsellor", "front_desk"].includes(userRole || "");
+  const canCreate = canCreateStudentByRole && hasModuleAction(userPermissions, userRole, "students", "add");
+  const canExport = hasModuleAction(userPermissions, userRole, "students", "export");
   const isAdmin = session?.user?.role === "super_admin";
   /** Remarks dropdown on the list is allowed only before any Admission Details row exists. */
   const canEditRemarksOnList = (student: IStudent) => {
@@ -786,7 +799,7 @@ export default function StudentsPage() {
                       {/* SERVICES column */}
                       <td className="px-2.5 py-2 min-w-40">
                         <p className="text-xs font-medium text-gray-800">
-                          {interestedService || <span className="text-gray-300">—</span>}
+                          {interestedService || <span className="text-gray-300">-</span>}
                           {countryPart && <span className="text-gray-500 font-normal text-[10px]"> - ({countryPart})</span>}
                         </p>
                         {student.countries && student.countries.length > 1 && (
@@ -809,12 +822,12 @@ export default function StudentsPage() {
                               <span className="max-w-32 truncate">{stageInfo.label}</span>
                             </span>
                           ) : (
-                            <span className="text-gray-300 text-xs">—</span>
+                            <span className="text-gray-300 text-xs">-</span>
                           );
                         })()}
                       </td>
 
-                      {/* REMARKS column — editable here only until Admission Details has at least one entry */}
+                      {/* REMARKS column - editable here only until Admission Details has at least one entry */}
                       <td className="px-2.5 py-2 min-w-36">
                         {canEditRemarksOnList(student) ? (
                           <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
@@ -842,7 +855,7 @@ export default function StudentsPage() {
                                 : undefined
                             }
                           >
-                            {student.remarks || "—"}
+                            {student.remarks || "-"}
                           </span>
                         )}
                       </td>
@@ -862,7 +875,7 @@ export default function StudentsPage() {
                               <span className="capitalize max-w-24 truncate">{standing.replace("_", " ")}</span>
                             </span>
                           ) : (
-                            <span className="text-gray-300 text-xs">—</span>
+                            <span className="text-gray-300 text-xs">-</span>
                           );
                         })()}
                       </td>
@@ -877,7 +890,7 @@ export default function StudentsPage() {
                               <span className="capitalize max-w-24 truncate">{student.currentStage}</span>
                             </span>
                           ) : (
-                            <span className="text-gray-300 text-xs">—</span>
+                            <span className="text-gray-300 text-xs">-</span>
                           );
                         })()}
                       </td>
@@ -1343,7 +1356,7 @@ export default function StudentsPage() {
               )}
             </div>
 
-            {/* Footer — clear button */}
+            {/* Footer - clear button */}
             {currentRemarks && (
               <div className="border-t border-gray-100 px-4 py-2.5 bg-gray-50/60">
                 <button

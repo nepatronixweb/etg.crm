@@ -2,9 +2,20 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSession } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Plus, Search, X, Users, Paperclip, FileText, Trash2, ChevronDown, MessageSquare, MoreVertical, Phone, Mail, Calendar, FileSpreadsheet } from "lucide-react";
-import { formatDate, getStatusColor, COUNTRIES, SERVICES, LEAD_STAGES, LEAD_STAGE_GROUPS, FD_STATUSES, getLeadStageColor, getLeadStageDotColor } from "@/lib/utils";
+import {
+  formatDate,
+  getStatusColor,
+  COUNTRIES,
+  SERVICES,
+  LEAD_STAGES,
+  LEAD_STAGE_GROUPS,
+  FD_STATUSES,
+  getLeadStageColor,
+  getLeadStageDotColor,
+  hasModuleAction,
+} from "@/lib/utils";
 
 const DEFAULT_COUNTRIES = COUNTRIES;
 import { ILead, LeadSource, LeadStanding } from "@/types";
@@ -49,6 +60,10 @@ function localDateTimeInputToUtcIsoParam(v: string): string {
 function LeadsPageContent() {
   const { data: session } = useSession();
   const router = useRouter();
+  const pathname = usePathname() ?? "";
+  const isEnquiriesRoute = pathname.startsWith("/enquiries");
+  const apiLeadsBase = isEnquiriesRoute ? "/api/enquiries" : "/api/leads";
+  const leadsPathBase = isEnquiriesRoute ? "/enquiries" : "/leads";
   const searchParams = useSearchParams();
   const bucketFromUrl = searchParams.get("bucket");
   const isTelecallerFreshView = bucketFromUrl === TELECALLER_FRESH_BUCKET;
@@ -60,6 +75,14 @@ function LeadsPageContent() {
     isTelecallerOverviewView && bucketFromUrl
       ? TELECALLER_OVERVIEW_BUCKET_LABEL[bucketFromUrl]
       : "";
+
+  useEffect(() => {
+    if (!session?.user) return;
+    if (isEnquiriesRoute && session.user.role !== "telecaller" && session.user.role !== "super_admin") {
+      router.replace("/dashboard");
+    }
+  }, [session?.user, isEnquiriesRoute, router]);
+
   /** Telecaller always uses Transfer + Update (same layout as fresh leads) for every list view. */
   const isTelecallerTransferTableView = session?.user?.role === "telecaller";
   const branding = useBranding();
@@ -146,13 +169,13 @@ function LeadsPageContent() {
     if (filterApplyLevel) params.set("applyLevel", filterApplyLevel);
     if (filterFdStatus) params.set("status", filterFdStatus);
     const b = searchParams.get("bucket");
-    // Always pass bucket from the URL — do not gate on client session (useSession is often
+    // Always pass bucket from the URL - do not gate on client session (useSession is often
     // still loading on first paint). The API only applies telecaller bucket filters when
     // the authenticated user is a telecaller.
     if (b === TELECALLER_FRESH_BUCKET || isTelecallerOverviewDashboardBucket(b)) {
       params.set("bucket", b);
     }
-    const res = await fetch(`/api/leads?${params}`, { cache: "no-store" });
+    const res = await fetch(`${apiLeadsBase}?${params}`, { cache: "no-store" });
     const data = await res.json();
     if (data && data.leads) {
       setLeads(data.leads);
@@ -176,6 +199,7 @@ function LeadsPageContent() {
     filterApplyLevel,
     filterFdStatus,
     searchParams,
+    apiLeadsBase,
   ]);
 
   const fetchLeadsRef = useRef(fetchLeads);
@@ -277,7 +301,7 @@ function LeadsPageContent() {
     setFilterFdStatus("");
     const b = searchParams.get("bucket");
     if (b === TELECALLER_FRESH_BUCKET || isTelecallerOverviewDashboardBucket(b)) {
-      router.replace("/leads");
+      router.replace(leadsPathBase);
     }
   };
 
@@ -408,13 +432,13 @@ function LeadsPageContent() {
     try {
       let res: Response;
       if (editingLead) {
-        res = await fetch(`/api/leads/${editingLead._id}`, {
+        res = await fetch(`${apiLeadsBase}/${editingLead._id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
       } else {
-        res = await fetch("/api/leads", {
+        res = await fetch(apiLeadsBase, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -432,14 +456,25 @@ function LeadsPageContent() {
               await fetch("/api/documents", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  leadId,
-                  name: file.name,
-                  fileUrl: uploadData.url,
-                  originalName: uploadData.originalName,
-                  fileSize: uploadData.fileSize,
-                  fileType: uploadData.fileType,
-                }),
+                body: JSON.stringify(
+                  isEnquiriesRoute
+                    ? {
+                        enquiryId: leadId,
+                        name: file.name,
+                        fileUrl: uploadData.url,
+                        originalName: uploadData.originalName,
+                        fileSize: uploadData.fileSize,
+                        fileType: uploadData.fileType,
+                      }
+                    : {
+                        leadId,
+                        name: file.name,
+                        fileUrl: uploadData.url,
+                        originalName: uploadData.originalName,
+                        fileSize: uploadData.fileSize,
+                        fileType: uploadData.fileType,
+                      }
+                ),
               });
             })
           );
@@ -489,12 +524,15 @@ function LeadsPageContent() {
     });
   }, [leads, search]);
 
-  const canCreate = ["super_admin", "telecaller", "front_desk", "counsellor"].includes(session?.user?.role || "");
+  const userPermissions = (session?.user?.permissions ?? []) as string[];
+  const userRole = session?.user?.role;
+  const canCreateLeadByRole = ["super_admin", "telecaller", "front_desk", "counsellor"].includes(userRole || "");
+  const canCreate = canCreateLeadByRole && hasModuleAction(userPermissions, userRole, "leads", "add");
   const canAssign = ["super_admin", "telecaller", "front_desk"].includes(session?.user?.role || "");
   const canUpdateStatus = ["super_admin", "counsellor", "telecaller", "front_desk", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
   // counsellors no longer need access to stage controls
   const canUpdateStage = ["super_admin", "telecaller", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
-  const canExport = ["super_admin", "telecaller"].includes(session?.user?.role || "");
+  const canExport = hasModuleAction(userPermissions, userRole, "leads", "export");
   const isAdmin = session?.user?.role === "super_admin";
 
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
@@ -515,7 +553,7 @@ function LeadsPageContent() {
     if (selectedLeads.size === 0) return;
     if (!confirm(`Delete ${selectedLeads.size} selected lead(s)? This cannot be undone.`)) return;
     setBulkDeleting(true);
-    const res = await fetch("/api/leads", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: Array.from(selectedLeads) }) });
+    const res = await fetch(apiLeadsBase, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: Array.from(selectedLeads) }) });
     if (res.ok) { setSelectedLeads(new Set()); fetchLeads(1); }
     setBulkDeleting(false);
   };
@@ -588,7 +626,7 @@ function LeadsPageContent() {
       const ext = l as unknown as { stageDates?: Record<string, string> };
       return { ...l, stage: newStage, stageDates: newStage ? { ...(ext.stageDates ?? {}), [newStage]: now } : ext.stageDates } as typeof l;
     }));
-    await fetch(`/api/leads/${leadId}`, {
+    await fetch(`${apiLeadsBase}/${leadId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ stage: newStage }),
@@ -598,7 +636,7 @@ function LeadsPageContent() {
   const quickUpdateStatus = async (leadId: string, newStatus: string) => {
     setStatusDropdownId(null);
     setLeads((prev) => prev.map((l) => l._id === leadId ? { ...l, standing: newStatus as ILead["standing"] } : l));
-    await fetch(`/api/leads/${leadId}`, {
+    await fetch(`${apiLeadsBase}/${leadId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ standing: newStatus }),
@@ -613,7 +651,7 @@ function LeadsPageContent() {
       const ext = l as unknown as { statusDates?: Record<string, string> };
       return { ...l, status: newStatus, statusDates: newStatus ? { ...(ext.statusDates ?? {}), [newStatus]: now } : ext.statusDates } as typeof l;
     }));
-    const res = await fetch(`/api/leads/${leadId}`, {
+    const res = await fetch(`${apiLeadsBase}/${leadId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: newStatus }),
@@ -643,7 +681,7 @@ function LeadsPageContent() {
         statusDates: { ...(ext.statusDates ?? {}), Assigned: now },
       } as typeof l;
     }));
-    const res = await fetch(`/api/leads/${leadId}`, {
+    const res = await fetch(`${apiLeadsBase}/${leadId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -676,7 +714,7 @@ function LeadsPageContent() {
     if (outcome.effect === "assign_counsellor" && !patch.assignedTo) return;
 
     setTelecallerFreshTransferUpdatingId(leadId);
-    const res = await fetch(`/api/leads/${leadId}`, {
+    const res = await fetch(`${apiLeadsBase}/${leadId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
@@ -775,19 +813,19 @@ function LeadsPageContent() {
             </span>
             {isTelecallerFreshView ? (
               <>
-                {" — "}same list as the telecaller dashboard (new & pending contact only).
+                {" - "}same list as the telecaller dashboard (new & pending contact only).
                 {loading ? "" : ` ${totalLeads} total.`}
               </>
             ) : (
               <>
-                {" — "}filtered to match this card on your telecaller dashboard.
+                {" - "}filtered to match this card on your telecaller dashboard.
                 {loading ? "" : ` ${totalLeads} total.`}
               </>
             )}
           </p>
           <button
             type="button"
-            onClick={() => router.replace("/leads")}
+            onClick={() => router.replace(leadsPathBase)}
             className="shrink-0 rounded-md border border-sky-300 bg-white px-3 py-1.5 text-xs font-medium text-sky-900 hover:bg-sky-100"
           >
             Show all leads
@@ -848,7 +886,7 @@ function LeadsPageContent() {
       {/* Filter + Search Bar */}
       <div className="bg-white border border-gray-200 rounded-lg overflow-visible">
         <div className="flex items-stretch gap-0 divide-x divide-gray-200 flex-wrap">
-          {/* Lead Stage filter – hidden for FD, counsellors, and admin */}
+          {/* Lead Stage filter - hidden for FD, counsellors, and admin */}
           {session?.user?.role !== "front_desk" && session?.user?.role !== "counsellor" && !isAdmin && (
             <div className="flex-1 min-w-22.5 xl:min-w-27.5 relative">
               <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Stage</label>
@@ -863,7 +901,7 @@ function LeadsPageContent() {
               <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
           )}
-          {/* Status filter – admin only */}
+          {/* Status filter - admin only */}
           {isAdmin && (
             <div className="flex-1 min-w-22.5 xl:min-w-27.5 relative">
               <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Status</label>
@@ -1129,7 +1167,7 @@ function LeadsPageContent() {
                       <td className="px-4 py-3.5 min-w-44">
                         <div className="flex items-center gap-1.5 mb-1">
                           <span className="text-amber-400 text-sm">★</span>
-                          <Link href={`/leads/${lead._id}`} className="font-semibold text-gray-900 text-sm hover:text-blue-600 hover:underline underline-offset-2 transition-colors">{lead.name}</Link>
+                          <Link href={`${leadsPathBase}/${lead._id}`} className="font-semibold text-gray-900 text-sm hover:text-blue-600 hover:underline underline-offset-2 transition-colors">{lead.name}</Link>
                         </div>
                         <div className="flex items-center gap-1 text-[12px] text-gray-500 mb-0.5">
                           <Phone size={10} className="text-gray-400 shrink-0" />
@@ -1177,13 +1215,13 @@ function LeadsPageContent() {
                       {/* SERVICES column */}
                       <td className="px-4 py-3.5 min-w-36">
                         <p className="text-sm font-medium text-gray-800">
-                          {lead.interestedService || <span className="text-gray-300">—</span>}
+                          {lead.interestedService || <span className="text-gray-300">-</span>}
                           {countryPart && <span className="text-gray-500 font-normal"> - ({countryPart})</span>}
                         </p>
                         <p className="text-[11px] text-gray-400 mt-1 tabular-nums whitespace-nowrap">{formatDate(lead.createdAt)}</p>
                       </td>
 
-                      {/* STAGE/STATUS column – hidden for admin */}
+                      {/* STAGE/STATUS column - hidden for admin */}
                       {!isAdmin && (
                       <td className="px-4 py-3.5 min-w-36">
                         {isTelecallerTransferTableView ? (
@@ -1381,7 +1419,7 @@ function LeadsPageContent() {
                                 {stageDate && (
                                   <p className="text-[10px] text-gray-400 mt-0.5 tabular-nums">{formatDate(new Date(stageDate))}</p>
                                 )}
-                                {/* Dropdown rendered as fixed portal – see bottom of component */}
+                                {/* Dropdown rendered as fixed portal - see bottom of component */}
                               </div>
                             );
                           })()
@@ -1524,7 +1562,7 @@ function LeadsPageContent() {
                       {/* FOLLOW-UP column */}
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-2">
-                          <Link href={`/leads/${lead._id}#notes`}
+                          <Link href={`${leadsPathBase}/${lead._id}#notes`}
                             className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-0.5 border border-blue-100 hover:border-blue-300 px-2 py-1 rounded-md transition-colors whitespace-nowrap">
                             + Add
                           </Link>
@@ -1540,7 +1578,7 @@ function LeadsPageContent() {
                             </button>
                             {menuOpenId === lead._id && (
                               <div className="absolute z-30 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden min-w-28">
-                                <Link href={`/leads/${lead._id}`} className="block px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 font-medium">View Details</Link>
+                                <Link href={`${leadsPathBase}/${lead._id}`} className="block px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 font-medium">View Details</Link>
                                 {canCreate && (
                                   <button
                                     onClick={() => { setMenuOpenId(null); openEditForm(lead); }}
@@ -1552,7 +1590,7 @@ function LeadsPageContent() {
                                     onClick={async () => {
                                       setMenuOpenId(null);
                                       if (!confirm(`Delete lead "${lead.name}"? This cannot be undone.`)) return;
-                                      const res = await fetch(`/api/leads/${lead._id}`, { method: "DELETE" });
+                                      const res = await fetch(`${apiLeadsBase}/${lead._id}`, { method: "DELETE" });
                                       if (res.ok) fetchLeads();
                                     }}
                                     className="block w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 font-medium"
@@ -1949,10 +1987,10 @@ function LeadsPageContent() {
                         className={FIELD_CLASS}
                       >
                         <option value="">Quarter</option>
-                        <option value="Q1">Q1 (Jan – Mar)</option>
-                        <option value="Q2">Q2 (Apr – Jun)</option>
-                        <option value="Q3">Q3 (Jul – Sep)</option>
-                        <option value="Q4">Q4 (Oct – Dec)</option>
+                        <option value="Q1">Q1 (Jan - Mar)</option>
+                        <option value="Q2">Q2 (Apr - Jun)</option>
+                        <option value="Q3">Q3 (Jul - Sep)</option>
+                        <option value="Q4">Q4 (Oct - Dec)</option>
                       </select>
                     </div>
                   </div>
@@ -2208,7 +2246,7 @@ function LeadsPageContent() {
                     <Paperclip size={16} className="text-gray-400 shrink-0" />
                     <div>
                       <p className="text-sm font-medium text-gray-700">Attach files</p>
-                      <p className="text-xs text-gray-400 mt-0.5">Images (JPG, PNG, WEBP) and PDF — multiple allowed</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Images (JPG, PNG, WEBP) and PDF - multiple allowed</p>
                     </div>
                     <input
                       id="lead-file-upload"
@@ -2294,7 +2332,7 @@ function LeadsPageContent() {
         </div>
       )}
 
-      {/* CRM Stage dropdown portal – renders outside overflow:hidden table container */}
+      {/* CRM Stage dropdown portal - renders outside overflow:hidden table container */}
       {crmStageDropdownId && typeof document !== "undefined" && (() => {
         const dropLead = leads.find((l) => l._id === crmStageDropdownId);
         if (!dropLead) return null;
@@ -2387,7 +2425,7 @@ function LeadsPageContent() {
         );
       })()}
 
-      {/* Date picker portal – renders outside overflow:hidden containers */}
+      {/* Date picker portal - renders outside overflow:hidden containers */}
       {showDatePicker && typeof document !== "undefined" && createPortal(
         <div
           ref={datePickerRef}

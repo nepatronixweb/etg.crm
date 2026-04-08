@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
-import Lead from "@/models/Lead";
+import Enquiry from "@/models/Enquiry";
 import Branch from "@/models/Branch";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
@@ -19,8 +19,7 @@ export async function POST(req: NextRequest) {
     const session = await auth();
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const allowed = ["super_admin", "telecaller", "front_desk"];
-    if (!allowed.includes(session.user.role)) {
+    if (session.user.role !== "super_admin" && session.user.role !== "telecaller") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     const perms = (session.user.permissions ?? []) as string[];
@@ -38,12 +37,12 @@ export async function POST(req: NextRequest) {
     };
 
     if (!campaign?.trim()) return NextResponse.json({ error: "Campaign name is required" }, { status: 400 });
-    if (!source?.trim())   return NextResponse.json({ error: "Source is required" }, { status: 400 });
-    if (!leadType || !["fresh","cold"].includes(leadType)) {
+    if (!source?.trim()) return NextResponse.json({ error: "Source is required" }, { status: 400 });
+    if (!leadType || !["fresh", "cold"].includes(leadType)) {
       return NextResponse.json({ error: "Lead type (fresh or cold) is required" }, { status: 400 });
     }
     if (!Array.isArray(rows) || rows.length === 0) {
-      return NextResponse.json({ error: "No leads found in the file" }, { status: 400 });
+      return NextResponse.json({ error: "No rows found in the file" }, { status: 400 });
     }
 
     await connectDB();
@@ -56,27 +55,25 @@ export async function POST(req: NextRequest) {
     }
     const userId = session.user.id;
 
-    // standing/status based on lead type
     const standing = leadType === "cold" ? "cold" : "warm";
-    const status   = leadType === "cold" ? "AP-Not Interested" : "Open/Unassigned";
+    const status = leadType === "cold" ? "AP-Not Interested" : "Open/Unassigned";
 
-    // Build lead documents
     const docs = rows
       .filter((r) => r.name?.trim())
       .map((r) => ({
-        name:             r.name.trim(),
-        phone:            (r.phone ?? "").trim(),
-        email:            (r.email ?? "").toLowerCase().trim(),
-        interestedCountry:(r.interestedCountry ?? "").trim(),
-        comments:         (r.comments ?? "").trim(),
+        name: r.name.trim(),
+        phone: (r.phone ?? "").trim(),
+        email: (r.email ?? "").toLowerCase().trim(),
+        interestedCountry: (r.interestedCountry ?? "").trim(),
+        comments: (r.comments ?? "").trim(),
         source,
-        campaign:         campaign.trim(),
-        importDate:       importTs,
+        campaign: campaign.trim(),
+        importDate: importTs,
         status,
         standing,
-        branch:           branchId || undefined,
-        assignedTo:       userId,
-        assignedBy:       userId,
+        branch: branchId || undefined,
+        assignedTo: userId,
+        assignedBy: userId,
       }));
 
     if (docs.length === 0) {
@@ -89,22 +86,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const inserted = await Lead.insertMany(docs, { ordered: false });
+    const inserted = await Enquiry.insertMany(docs, { ordered: false });
 
     await ActivityLog.create({
-      user:     userId,
+      user: userId,
       userName: session.user.name,
       userRole: session.user.role,
-      action:   "CREATE",
-      module:   "Leads",
+      action: "CREATE",
+      module: "Enquiries",
       targetId: "bulk",
-      targetName: `${inserted.length} leads`,
-      details:  `Bulk import - Campaign: "${campaign}", Type: ${leadType}, Source: ${source}, ${inserted.length} leads added`,
+      targetName: `${inserted.length} enquiries`,
+      details: `Bulk import - Campaign: "${campaign}", Type: ${leadType}, Source: ${source}, ${inserted.length} enquiries added`,
     });
 
     return NextResponse.json({ imported: inserted.length, campaign }, { status: 201 });
   } catch (err) {
-    console.error("Lead import error:", err);
+    console.error("Enquiry import error:", err);
     return NextResponse.json({ error: "Import failed" }, { status: 500 });
   }
 }

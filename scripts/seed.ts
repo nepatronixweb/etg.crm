@@ -4,7 +4,7 @@
  *   npx ts-node -r dotenv/config scripts/seed.ts
  *
  * Requires MONGODB_URI in .env.local (MongoDB Atlas connection string).
- * Safe to run multiple times — skips records that already exist.
+ * Safe to run multiple times - skips records that already exist.
  *
  * Seeded collections:
  *   branches, users, appsettings, checklists

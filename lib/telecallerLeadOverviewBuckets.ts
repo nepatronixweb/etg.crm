@@ -1,5 +1,5 @@
 /**
- * Telecaller dashboard "Lead overview" cards — keep filters in sync with
+ * Telecaller dashboard "Lead overview" cards - keep filters in sync with
  * app/(dashboard)/dashboard/page.tsx (isTelecaller && assignedLeads counts).
  */
 export const TELECALLER_OVERVIEW_TRANSFERRED = "telecaller_transferred";

@@ -1,9 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
-import Lead from "@/models/Lead";
+import Enquiry from "@/models/Enquiry";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
 import { createNotifications, getSuperAdminIds } from "@/lib/notifications";
+
+function canAccessEnquiry(
+  role: string,
+  userId: string,
+  assignedToId: string | undefined
+): boolean {
+  if (role === "super_admin" || role === "telecaller") return true;
+  if (role === "counsellor" && assignedToId === userId) return true;
+  return false;
+}
+
+function populatedRefId(ref: unknown): string | undefined {
+  if (ref == null) return undefined;
+  if (typeof ref === "object" && "_id" in (ref as object)) {
+    return String((ref as { _id: unknown })._id);
+  }
+  return String(ref);
+}
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -11,14 +29,18 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { id } = await params;
     await connectDB();
-    const lead = await Lead.findById(id)
+    const enquiry = await Enquiry.findById(id)
       .populate("branch", "name location")
       .populate("assignedTo", "name email role")
       .populate("assignedBy", "name");
-    if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
-    return NextResponse.json(lead);
+    if (!enquiry) return NextResponse.json({ error: "Enquiry not found" }, { status: 404 });
+    const assignedToId = populatedRefId(enquiry.assignedTo);
+    if (!canAccessEnquiry(session.user.role, session.user.id, assignedToId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    return NextResponse.json(enquiry);
   } catch {
-    return NextResponse.json({ error: "Failed to fetch lead" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to fetch enquiry" }, { status: 500 });
   }
 }
 
@@ -28,38 +50,34 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { id } = await params;
     await connectDB();
-    const body = await req.json();
 
-    if (session.user.role === "front_desk" && body.stage) {
-      return NextResponse.json({ error: "Front desk users cannot update stage" }, { status: 403 });
+    const existing = await Enquiry.findById(id).select("assignedTo name").lean();
+    if (!existing) return NextResponse.json({ error: "Enquiry not found" }, { status: 404 });
+    const existingAssigned = existing.assignedTo?.toString();
+    if (!canAccessEnquiry(session.user.role, session.user.id, existingAssigned)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Snapshot old assignedTo before updating
-    const oldLead = await Lead.findById(id).select("assignedTo name").lean();
-    const oldAssignedTo = oldLead?.assignedTo?.toString();
-
-    // Use $set to only update provided fields - prevents wiping status/stage/remarks
-    // when the edit form doesn't include them
+    const body = await req.json();
     const setFields = { ...body };
-    // Remove empty ObjectId refs so Mongoose doesn't reject them
     if (!setFields.assignedTo) delete setFields.assignedTo;
     if (!setFields.branch) delete setFields.branch;
 
-    const lead = await Lead.findByIdAndUpdate(id, { $set: setFields }, { new: true, runValidators: false });
-    if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    const oldAssignedTo = existingAssigned;
+    const enquiry = await Enquiry.findByIdAndUpdate(id, { $set: setFields }, { new: true, runValidators: false });
+    if (!enquiry) return NextResponse.json({ error: "Enquiry not found" }, { status: 404 });
 
     await ActivityLog.create({
       user: session.user.id,
       userName: session.user.name,
       userRole: session.user.role,
       action: "UPDATE",
-      module: "Leads",
-      targetId: lead._id.toString(),
-      targetName: lead.name,
-      details: `Updated lead: ${JSON.stringify(body)}`,
+      module: "Enquiries",
+      targetId: enquiry._id.toString(),
+      targetName: enquiry.name,
+      details: `Updated enquiry: ${JSON.stringify(body)}`,
     });
 
-    // Fire notification if counsellor assignment changed
     const newAssignedTo = body.assignedTo?.toString();
     if (newAssignedTo && newAssignedTo !== oldAssignedTo) {
       const adminIds = await getSuperAdminIds();
@@ -67,18 +85,18 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       await createNotifications({
         recipientIds,
         type: "lead_assigned",
-        title: "Lead Assigned",
-        message: `${session.user.name} assigned lead "${lead.name}" to you`,
-        link: `/leads/${lead._id}`,
+        title: "Enquiry assigned",
+        message: `${session.user.name} assigned enquiry "${enquiry.name}" to you`,
+        link: `/enquiries/${enquiry._id}`,
         createdBy: session.user.id,
       });
     }
 
-    return NextResponse.json(lead);
+    return NextResponse.json(enquiry);
   } catch (error) {
-    console.error("Update lead error:", error);
-    const message = error instanceof Error ? error.message : "Failed to update lead";
-    return NextResponse.json({ error: `Failed to update lead: ${message}` }, { status: 500 });
+    console.error("Update enquiry error:", error);
+    const message = error instanceof Error ? error.message : "Failed to update enquiry";
+    return NextResponse.json({ error: `Failed to update enquiry: ${message}` }, { status: 500 });
   }
 }
 
@@ -100,53 +118,36 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return null;
     };
 
-    // Front desk users: only update status, not stage
-    if (session.user.role === "front_desk") {
-      if (body.status) {
-        update.status = body.status;
-        const entered = resolveStatusEnteredAt();
-        if (entered === null && typeof body.statusDate === "string" && body.statusDate.trim() !== "") {
-          return NextResponse.json({ error: "Invalid status date" }, { status: 400 });
-        }
-        update[`statusDates.${body.status}`] = entered ?? new Date();
-      }
-      // Remove stage if accidentally provided
-      if (body.stage) {
-        return NextResponse.json({ error: "Front desk users cannot update stage" }, { status: 403 });
-      }
-    } 
-    // Super admin, counsellors, and telecallers: can update both status and stage
-    else if (
-      session.user.role === "super_admin" ||
-      session.user.role === "counsellor" ||
-      session.user.role === "telecaller"
-    ) {
-      if (body.status) {
-        update.status = body.status;
-        const entered = resolveStatusEnteredAt();
-        if (entered === null && typeof body.statusDate === "string" && body.statusDate.trim() !== "") {
-          return NextResponse.json({ error: "Invalid status date" }, { status: 400 });
-        }
-        update[`statusDates.${body.status}`] = entered ?? new Date();
-      }
-      if (body.stage) {
-        update.stage = body.stage;
-        update[`stageDates.${body.stage}`] = new Date();
-      }
+    const pre = await Enquiry.findById(id).select("assignedTo name").lean();
+    if (!pre) return NextResponse.json({ error: "Enquiry not found" }, { status: 404 });
+    const preAssigned = pre.assignedTo?.toString();
+    if (!canAccessEnquiry(session.user.role, session.user.id, preAssigned)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    // Other users: only update stage, not status
-    else {
+
+    if (session.user.role === "super_admin" || session.user.role === "counsellor" || session.user.role === "telecaller") {
+      if (body.status) {
+        update.status = body.status;
+        const entered = resolveStatusEnteredAt();
+        if (entered === null && typeof body.statusDate === "string" && body.statusDate.trim() !== "") {
+          return NextResponse.json({ error: "Invalid status date" }, { status: 400 });
+        }
+        update[`statusDates.${body.status}`] = entered ?? new Date();
+      }
       if (body.stage) {
         update.stage = body.stage;
         update[`stageDates.${body.stage}`] = new Date();
       }
-      // Remove status if accidentally provided
+    } else {
+      if (body.stage) {
+        update.stage = body.stage;
+        update[`stageDates.${body.stage}`] = new Date();
+      }
       if (body.status) {
-        return NextResponse.json({ error: "Only front desk, counsellors and admin can update status" }, { status: 403 });
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
     }
 
-    // Allow other fields like assignedTo, notes, etc for all users
     const allowedFields = ["assignedTo", "assignedBy", "standing", "interestedCountry", "interestedService", "comments", "notes"];
     for (const field of allowedFields) {
       if (field in body) {
@@ -154,34 +155,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
     }
 
-    const oldLead = await Lead.findById(id).select("assignedTo name").lean();
-    const oldAssignedTo = oldLead?.assignedTo?.toString();
-
-    const lead = await Lead.findByIdAndUpdate(id, { $set: update }, { new: true });
-    if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    const oldAssignedTo = preAssigned;
+    const enquiry = await Enquiry.findByIdAndUpdate(id, { $set: update }, { new: true });
+    if (!enquiry) return NextResponse.json({ error: "Enquiry not found" }, { status: 404 });
 
     const newAssignedTo =
-      body.assignedTo !== undefined && body.assignedTo !== null
-        ? String(body.assignedTo)
-        : undefined;
+      body.assignedTo !== undefined && body.assignedTo !== null ? String(body.assignedTo) : undefined;
     if (newAssignedTo && newAssignedTo !== oldAssignedTo) {
       const adminIds = await getSuperAdminIds();
       const recipientIds = [...new Set([newAssignedTo, ...adminIds])];
       await createNotifications({
         recipientIds,
         type: "lead_assigned",
-        title: "Lead Assigned",
-        message: `${session.user.name} assigned lead "${lead.name}" to you`,
-        link: `/leads/${lead._id}`,
+        title: "Enquiry assigned",
+        message: `${session.user.name} assigned enquiry "${enquiry.name}" to you`,
+        link: `/enquiries/${enquiry._id}`,
         createdBy: session.user.id,
       });
     }
 
-    return NextResponse.json(lead);
+    return NextResponse.json(enquiry);
   } catch (error) {
-    console.error("Patch lead error:", error);
-    const message = error instanceof Error ? error.message : "Failed to update lead";
-    return NextResponse.json({ error: `Failed to update lead: ${message}` }, { status: 500 });
+    console.error("Patch enquiry error:", error);
+    const message = error instanceof Error ? error.message : "Failed to update enquiry";
+    return NextResponse.json({ error: `Failed to update enquiry: ${message}` }, { status: 500 });
   }
 }
 
@@ -193,9 +190,9 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
     }
     const { id } = await params;
     await connectDB();
-    await Lead.findByIdAndDelete(id);
-    return NextResponse.json({ message: "Lead deleted" });
+    await Enquiry.findByIdAndDelete(id);
+    return NextResponse.json({ message: "Enquiry deleted" });
   } catch {
-    return NextResponse.json({ error: "Failed to delete lead" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to delete enquiry" }, { status: 500 });
   }
 }

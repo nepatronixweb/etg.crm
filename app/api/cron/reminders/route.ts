@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
         module: "leads",
         targetId: lead._id,
         targetName: lead.name,
-        details: `Follow-up reminder #${newCount} triggered — no activity for 7+ days`,
+        details: `Follow-up reminder #${newCount} triggered - no activity for 7+ days`,
       });
     }
 

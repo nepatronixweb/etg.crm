@@ -6,7 +6,7 @@ import { DEFAULT_APPLICATION_ROLES, normalizeApplicationRoles } from "@/lib/appl
 import { DEFAULT_TELECALLER_TRANSFER_OUTCOMES, normalizeTelecallerTransferOutcomes } from "@/lib/telecallerTransferConfig";
 import { normalizeUniversitiesArray } from "@/lib/countryUniversities";
 
-// GET — public (used by layout for branding)
+// GET - public (used by layout for branding)
 export async function GET() {
   try {
     await connectDB();
@@ -17,7 +17,7 @@ export async function GET() {
 
     const DEFAULT_REMARK_OPTIONS = [
       "Additional Documents Requested", "Additional Documents Sent",
-      "Interview – GS/Cr./Visa", "Interview Cleared", "Payment Made",
+      "Interview - GS/Cr./Visa", "Interview Cleared", "Payment Made",
       "Medical Requested/Booked", "Passport Submitted",
       "DS-160/VFS/Embassy Appointment", "Pink Slip", "NOC",
       "Defer Offer Requested", "Defer CoE Requested",
@@ -70,7 +70,7 @@ export async function GET() {
       await settings.save();
     }
 
-    // Backfill countryStages if missing — the schema default only applies on document creation
+    // Backfill countryStages if missing - the schema default only applies on document creation
     if (!settings.countryStages || Object.keys(settings.countryStages).length === 0) {
       settings.countryStages = {
         "United Kingdom": [
@@ -161,7 +161,7 @@ export async function GET() {
 
     // Use lean() for the JSON response to bypass Mongoose schema projection.
     // This ensures fields added after the model was first compiled (e.g. after a
-    // hot-reload) are always included — toObject() only returns schema-known fields.
+    // hot-reload) are always included - toObject() only returns schema-known fields.
     const json = (await AppSettings.findOne({}).lean()) ?? settings.toObject();
 
     // Safety fallbacks in case the DB document is somehow missing a field

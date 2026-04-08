@@ -16,7 +16,7 @@ export async function POST() {
     const date = getTodayYmd();
     const doc = await Attendance.findOne({ userId: session.user.id, date });
     if (!doc) {
-      return NextResponse.json({ error: "No attendance record for today — check in first" }, { status: 400 });
+      return NextResponse.json({ error: "No attendance record for today - check in first" }, { status: 400 });
     }
     if (!doc.checkIn) {
       return NextResponse.json({ error: "Not checked in" }, { status: 400 });

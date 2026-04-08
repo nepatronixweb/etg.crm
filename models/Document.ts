@@ -3,6 +3,7 @@ import mongoose, { Document, Schema } from "mongoose";
 export interface IDocumentDocument extends Document {
   student?: mongoose.Types.ObjectId;
   lead?: mongoose.Types.ObjectId;
+  enquiry?: mongoose.Types.ObjectId;
   country?: string;
   name: string;
   originalName: string;
@@ -19,6 +20,7 @@ const DocumentSchema = new Schema<IDocumentDocument>(
   {
     student: { type: Schema.Types.ObjectId, ref: "Student" },
     lead: { type: Schema.Types.ObjectId, ref: "Lead" },
+    enquiry: { type: Schema.Types.ObjectId, ref: "Enquiry" },
     country: { type: String },
     name: { type: String, required: true },
     originalName: { type: String, required: true },
@@ -35,6 +37,7 @@ const DocumentSchema = new Schema<IDocumentDocument>(
 // Indexes for fast queries
 DocumentSchema.index({ student: 1 });
 DocumentSchema.index({ lead: 1 });
+DocumentSchema.index({ enquiry: 1 });
 DocumentSchema.index({ uploadedBy: 1 });
 
 export default mongoose.models.StudentDocument || mongoose.model<IDocumentDocument>("StudentDocument", DocumentSchema);

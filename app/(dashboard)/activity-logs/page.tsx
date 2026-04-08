@@ -164,8 +164,8 @@ export default function ActivityLogsPage() {
                   <td className="px-4 py-3.5">
                     <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 border border-gray-200 text-gray-700">{log.module}</span>
                   </td>
-                  <td className="px-4 py-3.5 text-gray-700 whitespace-nowrap">{log.targetName || <span className="text-gray-300">—</span>}</td>
-                  <td className="px-4 py-3.5 text-gray-500 max-w-56 truncate">{log.details || <span className="text-gray-300">—</span>}</td>
+                  <td className="px-4 py-3.5 text-gray-700 whitespace-nowrap">{log.targetName || <span className="text-gray-300">-</span>}</td>
+                  <td className="px-4 py-3.5 text-gray-500 max-w-56 truncate">{log.details || <span className="text-gray-300">-</span>}</td>
                   <td className="px-4 py-3.5 text-gray-400 text-xs whitespace-nowrap tabular-nums">{formatDateTime(log.createdAt)}</td>
                 </tr>
               ))}

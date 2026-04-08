@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
         send({ type: "init", unreadCount: 0, notifications: [] });
       }
 
-      // Poll every 10 seconds — single aggregation per tick
+      // Poll every 10 seconds - single aggregation per tick
       const interval = setInterval(async () => {
         try {
           const since = lastCheck;

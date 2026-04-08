@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ETG CRM — Education Tree Global",
+  title: "ETG CRM - Education Tree Global",
   description: "Full Consultancy CRM System for Education Tree Global",
 };
 

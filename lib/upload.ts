@@ -1,4 +1,4 @@
-// Chunked upload helper for large files — bypasses Vercel's 4.5MB body limit
+// Chunked upload helper for large files - bypasses Vercel's 4.5MB body limit
 // by splitting the file into smaller pieces and reassembling on the server.
 
 const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB chunks

@@ -5,7 +5,7 @@ import connectDB from "@/lib/mongodb";
 import Conversation from "@/models/Conversation";
 import Message from "@/models/Message";
 
-// PATCH — mark all messages as read in this conversation for current user
+// PATCH - mark all messages as read in this conversation for current user
 export async function PATCH(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }

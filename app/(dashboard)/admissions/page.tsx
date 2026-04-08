@@ -446,7 +446,7 @@ export default function AdmissionsPage() {
                       <div className="p-2 bg-gray-50 rounded-lg">
                         <Building2 size={16} className="text-gray-300" />
                       </div>
-                      <span className="text-xs font-medium">No admission entries — add from the student profile</span>
+                      <span className="text-xs font-medium">No admission entries - add from the student profile</span>
                     </div>
                   ) : (
                     <div>
@@ -491,7 +491,7 @@ export default function AdmissionsPage() {
                                 className="w-full text-[11px] font-semibold bg-yellow-50 text-yellow-800 border border-yellow-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-yellow-300 cursor-pointer disabled:cursor-default transition-all hover:border-yellow-300 appearance-none"
                                 title={stageLabel}
                               >
-                                <option value="">— Select —</option>
+                                <option value="">- Select -</option>
                                 {stageList.map((st) => (
                                   <option key={st.value} value={st.value}>{st.label}</option>
                                 ))}
@@ -506,7 +506,7 @@ export default function AdmissionsPage() {
                                 onChange={(e) => handleFieldChange(s._id, entryIndex, "remarks", e.target.value)}
                                 className="w-full text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-300 cursor-pointer disabled:cursor-default transition-all hover:border-amber-300 appearance-none"
                               >
-                                <option value="">— Remark —</option>
+                                <option value="">- Remark -</option>
                                 {mergeRemarksForPipeline(entry.pipeline, appRemarkOptions, remarkOptionsByDept).map((r) => (
                                   <option key={r} value={r}>{r}</option>
                                 ))}
@@ -522,7 +522,7 @@ export default function AdmissionsPage() {
                                 className="w-full text-[11px] font-semibold rounded-lg px-2.5 py-1.5 border focus:outline-none focus:ring-2 cursor-pointer disabled:cursor-default transition-all appearance-none"
                                 style={standingInlineStyle(entry.standing)}
                               >
-                                <option value="">— Standing —</option>
+                                <option value="">- Standing -</option>
                                 {appStandings.map((st) => (
                                   <option key={st} value={st}>
                                     {standingOptionPrefix(st)}
@@ -540,7 +540,7 @@ export default function AdmissionsPage() {
                                   {entry.pipeline}
                                 </div>
                               ) : (
-                                <span className="text-xs text-gray-300 font-medium px-2">—</span>
+                                <span className="text-xs text-gray-300 font-medium px-2">-</span>
                               )}
                             </div>
 

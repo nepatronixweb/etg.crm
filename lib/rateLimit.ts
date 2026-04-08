@@ -7,7 +7,7 @@ const store = new Map<string, Entry>();
 
 /**
  * Returns true if the request is within the allowed rate, false if blocked.
- * @param key         Unique identifier — e.g. `"login:user@example.com"` or an IP.
+ * @param key         Unique identifier - e.g. `"login:user@example.com"` or an IP.
  * @param maxAttempts Maximum allowed attempts within the window (default: 10).
  * @param windowMs    Sliding window in milliseconds (default: 60 s).
  */

@@ -58,7 +58,7 @@ export default function LoginPage() {
             )}
           </div>
           <h1 className="text-3xl font-bold text-white tracking-tight mb-2">{branding.companyName}</h1>
-          <p className="text-sm text-blue-200">{branding.tagline || "CRM Portal — Staff Access"}</p>
+          <p className="text-sm text-blue-200">{branding.tagline || "CRM Portal - Staff Access"}</p>
         </div>
 
         {/* Main Card */}
@@ -160,7 +160,7 @@ export default function LoginPage() {
 
           {/* Additional Info */}
           <p className="text-center text-xs text-white/50">
-            Restricted access — Authorized staff only
+            Restricted access - Authorized staff only
           </p>
         </div>
 

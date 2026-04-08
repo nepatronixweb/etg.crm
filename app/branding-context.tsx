@@ -1,5 +1,10 @@
 "use client";
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import {
+  DEFAULT_APPLICATION_ROLES,
+  normalizeApplicationRoles,
+  type ApplicationRoleDef,
+} from "@/lib/applicationRoles";
 
 export interface Branding {
   companyName: string;
@@ -14,30 +19,43 @@ export interface Branding {
 const defaultBranding: Branding = {
   companyName: "Education Tree Global",
   shortCode: "ETG",
-  tagline: "CRM Portal — Staff Access",
+  tagline: "CRM Portal - Staff Access",
   logoPath: "",
   faviconPath: "",
   brandColor: "#2563eb",
   paymentQrPath: "",
 };
 
+function cloneDefaultRoles(): ApplicationRoleDef[] {
+  return DEFAULT_APPLICATION_ROLES.map((r) => ({
+    slug: r.slug,
+    label: r.label,
+    defaultPermissions: [...r.defaultPermissions],
+  }));
+}
+
 interface BrandingContextValue {
   branding: Branding;
+  /** Role catalog from App Settings (labels, slugs, default permissions). Kept in sync with `/api/settings/app`. */
+  applicationRoles: ApplicationRoleDef[];
   refreshBranding: () => void;
 }
 
 const BrandingContext = createContext<BrandingContextValue>({
   branding: defaultBranding,
+  applicationRoles: cloneDefaultRoles(),
   refreshBranding: () => {},
 });
 
 export function BrandingProvider({ children }: { children: ReactNode }) {
   const [branding, setBranding] = useState<Branding>(defaultBranding);
+  const [applicationRoles, setApplicationRoles] = useState<ApplicationRoleDef[]>(cloneDefaultRoles);
 
   const load = useCallback(() => {
     fetch("/api/settings/app")
       .then((r) => r.json())
       .then((d) => {
+        setApplicationRoles(normalizeApplicationRoles(d?.applicationRoles));
         if (d?.companyName) {
           setBranding({
             companyName: d.companyName || defaultBranding.companyName,
@@ -57,7 +75,7 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
 
   // Update document title when branding loads
   useEffect(() => {
-    document.title = `${branding.shortCode} CRM — ${branding.companyName}`;
+    document.title = `${branding.shortCode} CRM - ${branding.companyName}`;
   }, [branding.shortCode, branding.companyName]);
 
   // Update favicon dynamically
@@ -74,7 +92,7 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
   }, [branding.faviconPath]);
 
   return (
-    <BrandingContext.Provider value={{ branding, refreshBranding: load }}>
+    <BrandingContext.Provider value={{ branding, applicationRoles, refreshBranding: load }}>
       {children}
     </BrandingContext.Provider>
   );
@@ -89,3 +107,11 @@ export function useBrandingRefresh() {
   const { refreshBranding } = useContext(BrandingContext);
   return refreshBranding;
 }
+
+/** Application role definitions from Settings → same source as user create/edit role dropdown. */
+export function useApplicationRolesCatalog(): ApplicationRoleDef[] {
+  const { applicationRoles } = useContext(BrandingContext);
+  return applicationRoles;
+}
+
+export type { ApplicationRoleDef };

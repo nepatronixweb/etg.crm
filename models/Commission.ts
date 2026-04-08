@@ -18,7 +18,7 @@ export interface ICommission extends Document {
   commission: string;
   /** @deprecated Legacy free-text; new entries use `commissionClaim` only. */
   claim: string;
-  /** Which period is claimed (1st–6th sem, one year). Single “commission claim” field in the form. */
+  /** Which period is claimed (1st-6th sem, one year). Single “commission claim” field in the form. */
   claimableIntake:
     | ""
     | "1st_sem"

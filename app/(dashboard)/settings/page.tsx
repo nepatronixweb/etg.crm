@@ -10,7 +10,102 @@ import {
   UserCog, Loader2, Paperclip, BookOpen, Languages, ExternalLink, GripVertical,
 } from "lucide-react";
 import { useBrandingRefresh } from "@/app/branding-context";
-import { ALL_PERMISSIONS, SETTINGS_SUB_PERMISSIONS } from "@/lib/utils";
+import { ALL_PERMISSIONS, SETTINGS_SUB_PERMISSIONS, stripModuleGranularKeys, withFullModuleGranular } from "@/lib/utils";
+
+const ROLE_DEFAULT_GRANULAR_KEYS: Record<string, readonly string[]> = {
+  leads: ["leads_acl", "leads_add", "leads_export"],
+  students: ["students_acl", "students_add", "students_export"],
+};
+const EXTRA_PERM_LABELS: Record<string, string> = {
+  leads_acl: "Leads - granular (Add/Export below apply)",
+  leads_add: "Leads - add / import",
+  leads_export: "Leads - export",
+  students_acl: "Students - granular (Add/Export below apply)",
+  students_add: "Students - add student",
+  students_export: "Students - export",
+};
+
+function defaultPermChecked(perms: string[], key: string): boolean {
+  if (key === "leads" || key === "students") return perms.includes(key);
+  if (key === "leads_acl") return perms.includes("leads_acl");
+  if (key === "students_acl") return perms.includes("students_acl");
+  if (key === "leads_add") {
+    if (!perms.includes("leads")) return false;
+    return perms.includes("leads_acl") ? perms.includes("leads_add") : true;
+  }
+  if (key === "leads_export") {
+    if (!perms.includes("leads")) return false;
+    return perms.includes("leads_acl") ? perms.includes("leads_export") : true;
+  }
+  if (key === "students_add") {
+    if (!perms.includes("students")) return false;
+    return perms.includes("students_acl") ? perms.includes("students_add") : true;
+  }
+  if (key === "students_export") {
+    if (!perms.includes("students")) return false;
+    return perms.includes("students_acl") ? perms.includes("students_export") : true;
+  }
+  return perms.includes(key);
+}
+
+function applyRoleDefaultPermissionToggle(
+  roles: { slug: string; label: string; defaultPermissions: string[] }[],
+  ri: number,
+  key: string
+): { slug: string; label: string; defaultPermissions: string[] }[] {
+  const next = [...roles];
+  const r = { ...next[ri] };
+  let p = [...r.defaultPermissions];
+
+  const toggleGranularSub = (module: "leads" | "students", subKey: string) => {
+    if (!p.includes(module)) return;
+    if (!p.includes(`${module}_acl`)) {
+      p = withFullModuleGranular(stripModuleGranularKeys(p, module), module);
+    }
+    if (p.includes(subKey)) p = p.filter((x) => x !== subKey);
+    else p.push(subKey);
+  };
+
+  if (key === "leads") {
+    p = p.includes("leads") ? stripModuleGranularKeys(p, "leads") : withFullModuleGranular(p, "leads");
+  } else if (key === "students") {
+    p = p.includes("students") ? stripModuleGranularKeys(p, "students") : withFullModuleGranular(p, "students");
+  } else if (key === "leads_add") toggleGranularSub("leads", "leads_add");
+  else if (key === "leads_export") toggleGranularSub("leads", "leads_export");
+  else if (key === "students_add") toggleGranularSub("students", "students_add");
+  else if (key === "students_export") toggleGranularSub("students", "students_export");
+  else if (key === "leads_acl") {
+    if (p.includes("leads_acl")) {
+      p = p.filter((x) => !["leads_acl", "leads_add", "leads_export"].includes(x));
+    } else if (p.includes("leads")) {
+      p = [...p, "leads_acl", "leads_add", "leads_export"];
+    }
+  } else if (key === "students_acl") {
+    if (p.includes("students_acl")) {
+      p = p.filter((x) => !["students_acl", "students_add", "students_export"].includes(x));
+    } else if (p.includes("students")) {
+      p = [...p, "students_acl", "students_add", "students_export"];
+    }
+  } else {
+    const s = new Set(p);
+    if (s.has(key)) {
+      s.delete(key);
+      if (key === "settings") {
+        SETTINGS_SUB_PERMISSIONS.forEach((sub) => s.delete(sub.key));
+      }
+    } else {
+      s.add(key);
+      if (key === "settings") {
+        SETTINGS_SUB_PERMISSIONS.forEach((sub) => s.add(sub.key));
+      }
+    }
+    p = Array.from(s);
+  }
+
+  r.defaultPermissions = p;
+  next[ri] = r;
+  return next;
+}
 import { DEFAULT_APPLICATION_ROLES } from "@/lib/applicationRoles";
 import { DEFAULT_TELECALLER_TRANSFER_OUTCOMES } from "@/lib/telecallerTransferConfig";
 import type { TelecallerTransferOutcome } from "@/types/telecallerTransfer";
@@ -146,7 +241,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   b2bNames: [],
   remarkOptions: [
     "Additional Documents Requested", "Additional Documents Sent",
-    "Interview – GS/Cr./Visa", "Interview Cleared", "Payment Made",
+    "Interview - GS/Cr./Visa", "Interview Cleared", "Payment Made",
     "Medical Requested/Booked", "Passport Submitted",
     "DS-160/VFS/Embassy Appointment", "Pink Slip", "NOC",
     "Defer Offer Requested", "Defer CoE Requested",
@@ -1170,7 +1265,7 @@ export default function SettingsPage() {
     );
   }
 
-  // Ensure current tab is valid — default to first visible tab
+  // Ensure current tab is valid - default to first visible tab
   const activeTab = (visibleTabs.some((t) => t.id === tab) ? tab : visibleTabs[0]?.id || "branding") as TabId;
 
   if (loading) {
@@ -1429,7 +1524,7 @@ export default function SettingsPage() {
             </div>
             <div>
               <h2 className="text-base font-semibold text-gray-900">Lead Configuration</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Manage standings, sources, stages, and statuses — changes apply across all departments instantly</p>
+              <p className="text-xs text-gray-500 mt-0.5">Manage standings, sources, stages, and statuses - changes apply across all departments instantly</p>
             </div>
           </div>
 
@@ -1666,7 +1761,7 @@ export default function SettingsPage() {
                     items={settings[key] || []}
                     onChange={(next) => set(key, next)}
                     onRemoveItem={(item) => set(key, (settings[key] || []).filter((i) => i !== item))}
-                    emptyLabel="No options — save after adding, or they inherit from global on next load"
+                    emptyLabel="No options - save after adding, or they inherit from global on next load"
                     accent="violet"
                   />
                   <div className="flex gap-2">
@@ -2417,7 +2512,7 @@ export default function SettingsPage() {
                 <Lock size={14} className="text-amber-600" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-amber-800">Caution — System-wide impact</p>
+                <p className="text-sm font-semibold text-amber-800">Caution - System-wide impact</p>
                 <p className="text-xs text-amber-700 mt-0.5">Disabling a module hides it from <span className="font-semibold">all users</span> across all branches. Changes here affect the entire platform. Contact your Super Admin if you&apos;re unsure.</p>
               </div>
             </div>
@@ -2538,7 +2633,9 @@ export default function SettingsPage() {
               {settings.applicationRoles.map((role, ri) => {
                 const slugLocked = role.slug === "super_admin";
                 const permKeys = [
-                  ...ALL_PERMISSIONS.map((p) => p.key),
+                  ...ALL_PERMISSIONS.flatMap((p) =>
+                    ROLE_DEFAULT_GRANULAR_KEYS[p.key] ? [p.key, ...ROLE_DEFAULT_GRANULAR_KEYS[p.key]] : [p.key]
+                  ),
                   ...SETTINGS_SUB_PERMISSIONS.map((p) => p.key),
                 ];
                 return (
@@ -2601,30 +2698,37 @@ export default function SettingsPage() {
                           const meta =
                             ALL_PERMISSIONS.find((p) => p.key === key) ||
                             SETTINGS_SUB_PERMISSIONS.find((p) => p.key === key);
-                          const checked = role.defaultPermissions.includes(key);
+                          const checked = defaultPermChecked(role.defaultPermissions, key);
+                          const leadsSubDisabled =
+                            key.startsWith("leads_") && !role.defaultPermissions.includes("leads");
+                          const studentsSubDisabled =
+                            key.startsWith("students_") && !role.defaultPermissions.includes("students");
                           return (
                             <label
                               key={key}
-                              className="flex items-start gap-2 text-xs text-gray-700 cursor-pointer"
+                              className={`flex items-start gap-2 text-xs text-gray-700 cursor-pointer ${
+                                leadsSubDisabled || studentsSubDisabled ? "opacity-40 pointer-events-none" : ""
+                              } ${
+                                key.includes("_acl") || key.endsWith("_add") || key.endsWith("_export")
+                                  ? "pl-3 border-l border-gray-200"
+                                  : ""
+                              }`}
                             >
                               <input
                                 type="checkbox"
                                 className="mt-0.5 rounded border-gray-300"
                                 checked={checked}
+                                disabled={leadsSubDisabled || studentsSubDisabled}
                                 onChange={() => {
-                                  const next = [...settings.applicationRoles];
-                                  const r = { ...next[ri] };
-                                  const s = new Set(r.defaultPermissions);
-                                  if (s.has(key)) s.delete(key);
-                                  else s.add(key);
-                                  r.defaultPermissions = Array.from(s);
-                                  next[ri] = r;
-                                  setSettings((prev) => ({ ...prev, applicationRoles: next }));
+                                  setSettings((prev) => ({
+                                    ...prev,
+                                    applicationRoles: applyRoleDefaultPermissionToggle(prev.applicationRoles, ri, key),
+                                  }));
                                   setSaved(false);
                                 }}
                               />
                               <span>
-                                <span className="font-medium">{meta?.label || key}</span>
+                                <span className="font-medium">{meta?.label || EXTRA_PERM_LABELS[key] || key}</span>
                                 {meta && "description" in meta && meta.description ? (
                                   <span className="block text-[10px] text-gray-400 mt-0.5">{meta.description}</span>
                                 ) : null}

@@ -10,7 +10,7 @@ declare module "next-auth" {
       branch: string;
       branchName: string;
       permissions: string[];
-      /** HR module: "admin" | "employee" — separate from CRM role. */
+      /** HR module: "admin" | "employee" - separate from CRM role. */
       hrRole?: "admin" | "employee";
     };
   }

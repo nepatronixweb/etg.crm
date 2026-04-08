@@ -163,7 +163,7 @@ const handler = NextAuth(authOptions);
 // Named exports for the [...nextauth] route
 export { handler as GET, handler as POST };
 
-// Server-side session helper — use this in API routes
+// Server-side session helper - use this in API routes
 export async function auth() {
   return await getServerSession(authOptions);
 }

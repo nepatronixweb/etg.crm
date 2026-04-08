@@ -6,7 +6,7 @@ import Conversation from "@/models/Conversation";
 import Message from "@/models/Message";
 import "@/models/User";
 
-// GET — fetch messages for a conversation (paginated)
+// GET - fetch messages for a conversation (paginated)
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -38,7 +38,7 @@ export async function GET(
   return NextResponse.json(messages.reverse());
 }
 
-// POST — send a message
+// POST - send a message
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }

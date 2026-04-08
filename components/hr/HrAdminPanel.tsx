@@ -17,7 +17,7 @@ function normalizeIpDisplay(ip: string): string {
 /** Human context for IPs shown in the attendance table. */
 function ipDisplayMeta(ip: string | undefined): { value: string; tag: string | null } {
   const raw = (ip || "").trim();
-  if (!raw || raw === "unknown") return { value: "—", tag: null };
+  if (!raw || raw === "unknown") return { value: "-", tag: null };
   const d = normalizeIpDisplay(raw);
   const lower = d.toLowerCase();
   if (lower === "::1" || lower === "127.0.0.1" || lower === "0:0:0:0:0:0:0:1") {
@@ -35,7 +35,7 @@ function ipDisplayMeta(ip: string | undefined): { value: string; tag: string | n
 
 function CheckInLocationCell({ loc }: { loc?: { lat?: number; lng?: number } | null }) {
   if (loc == null) {
-    return <span className="text-gray-400">—</span>;
+    return <span className="text-gray-400">-</span>;
   }
   const lat = typeof loc.lat === "number" ? loc.lat : 0;
   const lng = typeof loc.lng === "number" ? loc.lng : 0;
@@ -69,8 +69,8 @@ function CheckInLocationCell({ loc }: { loc?: { lat?: number; lng?: number } | n
 
 function IpAttendanceCell({ ip }: { ip?: string }) {
   const { value, tag } = ipDisplayMeta(ip);
-  if (value === "—") {
-    return <span className="text-gray-400">—</span>;
+  if (value === "-") {
+    return <span className="text-gray-400">-</span>;
   }
   return (
     <div className="space-y-0.5 max-w-[14rem]">
@@ -275,7 +275,7 @@ export default function HrAdminPanel({ embedded }: { embedded?: boolean }) {
                     {row.officeNetworkIp ? (
                       <code className="text-[11px] font-mono text-gray-900 break-all leading-snug">{row.officeNetworkIp}</code>
                     ) : (
-                      <span className="text-xs text-gray-400">—</span>
+                      <span className="text-xs text-gray-400">-</span>
                     )}
                   </td>
                   <td className="px-4 py-3.5 text-right tabular-nums text-gray-900 font-medium">{row.presentDays}</td>
@@ -342,7 +342,7 @@ export default function HrAdminPanel({ embedded }: { embedded?: boolean }) {
               <tbody className="divide-y divide-gray-100">
                 {attendance.map((row) => {
                   const u = row.userId;
-                  const name = typeof u === "object" && u?.name ? u.name : "—";
+                  const name = typeof u === "object" && u?.name ? u.name : "-";
                   return (
                     <tr key={row._id} className="hover:bg-slate-50/90 transition-colors">
                       <td className="px-4 py-3.5 whitespace-nowrap text-gray-900 font-medium tabular-nums">{row.date}</td>
@@ -357,10 +357,10 @@ export default function HrAdminPanel({ embedded }: { embedded?: boolean }) {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-900 whitespace-nowrap font-medium">
-                        {row.checkIn ? new Date(row.checkIn).toLocaleString() : "—"}
+                        {row.checkIn ? new Date(row.checkIn).toLocaleString() : "-"}
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-900 whitespace-nowrap font-medium">
-                        {row.checkOut ? new Date(row.checkOut).toLocaleString() : "—"}
+                        {row.checkOut ? new Date(row.checkOut).toLocaleString() : "-"}
                       </td>
                       <td className="px-4 py-3 align-top">
                         <CheckInLocationCell loc={row.location} />
@@ -451,7 +451,7 @@ function EmployeesSalaryTable({ month }: { month: string }) {
                 {row.officeNetworkIp ? (
                   <code className="text-[11px] font-mono text-gray-900 break-all">{row.officeNetworkIp}</code>
                 ) : (
-                  <span className="text-xs text-gray-400">—</span>
+                  <span className="text-xs text-gray-400">-</span>
                 )}
               </td>
               <td className="px-4 py-3.5 text-right tabular-nums font-semibold text-gray-900">{row.presentDays}</td>

@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import connectDB from "@/lib/mongodb";
 import AppSettings from "@/models/AppSettings";
 
-// GET — return current b2bNames
+// GET - return current b2bNames
 export async function GET() {
   try {
     await connectDB();

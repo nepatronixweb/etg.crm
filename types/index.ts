@@ -1,4 +1,4 @@
-/** User.role value — core slugs are seeded in AppSettings.applicationRoles; admins may add custom roles in Settings. */
+/** User.role value - core slugs are seeded in AppSettings.applicationRoles; admins may add custom roles in Settings. */
 export type UserRole = string;
 
 /** Built-in role slugs (defaults in database). */
@@ -14,7 +14,13 @@ export const BUILTIN_USER_ROLE_SLUGS = [
 
 export type Permission =
   | "leads"
+  | "leads_acl"
+  | "leads_add"
+  | "leads_export"
   | "students"
+  | "students_acl"
+  | "students_add"
+  | "students_export"
   | "documents"
   | "applications"
   | "admissions"
@@ -202,7 +208,8 @@ export interface IAdmissionDetail {
 
 export interface IStudent {
   _id: string;
-  lead: string;
+  lead?: string;
+  enquiry?: string;
   name: string;
   phone: string;
   email: string;

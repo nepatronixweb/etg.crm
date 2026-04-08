@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
         } catch { /* client disconnected */ }
       };
 
-      // Cache conversation IDs — refreshed every 60s to pick up new convs
+      // Cache conversation IDs - refreshed every 60s to pick up new convs
       let convIds: unknown[] = [];
       let lastConvRefresh = 0;
 
@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
         send({ type: "chat_init", unreadCount: 0 });
       }
 
-      // Poll every 8 seconds — reuse cached convIds (refresh every 60s)
+      // Poll every 8 seconds - reuse cached convIds (refresh every 60s)
       const interval = setInterval(async () => {
         try {
           if (Date.now() - lastConvRefresh > 60_000) await refreshConvIds();

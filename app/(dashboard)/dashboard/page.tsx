@@ -10,7 +10,7 @@ import {
   GraduationCap, Send, ShieldCheck, FileInput, MessageSquare,
   Phone, PhoneMissed, PhoneCall, UserPlus, RefreshCw,
   CalendarCheck, Flame, Wifi, Upload, X, AlertCircle, CheckCircle,
-  FileSpreadsheet, Table2, BarChart3, Globe2, LayoutDashboard,
+  FileSpreadsheet, Table2, Globe2,
 } from "lucide-react";
 import { formatDateTime, getStatusColor, hasPermission } from "@/lib/utils";
 import { TELECALLER_FRESH_BUCKET } from "@/lib/telecallerFreshLeads";
@@ -158,17 +158,8 @@ function getDateRange(period: FilterPeriod): { from?: string; to?: string } {
 }
 
 function humanizeAnalyticsKey(s: string) {
-  if (!s) return "—";
+  if (!s) return "-";
   return String(s).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function adminPeriodLabel(period: FilterPeriod, from: string, to: string): string {
-  if (from || to) {
-    if (from && to) return `${from} → ${to}`;
-    if (from) return `From ${from}`;
-    return `Until ${to}`;
-  }
-  return FILTER_OPTIONS.find((o) => o.value === period)?.label ?? "All time";
 }
 
 /** Match spreadsheet headers after trim + lowercase + collapse spaces / underscores */
@@ -238,7 +229,7 @@ export default function DashboardPage() {
   const [assignedLeads, setAssignedLeads] = useState<IAssignedLead[]>([]);
   const [counsellorStudents, setCounsellorStudents] = useState<IStudent[]>([]);
 
-  /** Telecaller overview card counts — same filters as GET /api/leads?bucket=… (full DB, not first 1000 rows). */
+  /** Telecaller overview card counts - same filters as GET /api/enquiries?bucket=… (full DB, not first 1000 rows). */
   const [telecallerOverviewTotals, setTelecallerOverviewTotals] = useState({
     totalEnquiry: 0,
     fresh: 0,
@@ -255,7 +246,7 @@ export default function DashboardPage() {
     const countTotal = async (bucket?: string) => {
       const p = new URLSearchParams({ page: "1", limit: "1" });
       if (bucket) p.set("bucket", bucket);
-      const d = await json(`/api/leads?${p}`);
+      const d = await json(`/api/enquiries?${p}`);
       return typeof d?.total === "number" ? d.total : 0;
     };
     const [
@@ -269,7 +260,7 @@ export default function DashboardPage() {
       cold,
       cnr,
     ] = await Promise.all([
-      json("/api/leads?page=1&limit=1000"),
+      json("/api/enquiries?page=1&limit=1000"),
       countTotal(),
       countTotal(TELECALLER_FRESH_BUCKET),
       countTotal(TELECALLER_OVERVIEW_TRANSFERRED),
@@ -539,7 +530,8 @@ export default function DashboardPage() {
       };
     });
     try {
-      const res = await fetch("/api/leads/import", {
+      const importUrl = isTelecaller ? "/api/enquiries/import" : "/api/leads/import";
+      const res = await fetch(importUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ campaign: importCampaign, source: importSource, importDate, leadType: importLeadType, rows }),
@@ -557,7 +549,7 @@ export default function DashboardPage() {
         const hint = typeof d?.hint === "string" ? d.hint : "";
         setImportResult({
           type: "error",
-          msg: [d.error, hint].filter(Boolean).join(" — ") || "Import failed.",
+          msg: [d.error, hint].filter(Boolean).join(" - ") || "Import failed.",
         });
       }
     } catch {
@@ -715,7 +707,7 @@ export default function DashboardPage() {
                   {importFileName ? (
                     <div className="text-center">
                       <p className="text-sm font-semibold text-gray-900">{importFileName}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{importPreview.length} rows detected — click to change</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{importPreview.length} rows detected - click to change</p>
                     </div>
                   ) : (
                     <div className="text-center">
@@ -754,7 +746,7 @@ export default function DashboardPage() {
               {importPreview.length > 0 && (
                 <div>
                   <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">
-                    Preview — {importPreview.length} rows
+                    Preview - {importPreview.length} rows
                     {importPreview.length > 5 && <span className="text-gray-400 font-normal"> (showing first 5)</span>}
                   </p>
                   <div className="overflow-x-auto rounded-xl border border-gray-200">
@@ -830,7 +822,7 @@ export default function DashboardPage() {
             {isAdmin ? "Admin overview" : "Dashboard"}
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Welcome back, {session?.user?.name} &mdash; {branding.companyName}
+            Welcome back, {session?.user?.name} - {branding.companyName}
           </p>
         </div>
         {isAdmin && (
@@ -973,34 +965,9 @@ export default function DashboardPage() {
         const maxStage = Math.max(1, ...studentsByStage.map((x) => x.count), 0);
         const maxCountry = Math.max(1, ...applicationsByCountry.map((x) => x.count), 0);
         const maxAppSt = Math.max(1, ...applicationsByStatus.map((x) => x.count), 0);
-        const periodLabel = adminPeriodLabel(filterPeriod, filterDateFrom, filterDateTo);
 
         return (
         <div className={`space-y-6 transition-opacity duration-200 ${refetching ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
-
-          {/* Control strip */}
-          <div className="bg-white border border-gray-200 rounded-lg p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="p-2 rounded-md border border-gray-200 bg-gray-50 text-gray-600">
-                <LayoutDashboard size={18} />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">Operations snapshot</h2>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Period: <span className="font-medium text-gray-700">{periodLabel}</span>
-                  {refetching && <span className="ml-2 text-gray-400">Updating…</span>}
-                </p>
-              </div>
-            </div>
-            <Link
-              href="/reports"
-              className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium border border-gray-200 bg-white text-gray-800 hover:bg-gray-50 hover:border-gray-300 transition-colors shrink-0"
-            >
-              <BarChart3 size={15} className="text-gray-500" />
-              Full analytics &amp; charts
-              <ChevronRight size={14} className="text-gray-400" />
-            </Link>
-          </div>
 
           {/* KPIs */}
           <div className="grid w-full grid-cols-2 lg:grid-cols-4 gap-4 items-stretch">
@@ -1057,7 +1024,7 @@ export default function DashboardPage() {
             })}
           </div>
 
-          {/* Admissions & visa pipeline — minmax(0,1fr) + min-w-0 on cards keeps seven equal columns at lg */}
+          {/* Admissions & visa pipeline - minmax(0,1fr) + min-w-0 on cards keeps seven equal columns at lg */}
           <div className="w-full">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Admissions &amp; visa pipeline</h3>
             <div className="grid w-full grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 items-stretch">
@@ -1239,7 +1206,7 @@ export default function DashboardPage() {
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-gray-900 truncate">{lead.name}</p>
                           <p className="text-xs text-gray-500 truncate">
-                            {lead.source ? `${lead.source} · ` : ""}{lead.interestedCountry || "—"}
+                            {lead.source ? `${lead.source} · ` : ""}{lead.interestedCountry || "-"}
                             {lead.branch?.name ? ` · ${lead.branch.name}` : ""}
                           </p>
                         </div>
@@ -1523,7 +1490,7 @@ export default function DashboardPage() {
                   <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
                     <XCircle size={15} className="text-gray-400 shrink-0" />
                     <p className="text-sm text-gray-600">
-                      <span className="font-semibold text-gray-900">{ooc} lead{ooc > 1 ? "s" : ""}</span> marked as <span className="font-medium">Out of Contact</span> — consider re-engaging.
+                      <span className="font-semibold text-gray-900">{ooc} lead{ooc > 1 ? "s" : ""}</span> marked as <span className="font-medium">Out of Contact</span> - consider re-engaging.
                     </p>
                     <Link href="/leads" className="ml-auto text-xs text-blue-600 hover:underline whitespace-nowrap">View →</Link>
                   </div>
@@ -1532,7 +1499,7 @@ export default function DashboardPage() {
                 {/* Main Content: Leads + Notifications */}
                 <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
 
-                  {/* Assigned Leads — wider */}
+                  {/* Assigned Leads - wider */}
                   <div className="lg:col-span-3 bg-white border border-gray-200 rounded-xl flex flex-col">
                     <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
                       <div className="flex items-center gap-2">
@@ -1591,7 +1558,7 @@ export default function DashboardPage() {
                     )}
                   </div>
 
-                  {/* Notifications — narrower */}
+                  {/* Notifications - narrower */}
                   <div className="lg:col-span-2 space-y-5">
                     <div className="bg-white border border-gray-200 rounded-xl flex flex-col">
                       <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
@@ -2011,10 +1978,10 @@ export default function DashboardPage() {
                   <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Lead overview</h2>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {([
-                      { label: "Total enquiry", value: ot.totalEnquiry, icon: Users, sub: "All assigned leads", href: "/leads" as const },
-                      { label: "Fresh leads", value: ot.fresh, icon: UserPlus, sub: "New & pending contact", href: `/leads?bucket=${TELECALLER_FRESH_BUCKET}` as const },
-                      { label: "Transferred", value: ot.transferred, icon: RefreshCw, sub: "Moved to counsellor", href: `/leads?bucket=${TELECALLER_OVERVIEW_TRANSFERRED}` as const },
-                      { label: "Appointment", value: ot.appointment, icon: CalendarCheck, sub: "Counselling scheduled", href: `/leads?bucket=${TELECALLER_OVERVIEW_APPOINTMENT}` as const },
+                      { label: "Total enquiry", value: ot.totalEnquiry, icon: Users, sub: "All enquiries (telecaller pool)", href: "/enquiries" as const },
+                      { label: "Fresh leads", value: ot.fresh, icon: UserPlus, sub: "New & pending contact", href: `/enquiries?bucket=${TELECALLER_FRESH_BUCKET}` as const },
+                      { label: "Transferred", value: ot.transferred, icon: RefreshCw, sub: "Moved to counsellor", href: `/enquiries?bucket=${TELECALLER_OVERVIEW_TRANSFERRED}` as const },
+                      { label: "Appointment", value: ot.appointment, icon: CalendarCheck, sub: "Counselling scheduled", href: `/enquiries?bucket=${TELECALLER_OVERVIEW_APPOINTMENT}` as const },
                     ] as const).map((s) => {
                       const Icon = s.icon;
                       return (
@@ -2038,10 +2005,10 @@ export default function DashboardPage() {
                 {/* Secondary metrics */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
-                    { label: "Phone counselling", value: ot.phoneCounselling, icon: PhoneCall, sub: "Counselled over phone", href: `/leads?bucket=${TELECALLER_OVERVIEW_PHONE_COUNSELLING}` as const },
-                    { label: "Online enrollment", value: ot.onlineEnrollment, icon: Wifi, sub: "Registered & completed", href: `/leads?bucket=${TELECALLER_OVERVIEW_ONLINE_ENROLLMENT}` as const },
-                    { label: "Cold", value: ot.cold, icon: Flame, sub: "Low interest / cold", href: `/leads?bucket=${TELECALLER_OVERVIEW_COLD}` as const },
-                    { label: "CNR / engaged", value: ot.cnr, icon: PhoneMissed, sub: "Not reachable / busy", href: `/leads?bucket=${TELECALLER_OVERVIEW_CNR}` as const },
+                    { label: "Phone counselling", value: ot.phoneCounselling, icon: PhoneCall, sub: "Counselled over phone", href: `/enquiries?bucket=${TELECALLER_OVERVIEW_PHONE_COUNSELLING}` as const },
+                    { label: "Online enrollment", value: ot.onlineEnrollment, icon: Wifi, sub: "Registered & completed", href: `/enquiries?bucket=${TELECALLER_OVERVIEW_ONLINE_ENROLLMENT}` as const },
+                    { label: "Cold", value: ot.cold, icon: Flame, sub: "Low interest / cold", href: `/enquiries?bucket=${TELECALLER_OVERVIEW_COLD}` as const },
+                    { label: "CNR / engaged", value: ot.cnr, icon: PhoneMissed, sub: "Not reachable / busy", href: `/enquiries?bucket=${TELECALLER_OVERVIEW_CNR}` as const },
                   ].map((s) => {
                     const Icon = s.icon;
                     return (
@@ -2073,7 +2040,7 @@ export default function DashboardPage() {
                       <h2 className="text-sm font-semibold text-gray-900">Recent assigned leads</h2>
                       <span className="text-[11px] font-medium bg-white text-gray-600 px-2 py-0.5 rounded border border-gray-200 tabular-nums">{ot.totalEnquiry}</span>
                     </div>
-                    <Link href="/leads" className="text-xs font-medium text-gray-700 hover:text-gray-900 flex items-center gap-1">
+                    <Link href="/enquiries" className="text-xs font-medium text-gray-700 hover:text-gray-900 flex items-center gap-1">
                       View all <ChevronRight size={12} />
                     </Link>
                   </div>
@@ -2095,7 +2062,7 @@ export default function DashboardPage() {
                           missed: "bg-gray-50 text-gray-500 border-gray-200",
                         };
                         return (
-                          <Link key={lead._id} href={`/leads/${lead._id}`}
+                          <Link key={lead._id} href={`/enquiries/${lead._id}`}
                             className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors group">
                             <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center shrink-0 border border-gray-300">
                               <span className="text-xs font-semibold text-gray-700">{lead.name.charAt(0).toUpperCase()}</span>
@@ -2124,7 +2091,7 @@ export default function DashboardPage() {
                   )}
                   {leads.length > 8 && (
                     <div className="px-5 py-3 border-t border-gray-200 bg-gray-50">
-                      <Link href="/leads" className="text-xs text-gray-700 hover:text-gray-900 font-medium">
+                      <Link href="/enquiries" className="text-xs text-gray-700 hover:text-gray-900 font-medium">
                         + {leads.length - 8} more leads
                       </Link>
                     </div>

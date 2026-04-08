@@ -24,7 +24,7 @@ export interface IAppSettings extends Document {
   leadStageGroups: string[];
   leadStages: { value: string; label: string; group: string }[];
   stageToPipelineMapping: { [stageValue: string]: string };
-  // Per-country stage overrides — if set, these replace the global leadStages for that country
+  // Per-country stage overrides - if set, these replace the global leadStages for that country
   countryStages: { [country: string]: { value: string; label: string; pipeline: string }[] };
   b2bNames: string[];
   remarkOptions: string[];
@@ -51,7 +51,7 @@ export interface IAppSettings extends Document {
   paymentQrPath: string;
   // Meta
   updatedAt: Date;
-  /** Editable in Settings — drives user role dropdown & default permissions. */
+  /** Editable in Settings - drives user role dropdown & default permissions. */
   applicationRoles: { slug: string; label: string; defaultPermissions: string[] }[];
   /** Telecaller leads table Transfer dropdown + PATCH behaviour. */
   telecallerTransferOutcomes: {

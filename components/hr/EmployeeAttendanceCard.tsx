@@ -37,7 +37,7 @@ export default function EmployeeAttendanceCard() {
           <div>
             <h2 className="text-sm font-semibold text-gray-900">Today&apos;s attendance</h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              Office day: <span className="font-medium text-gray-700">{serverToday ?? "—"}</span> (server)
+              Office day: <span className="font-medium text-gray-700">{serverToday ?? "-"}</span> (server)
             </p>
             {loading ? (
               <p className="text-xs text-gray-400 mt-2">Loading…</p>
@@ -47,11 +47,11 @@ export default function EmployeeAttendanceCard() {
               <div className="mt-2 space-y-1 text-xs text-gray-600">
                 <p>
                   <span className="font-medium text-gray-800">Check-in:</span>{" "}
-                  {todayRow.checkIn ? new Date(todayRow.checkIn).toLocaleString() : "—"}
+                  {todayRow.checkIn ? new Date(todayRow.checkIn).toLocaleString() : "-"}
                 </p>
                 <p>
                   <span className="font-medium text-gray-800">Check-out:</span>{" "}
-                  {todayRow.checkOut ? new Date(todayRow.checkOut).toLocaleString() : "—"}
+                  {todayRow.checkOut ? new Date(todayRow.checkOut).toLocaleString() : "-"}
                 </p>
                 <p className="flex items-center gap-1.5">
                   <span className="font-medium text-gray-800">Status:</span>

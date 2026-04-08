@@ -1,16 +1,25 @@
 "use client";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useSession } from "next-auth/react";
 import {
   Plus, Users, Search, KeyRound, X, UserPlus,
   Mail, Phone, Shield, Building2, Target, Calendar,
   Lock, Eye, EyeOff, CheckCircle2, AlertCircle,
-  RotateCcw, UserCog, ChevronDown, Settings, Info,
+  RotateCcw, UserCog, ChevronDown, Settings, Info, Trash2,
   Banknote, Clock, Globe,
 } from "lucide-react";
-import { formatDate, getRoleBadgeColor, getRoleLabel, ALL_PERMISSIONS, ROLE_DEFAULT_PERMISSIONS, SETTINGS_SUB_PERMISSIONS, ALL_SETTINGS_SUB_KEYS } from "@/lib/utils";
-import { useBranding } from "@/app/branding-context";
-import { DEFAULT_APPLICATION_ROLES } from "@/lib/applicationRoles";
+import {
+  formatDate,
+  getRoleBadgeColor,
+  getRoleLabel,
+  ALL_PERMISSIONS,
+  ROLE_DEFAULT_PERMISSIONS,
+  SETTINGS_SUB_PERMISSIONS,
+  ALL_SETTINGS_SUB_KEYS,
+  stripModuleGranularKeys,
+  withFullModuleGranular,
+} from "@/lib/utils";
+import { useApplicationRolesCatalog, useBranding } from "@/app/branding-context";
 
 interface User {
   _id: string;
@@ -61,17 +70,8 @@ const roleIconMap: Record<string, string> = {
 export default function UsersPage() {
   const { data: session } = useSession();
   const branding = useBranding();
+  const applicationRoles = useApplicationRolesCatalog();
   const isSuperAdmin = session?.user?.role === "super_admin";
-
-  const [applicationRoles, setApplicationRoles] = useState<
-    { slug: string; label: string; defaultPermissions: string[] }[]
-  >(() =>
-    DEFAULT_APPLICATION_ROLES.map((r) => ({
-      slug: r.slug,
-      label: r.label,
-      defaultPermissions: [...r.defaultPermissions],
-    }))
-  );
 
   const defaultCreatableRole = useMemo(() => {
     const slugs = applicationRoles.map((r) => r.slug);
@@ -151,6 +151,10 @@ export default function UsersPage() {
   const [resetError, setResetError] = useState("");
   const [resetSuccess, setResetSuccess] = useState("");
 
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(() => new Set());
+  const [bulkWorking, setBulkWorking] = useState(false);
+  const selectAllRef = useRef<HTMLInputElement>(null);
+
   /* ─── Fetch ─── */
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -163,13 +167,6 @@ export default function UsersPage() {
   useEffect(() => {
     fetchUsers();
     fetch("/api/branches").then((r) => r.json()).then(setBranches);
-    fetch("/api/settings/app")
-      .then((r) => r.json())
-      .then((d) => {
-        if (Array.isArray(d?.applicationRoles) && d.applicationRoles.length > 0) {
-          setApplicationRoles(d.applicationRoles);
-        }
-      });
   }, [fetchUsers]);
 
   useEffect(() => {
@@ -191,6 +188,10 @@ export default function UsersPage() {
     };
   }, [showForm, isSuperAdmin]);
 
+  useEffect(() => {
+    setSelectedUserIds(new Set());
+  }, [search, roleFilter, statusFilter]);
+
   const roleFilterOptions = useMemo(() => {
     const fromCatalog = applicationRoles.map((r) => r.slug);
     const fromUsers = [...new Set(users.map((u) => u.role))];
@@ -208,6 +209,87 @@ export default function UsersPage() {
     if (statusFilter === "inactive" && u.isActive) return false;
     return true;
   });
+
+  const canManageRow = useCallback(
+    (u: User) => u._id !== session?.user?.id && (isSuperAdmin || u.role !== "super_admin"),
+    [session?.user?.id, isSuperAdmin]
+  );
+
+  const selectableFiltered = useMemo(
+    () => filtered.filter((u) => canManageRow(u)),
+    [filtered, canManageRow]
+  );
+
+  const allPageSelected =
+    selectableFiltered.length > 0 &&
+    selectableFiltered.every((u) => selectedUserIds.has(u._id));
+  const somePageSelected = selectableFiltered.some((u) => selectedUserIds.has(u._id));
+
+  useEffect(() => {
+    const el = selectAllRef.current;
+    if (el) el.indeterminate = somePageSelected && !allPageSelected;
+  }, [somePageSelected, allPageSelected]);
+
+  const toggleSelectAll = () => {
+    setSelectedUserIds((prev) => {
+      const allOnPage =
+        selectableFiltered.length > 0 &&
+        selectableFiltered.every((u) => prev.has(u._id));
+      const next = new Set(prev);
+      if (allOnPage) {
+        selectableFiltered.forEach((u) => next.delete(u._id));
+      } else {
+        selectableFiltered.forEach((u) => next.add(u._id));
+      }
+      return next;
+    });
+  };
+
+  const toggleUserSelected = (id: string) => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const deactivateUser = async (u: User) => {
+    if (!u.isActive) return;
+    if (!confirm(`Deactivate ${u.name}? They will not be able to sign in.`)) return;
+    const res = await fetch(`/api/users/${u._id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = (await res.json().catch(() => ({}))) as { error?: string };
+      alert(d.error || "Failed to deactivate user");
+      return;
+    }
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      next.delete(u._id);
+      return next;
+    });
+    fetchUsers();
+  };
+
+  const bulkDeactivateSelected = async () => {
+    const ids = Array.from(selectedUserIds);
+    if (ids.length === 0) return;
+    if (!confirm(`Deactivate ${ids.length} selected user(s)? They will not be able to sign in.`)) return;
+    setBulkWorking(true);
+    try {
+      const results = await Promise.all(
+        ids.map((id) => fetch(`/api/users/${id}`, { method: "DELETE" }))
+      );
+      const failed = results.filter((r) => !r.ok);
+      if (failed.length) {
+        alert(`Some requests failed (${failed.length} of ${ids.length}).`);
+      }
+      setSelectedUserIds(new Set());
+      await fetchUsers();
+    } finally {
+      setBulkWorking(false);
+    }
+  };
 
   /* ─── Create / Edit submit ─── */
   const handleSubmit = async (e: React.FormEvent) => {
@@ -373,7 +455,7 @@ export default function UsersPage() {
             <div className="min-w-0">
               <h1 className="text-xl font-semibold text-gray-900 tracking-tight">Team Members</h1>
               <p className="text-sm text-gray-600 mt-0.5">
-                Manage your team — <span className="font-semibold text-gray-800 tabular-nums">{users.length}</span>{" "}
+                Manage your team - <span className="font-semibold text-gray-800 tabular-nums">{users.length}</span>{" "}
                 {users.length === 1 ? "member" : "members"}
               </p>
               <div className="flex flex-wrap gap-2 mt-3">
@@ -474,10 +556,43 @@ export default function UsersPage() {
 
       {/* Table */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        {selectedUserIds.size > 0 && (
+          <div className="flex flex-wrap items-center gap-3 px-5 py-2.5 border-b border-blue-100 bg-blue-50/80 text-sm">
+            <span className="font-medium text-gray-700 tabular-nums">{selectedUserIds.size} selected</span>
+            <button
+              type="button"
+              disabled={bulkWorking}
+              onClick={bulkDeactivateSelected}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 shadow-sm hover:bg-red-50 disabled:opacity-50"
+            >
+              <Trash2 size={14} />
+              Deactivate selected
+            </button>
+            <button
+              type="button"
+              disabled={bulkWorking}
+              onClick={() => setSelectedUserIds(new Set())}
+              className="text-xs font-semibold text-gray-600 hover:text-gray-900 disabled:opacity-50"
+            >
+              Clear
+            </button>
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50/80 border-b border-gray-100">
+                <th className="w-12 px-3 py-3.5">
+                  <input
+                    ref={selectAllRef}
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500/30"
+                    checked={allPageSelected}
+                    onChange={toggleSelectAll}
+                    disabled={selectableFiltered.length === 0 || bulkWorking}
+                    aria-label="Select all users on this page"
+                  />
+                </th>
                 {["Member", "Role", "Branch", "Target", "Status", "Joined", "Actions"].map((h) => (
                   <th key={h} className="text-left px-5 py-3.5 font-semibold text-gray-500 text-xs uppercase tracking-wider">{h}</th>
                 ))}
@@ -485,15 +600,27 @@ export default function UsersPage() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {loading && (
-                <tr><td colSpan={7} className="text-center py-16 text-gray-400">
+                <tr><td colSpan={8} className="text-center py-16 text-gray-400">
                   <div className="flex items-center justify-center gap-2"><div className="w-5 h-5 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" /> Loading…</div>
                 </td></tr>
               )}
               {!loading && filtered.length === 0 && (
-                <tr><td colSpan={7} className="text-center py-16 text-gray-400">No users found</td></tr>
+                <tr><td colSpan={8} className="text-center py-16 text-gray-400">No users found</td></tr>
               )}
               {filtered.map((user) => (
                 <tr key={user._id} className="hover:bg-gray-50/60 transition-colors">
+                  <td className="w-12 px-3 py-3.5 align-middle">
+                    {canManageRow(user) ? (
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500/30"
+                        checked={selectedUserIds.has(user._id)}
+                        onChange={() => toggleUserSelected(user._id)}
+                        disabled={bulkWorking}
+                        aria-label={`Select ${user.name}`}
+                      />
+                    ) : null}
+                  </td>
                   {/* Member */}
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
@@ -517,7 +644,7 @@ export default function UsersPage() {
                     </span>
                   </td>
                   {/* Branch */}
-                  <td className="px-5 py-3.5 text-gray-600">{user.branch?.name || "—"}</td>
+                  <td className="px-5 py-3.5 text-gray-600">{user.branch?.name || "-"}</td>
                   {/* Target */}
                   <td className="px-5 py-3.5">
                     {user.role === "counsellor" ? (
@@ -533,7 +660,7 @@ export default function UsersPage() {
                         </div>
                         <span className="text-xs text-gray-600 font-medium">{user.currentCount || 0}/{user.target || 0}</span>
                       </div>
-                    ) : <span className="text-gray-400">—</span>}
+                    ) : <span className="text-gray-400">-</span>}
                   </td>
                   {/* Status */}
                   <td className="px-5 py-3.5">
@@ -548,7 +675,7 @@ export default function UsersPage() {
                   <td className="px-5 py-3.5 text-gray-500 text-xs">{formatDate(user.createdAt)}</td>
                   {/* Actions */}
                   <td className="px-5 py-3.5">
-                    {user._id !== session?.user?.id && (isSuperAdmin || user.role !== "super_admin") && (
+                    {canManageRow(user) && (
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => openEdit(user)}
@@ -574,6 +701,14 @@ export default function UsersPage() {
                           }`}
                         >
                           <RotateCcw size={15} />
+                        </button>
+                        <button
+                          onClick={() => deactivateUser(user)}
+                          title={user.isActive ? "Deactivate user" : "Already inactive"}
+                          disabled={!user.isActive || bulkWorking}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:pointer-events-none disabled:opacity-30"
+                        >
+                          <Trash2 size={15} />
                         </button>
                       </div>
                     )}
@@ -894,14 +1029,29 @@ export default function UsersPage() {
                     <div className="space-y-1 min-w-0">
                       <h3 className="text-sm font-semibold text-gray-900">Module permissions</h3>
                       <p className="text-xs text-gray-600 leading-relaxed max-w-xl">
-                        Role defaults are pre-filled. You can customise below. Updates apply on the user&apos;s next login.
+                        Role defaults are pre-filled. For Leads and Students, enable the module first, then optionally restrict Add and Export; other modules are access-only. Updates apply on the user&apos;s next login.
                       </p>
                     </div>
                     {form.role !== "super_admin" && (
                       <div className="flex items-center gap-2 shrink-0">
                         <button
                           type="button"
-                          onClick={() => setForm({ ...form, permissions: ALL_PERMISSIONS.map((p) => p.key) })}
+                          onClick={() => {
+                            const next: string[] = [];
+                            for (const p of ALL_PERMISSIONS) {
+                              next.push(p.key);
+                              if (p.key === "leads") {
+                                next.push("leads_acl", "leads_add", "leads_export");
+                              }
+                              if (p.key === "students") {
+                                next.push("students_acl", "students_add", "students_export");
+                              }
+                              if (p.key === "settings") {
+                                next.push(...ALL_SETTINGS_SUB_KEYS);
+                              }
+                            }
+                            setForm({ ...form, permissions: next });
+                          }}
                           className="text-xs font-semibold text-blue-600 hover:text-blue-700"
                         >
                           Select all
@@ -932,6 +1082,100 @@ export default function UsersPage() {
                     <>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {ALL_PERMISSIONS.map((perm) => {
+                          if (perm.key === "leads" || perm.key === "students") {
+                            const module = perm.key;
+                            const aclKey = `${module}_acl`;
+                            const addKey = `${module}_add`;
+                            const exportKey = `${module}_export`;
+                            const hasBase = form.permissions.includes(module);
+                            const granular = form.permissions.includes(aclKey);
+                            const addOn = granular ? form.permissions.includes(addKey) : hasBase;
+                            const exportOn = granular ? form.permissions.includes(exportKey) : hasBase;
+                            const addLabel = module === "leads" ? "Add lead" : "Add student";
+                            return (
+                              <div
+                                key={module}
+                                className={`flex flex-col gap-2 p-3 rounded-lg border transition-colors select-none ${
+                                  hasBase
+                                    ? "bg-white border-blue-400 shadow-sm"
+                                    : "bg-white/80 border-gray-200"
+                                }`}
+                              >
+                                <label className="flex items-start gap-3 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={hasBase}
+                                    onChange={() => {
+                                      if (hasBase) {
+                                        setForm({
+                                          ...form,
+                                          permissions: stripModuleGranularKeys(form.permissions, module),
+                                        });
+                                      } else {
+                                        setForm({
+                                          ...form,
+                                          permissions: withFullModuleGranular(form.permissions, module),
+                                        });
+                                      }
+                                    }}
+                                    className="mt-0.5 accent-blue-600 shrink-0"
+                                  />
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-semibold text-gray-900 leading-snug">{perm.label}</p>
+                                    <p className="text-[11px] text-gray-600 leading-snug mt-1">{perm.description}</p>
+                                  </div>
+                                </label>
+                                {hasBase && (
+                                  <div className="pl-8 sm:pl-9 flex flex-wrap gap-x-4 gap-y-2 pt-2 border-t border-gray-100">
+                                    <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide w-full sm:w-auto sm:mr-1">
+                                      Also allow
+                                    </span>
+                                    <label className="flex items-center gap-2 text-[11px] text-gray-800 cursor-pointer select-none">
+                                      <input
+                                        type="checkbox"
+                                        checked={addOn}
+                                        onChange={() => {
+                                          let next = [...form.permissions];
+                                          if (!next.includes(aclKey) && next.includes(module)) {
+                                            next = withFullModuleGranular(stripModuleGranularKeys(next, module), module);
+                                          }
+                                          if (next.includes(addKey)) {
+                                            next = next.filter((p) => p !== addKey);
+                                          } else {
+                                            next.push(addKey);
+                                          }
+                                          setForm({ ...form, permissions: next });
+                                        }}
+                                        className="accent-blue-600 shrink-0"
+                                      />
+                                      {addLabel}
+                                    </label>
+                                    <label className="flex items-center gap-2 text-[11px] text-gray-800 cursor-pointer select-none">
+                                      <input
+                                        type="checkbox"
+                                        checked={exportOn}
+                                        onChange={() => {
+                                          let next = [...form.permissions];
+                                          if (!next.includes(aclKey) && next.includes(module)) {
+                                            next = withFullModuleGranular(stripModuleGranularKeys(next, module), module);
+                                          }
+                                          if (next.includes(exportKey)) {
+                                            next = next.filter((p) => p !== exportKey);
+                                          } else {
+                                            next.push(exportKey);
+                                          }
+                                          setForm({ ...form, permissions: next });
+                                        }}
+                                        className="accent-blue-600 shrink-0"
+                                      />
+                                      Export (Excel)
+                                    </label>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+
                           const checked = form.permissions.includes(perm.key);
                           return (
                             <label

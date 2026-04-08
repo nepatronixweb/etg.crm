@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
 
   const results = { staff: 0, students: 0, errors: 0 };
 
-  // --- Staff birthdays ---
+  // - Staff birthdays -
   const staffWithBirthdays = await User.find({
     isActive: true,
     dateOfBirth: { $exists: true, $ne: null },
@@ -128,7 +128,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // --- Student birthdays ---
+  // - Student birthdays -
   const studentsWithBirthdays = await Student.find({
     dateOfBirth: { $exists: true, $ne: null },
   }).select("name email dateOfBirth");

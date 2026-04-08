@@ -151,7 +151,7 @@ const PRESETS: { id: string; label: string; getRange: () => { from: string; to: 
 ];
 
 function humanizeKey(s: string) {
-  return String(s || "—").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return String(s || "-").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function sortByCountDesc(rows: CountRow[]): CountRow[] {
@@ -539,7 +539,7 @@ export default function ReportsPage() {
       <section className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
         <header className="px-5 py-4 border-b border-gray-200 bg-gray-50/90">
           <h2 className="text-base font-semibold text-gray-900">Leads by source</h2>
-          <p className="text-sm text-gray-500 mt-0.5">Where enquiries originated — table lists every source with count and share</p>
+          <p className="text-sm text-gray-500 mt-0.5">Where enquiries originated - table lists every source with count and share</p>
         </header>
         {sourceData.length === 0 ? (
           <p className="px-5 py-12 text-center text-sm text-gray-400">No lead data for this period.</p>
@@ -598,7 +598,7 @@ export default function ReportsPage() {
 
       <BreakdownSection
         title="Leads by standing"
-        description="Engagement temperature (hot, warm, cold, etc.) — full list with percentages"
+        description="Engagement temperature (hot, warm, cold, etc.) - full list with percentages"
         rows={data.leadsByStatus ?? []}
         rawKeyLabel="Standing"
         chartFill="#111827"
@@ -614,7 +614,7 @@ export default function ReportsPage() {
 
       <BreakdownSection
         title="Applications by country"
-        description="Student destination countries (each country on a student record) plus standalone application records — merged and sorted by count"
+        description="Student destination countries (each country on a student record) plus standalone application records - merged and sorted by count"
         rows={data.applicationsByCountry ?? []}
         rawKeyLabel="Country"
         chartFill="#4b5563"
@@ -628,7 +628,7 @@ export default function ReportsPage() {
         chartFill="#6b7280"
       />
 
-      {/* Counsellors — table */}
+      {/* Counsellors - table */}
       <section className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
         <header className="px-5 py-4 border-b border-gray-200 bg-gray-50/90">
           <h2 className="text-base font-semibold text-gray-900">Counsellor performance</h2>
@@ -655,7 +655,7 @@ export default function ReportsPage() {
                   return (
                     <tr key={c._id} className="hover:bg-gray-50/80">
                       <td className="px-5 py-3 font-medium text-gray-900">{c.name}</td>
-                      <td className="px-5 py-3 text-gray-600">{c.branch?.name ?? "—"}</td>
+                      <td className="px-5 py-3 text-gray-600">{c.branch?.name ?? "-"}</td>
                       <td className="px-5 py-3 text-right tabular-nums font-semibold text-gray-900">{c.currentCount}</td>
                       <td className="px-5 py-3 text-right tabular-nums text-gray-600">{c.target}</td>
                       <td className="px-5 py-3 text-right tabular-nums text-gray-700">{pct}%</td>
@@ -710,15 +710,15 @@ export default function ReportsPage() {
                         {lead.name}
                       </Link>
                     </td>
-                    <td className="px-4 py-2.5 text-gray-700">{lead.source || "—"}</td>
+                    <td className="px-4 py-2.5 text-gray-700">{lead.source || "-"}</td>
                     <td className="px-4 py-2.5 text-gray-700 max-w-[140px] truncate" title={lead.status}>
-                      {lead.status || "—"}
+                      {lead.status || "-"}
                     </td>
                     <td className="px-4 py-2.5 text-gray-700">{humanizeKey(lead.standing)}</td>
-                    <td className="px-4 py-2.5 text-gray-700">{lead.interestedCountry || "—"}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{lead.branch?.name ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-gray-700">{lead.interestedCountry || "-"}</td>
+                    <td className="px-4 py-2.5 text-gray-600">{lead.branch?.name ?? "-"}</td>
                     <td className="px-4 py-2.5 text-gray-600">
-                      {(lead.assignedTo as { name?: string } | undefined)?.name ?? "—"}
+                      {(lead.assignedTo as { name?: string } | undefined)?.name ?? "-"}
                     </td>
                     <td className="px-4 py-2.5 text-gray-500 tabular-nums text-xs whitespace-nowrap">
                       {formatDateTime(lead.createdAt)}

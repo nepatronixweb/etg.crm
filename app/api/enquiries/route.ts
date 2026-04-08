@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import mongoose from "mongoose";
 import connectDB from "@/lib/mongodb";
 
-/** Leads list must never be served from cache - bucket/status filters must apply per request. */
+/** Enquiries list must never be served from cache - bucket filters apply per request. */
 export const dynamic = "force-dynamic";
-import Lead from "@/models/Lead";
+import Enquiry from "@/models/Enquiry";
 import User from "@/models/User";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
@@ -16,8 +16,7 @@ import {
   mergeTelecallerOverviewBucketFilter,
 } from "@/lib/telecallerLeadOverviewBuckets";
 
-/** ?from / ?to - datetime-local / ISO, or legacy YYYY-MM-DD (UTC day start / end). */
-function parseLeadCreatedAtBound(raw: string, bound: "from" | "to"): Date {
+function parseEnquiryCreatedAtBound(raw: string, bound: "from" | "to"): Date {
   const s = raw.trim();
   if (!s) return new Date(NaN);
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
@@ -27,13 +26,12 @@ function parseLeadCreatedAtBound(raw: string, bound: "from" | "to"): Date {
   return new Date(s);
 }
 
-/** Aggregation $match does not cast like find()/countDocuments(); normalize string ObjectIds. */
-const LEAD_MATCH_OBJECT_ID_KEYS = new Set(["branch", "assignedTo", "assignedBy"]);
+const ENQUIRY_MATCH_OBJECT_ID_KEYS = new Set(["branch", "assignedTo", "assignedBy"]);
 
 function castObjectIdsForAggregateMatch(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(obj)) {
-    if (LEAD_MATCH_OBJECT_ID_KEYS.has(key) && typeof val === "string" && mongoose.Types.ObjectId.isValid(val)) {
+    if (ENQUIRY_MATCH_OBJECT_ID_KEYS.has(key) && typeof val === "string" && mongoose.Types.ObjectId.isValid(val)) {
       out[key] = new mongoose.Types.ObjectId(val);
     } else if ((key === "$and" || key === "$or") && Array.isArray(val)) {
       out[key] = val.map((item) =>
@@ -48,10 +46,17 @@ function castObjectIdsForAggregateMatch(obj: Record<string, unknown>): Record<st
   return out;
 }
 
+function canUseEnquiriesApi(role: string): boolean {
+  return role === "telecaller" || role === "super_admin";
+}
+
 export async function GET(req: NextRequest) {
   try {
     const session = await auth();
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!canUseEnquiriesApi(session.user.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     await connectDB();
 
     const { searchParams } = new URL(req.url);
@@ -67,7 +72,7 @@ export async function GET(req: NextRequest) {
     const stage = searchParams.get("stage");
     const academicYear = searchParams.get("academicYear");
     const applyLevel = searchParams.get("applyLevel");
-    const fdStatus = searchParams.get("status"); // FD workflow status (Open/Unassigned, etc.)
+    const fdStatus = searchParams.get("status");
     const search = searchParams.get("search");
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
     const limit = Math.min(500, Math.max(1, parseInt(searchParams.get("limit") || "50", 10)));
@@ -75,14 +80,8 @@ export async function GET(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const filter: Record<string, any> = {};
 
-    // Role-based filtering
-    if (session.user.role === "counsellor") filter.assignedTo = session.user.id;
-    else if (session.user.role === "telecaller") filter.source = { $ne: "walk_in" };
-    else if (session.user.role === "front_desk") {
-      filter.branch = session.user.branch;
-    } else if (session.user.role !== "super_admin") {
-      filter.branch = session.user.branch;
-    }
+    if (session.user.role === "telecaller") filter.source = { $ne: "walk_in" };
+    // super_admin: no extra row-level filter
 
     if (branch) filter.branch = branch;
     if (standing) filter.standing = standing;
@@ -93,11 +92,11 @@ export async function GET(req: NextRequest) {
     if (from || to) {
       const createdRange: { $gte?: Date; $lte?: Date } = {};
       if (from) {
-        const d = parseLeadCreatedAtBound(from, "from");
+        const d = parseEnquiryCreatedAtBound(from, "from");
         if (!Number.isNaN(d.getTime())) createdRange.$gte = d;
       }
       if (to) {
-        const d = parseLeadCreatedAtBound(to, "to");
+        const d = parseEnquiryCreatedAtBound(to, "to");
         if (!Number.isNaN(d.getTime())) createdRange.$lte = d;
       }
       if (Object.keys(createdRange).length > 0) filter.createdAt = createdRange;
@@ -143,8 +142,6 @@ export async function GET(req: NextRequest) {
     if (bucketParam === TELECALLER_FRESH_BUCKET) {
       mergeTelecallerFreshLeadFilter(filter, searchOrClause);
     } else if (bucketParam && isTelecallerOverviewDashboardBucket(bucketParam)) {
-      // Apply for any role (counsellor still scoped by assignedTo; telecaller by source).
-      // Do not gate on role - avoids mismatches where the filter was skipped and "all" leads appeared.
       mergeTelecallerOverviewBucketFilter(filter, bucketParam, searchOrClause);
     }
 
@@ -153,7 +150,7 @@ export async function GET(req: NextRequest) {
 
     const fetchPage = async () => {
       if (!searchTrimmed) {
-        return Lead.find(filter)
+        return Enquiry.find(filter)
           .populate("branch", "name")
           .populate("assignedTo", "name email")
           .populate("assignedBy", "name")
@@ -186,13 +183,13 @@ export async function GET(req: NextRequest) {
         { $skip: skip },
         { $limit: limit },
       ];
-      let aggLeads = await Lead.aggregate(pipeline);
-      aggLeads = await Lead.populate(aggLeads, [
+      let agg = await Enquiry.aggregate(pipeline);
+      agg = await Enquiry.populate(agg, [
         { path: "branch", select: "name" },
         { path: "assignedTo", select: "name email" },
         { path: "assignedBy", select: "name" },
       ]);
-      return aggLeads.map((doc: Record<string, unknown>) => {
+      return agg.map((doc: Record<string, unknown>) => {
         const { _nameSearchRank: _r, ...rest } = doc;
         return rest;
       });
@@ -201,10 +198,10 @@ export async function GET(req: NextRequest) {
     const countFilter = searchTrimmed
       ? (castObjectIdsForAggregateMatch(filter) as Record<string, unknown>)
       : filter;
-    const [leads, total] = await Promise.all([fetchPage(), Lead.countDocuments(countFilter)]);
+    const [leads, total] = await Promise.all([fetchPage(), Enquiry.countDocuments(countFilter)]);
     return NextResponse.json({ leads, total, page, pages: Math.ceil(total / limit) });
   } catch {
-    return NextResponse.json({ error: "Failed to fetch leads" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to fetch enquiries" }, { status: 500 });
   }
 }
 
@@ -212,6 +209,9 @@ export async function POST(req: NextRequest) {
   try {
     const session = await auth();
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!canUseEnquiriesApi(session.user.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     const perms = (session.user.permissions ?? []) as string[];
     if (!hasModuleAction(perms, session.user.role, "leads", "add")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -219,31 +219,16 @@ export async function POST(req: NextRequest) {
     await connectDB();
 
     const body = await req.json();
-    const { assignmentMethod, ...leadData } = body;
+    const { assignmentMethod, ...enquiryData } = body;
 
-    // Auto-set branch from user's session if not provided or empty
-    if (!leadData.branch && session.user.branch) {
-      leadData.branch = session.user.branch;
+    if (!enquiryData.branch && session.user.branch) {
+      enquiryData.branch = session.user.branch;
     }
 
-    // Enforce role-based field restrictions
-    if (session.user.role === "front_desk" && leadData.stage) {
-      return NextResponse.json({ error: "Front desk users cannot set stage" }, { status: 403 });
-    }
-    if (session.user.role !== "front_desk" && leadData.status) {
-      return NextResponse.json({ error: "Only front desk users can set status" }, { status: 403 });
-    }
-
-    // Set initial status for FD leads (only if not already provided)
-    if (session.user.role === "front_desk" && !leadData.status) {
-      leadData.status = "Open/Unassigned";
-    }
-
-    // Round Robin assignment
-    if (assignmentMethod === "round_robin" && leadData.branch) {
-      const counsellors = await User.find({ role: "counsellor", branch: leadData.branch, isActive: true });
+    if (assignmentMethod === "round_robin" && enquiryData.branch) {
+      const counsellors = await User.find({ role: "counsellor", branch: enquiryData.branch, isActive: true });
       if (counsellors.length > 0) {
-        const counts = await Lead.aggregate([
+        const counts = await Enquiry.aggregate([
           { $match: { assignedTo: { $in: counsellors.map((c) => c._id) } } },
           { $group: { _id: "$assignedTo", count: { $sum: 1 } } },
         ]);
@@ -251,48 +236,46 @@ export async function POST(req: NextRequest) {
         const leastLoaded = counsellors.sort(
           (a, b) => (countMap.get(a._id.toString()) || 0) - (countMap.get(b._id.toString()) || 0)
         )[0];
-        leadData.assignedTo = leastLoaded._id;
-        leadData.assignedBy = session.user.id;
+        enquiryData.assignedTo = leastLoaded._id;
+        enquiryData.assignedBy = session.user.id;
       }
     }
 
-    const lead = await Lead.create(leadData);
+    const enquiry = await Enquiry.create(enquiryData);
 
     await ActivityLog.create({
       user: session.user.id,
       userName: session.user.name,
       userRole: session.user.role,
       action: "CREATE",
-      module: "Leads",
-      targetId: lead._id.toString(),
-      targetName: lead.name,
-      details: `Lead created from ${lead.source}`,
+      module: "Enquiries",
+      targetId: enquiry._id.toString(),
+      targetName: enquiry.name,
+      details: `Enquiry created from ${enquiry.source}`,
     });
 
-    // Fire notifications when a counsellor is assigned
-    if (leadData.assignedTo) {
-      const assignedToId = leadData.assignedTo.toString();
+    if (enquiryData.assignedTo) {
+      const assignedToId = enquiryData.assignedTo.toString();
       const adminIds = await getSuperAdminIds();
       const recipientIds = [...new Set([assignedToId, ...adminIds])];
       await createNotifications({
         recipientIds,
         type: "lead_assigned",
-        title: "New Lead Assigned",
-        message: `${session.user.name} assigned lead "${lead.name}" to a counsellor`,
-        link: `/leads/${lead._id}`,
+        title: "New enquiry assigned",
+        message: `${session.user.name} assigned enquiry "${enquiry.name}" to a counsellor`,
+        link: `/enquiries/${enquiry._id}`,
         createdBy: session.user.id,
       });
     }
 
-    return NextResponse.json({ message: "Lead created", lead }, { status: 201 });
+    return NextResponse.json({ message: "Enquiry created", lead: enquiry }, { status: 201 });
   } catch (error) {
-    console.error("Create lead error:", error);
-    const message = error instanceof Error ? error.message : "Failed to create lead";
-    return NextResponse.json({ error: `Failed to create lead: ${message}` }, { status: 500 });
+    console.error("Create enquiry error:", error);
+    const message = error instanceof Error ? error.message : "Failed to create enquiry";
+    return NextResponse.json({ error: `Failed to create enquiry: ${message}` }, { status: 500 });
   }
 }
 
-// DELETE - bulk delete (super_admin only)
 export async function DELETE(req: NextRequest) {
   try {
     const session = await auth();
@@ -301,22 +284,22 @@ export async function DELETE(req: NextRequest) {
     }
     const { ids } = await req.json();
     if (!Array.isArray(ids) || ids.length === 0) {
-      return NextResponse.json({ error: "No lead IDs provided" }, { status: 400 });
+      return NextResponse.json({ error: "No enquiry IDs provided" }, { status: 400 });
     }
     await connectDB();
-    const result = await Lead.deleteMany({ _id: { $in: ids } });
+    const result = await Enquiry.deleteMany({ _id: { $in: ids } });
     await ActivityLog.create({
       user: session.user.id,
       userName: session.user.name,
       userRole: session.user.role,
       action: "DELETE",
-      module: "Leads",
+      module: "Enquiries",
       targetId: ids.join(","),
-      targetName: `${result.deletedCount} leads`,
-      details: `Bulk deleted ${result.deletedCount} leads`,
+      targetName: `${result.deletedCount} enquiries`,
+      details: `Bulk deleted ${result.deletedCount} enquiries`,
     });
-    return NextResponse.json({ message: `${result.deletedCount} leads deleted` });
+    return NextResponse.json({ message: `${result.deletedCount} enquiries deleted` });
   } catch {
-    return NextResponse.json({ error: "Failed to delete leads" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to delete enquiries" }, { status: 500 });
   }
 }

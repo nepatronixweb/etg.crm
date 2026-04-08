@@ -336,7 +336,7 @@ export default function ApplicationsPage() {
                                     onChange={(e) => quickUpdateAdmission(app.student._id, entries, globalIndex, "stage", e.target.value)}
                                     className="w-full text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-full px-2 py-1 focus:outline-none cursor-pointer disabled:cursor-default"
                                   >
-                                    <option value="">—</option>
+                                    <option value="">-</option>
                                     {appLeadStages.map((st) => <option key={st.value} value={st.value}>{st.label}</option>)}
                                   </select>
                                 </div>
@@ -347,7 +347,7 @@ export default function ApplicationsPage() {
                                     onChange={(e) => quickUpdateAdmission(app.student._id, entries, globalIndex, "remarks", e.target.value)}
                                     className="w-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-2 py-1 focus:outline-none cursor-pointer disabled:cursor-default"
                                   >
-                                    <option value="">—</option>
+                                    <option value="">-</option>
                                     {mergeRemarksForPipeline(entry.pipeline, appRemarkOptions, remarkOptionsByDept).map((r) => (
                                       <option key={r} value={r}>{r}</option>
                                     ))}
@@ -361,7 +361,7 @@ export default function ApplicationsPage() {
                                     className="w-full text-xs font-medium rounded-full px-2 py-1 border focus:outline-none cursor-pointer disabled:cursor-default"
                                     style={standingInlineStyle(entry.standing)}
                                   >
-                                    <option value="">—</option>
+                                    <option value="">-</option>
                                     {appStandings.map((s) => (
                                       <option key={s} value={s}>
                                         {standingOptionPrefix(s)}
@@ -377,7 +377,7 @@ export default function ApplicationsPage() {
                                     onChange={(e) => quickUpdateAdmission(app.student._id, entries, globalIndex, "pipeline", e.target.value)}
                                     className="w-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-2 py-1 focus:outline-none cursor-pointer disabled:cursor-default"
                                   >
-                                    <option value="">—</option>
+                                    <option value="">-</option>
                                     {appLeadStageGroups.map((g) => <option key={g} value={g}>{g}</option>)}
                                   </select>
                                 </div>

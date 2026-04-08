@@ -199,6 +199,36 @@ export function hasPermission(
   return permissions.includes(module);
 }
 
+/** Sub-actions for Leads / Students when `{module}_acl` is stored; without `_acl`, legacy users keep full actions. */
+export function hasModuleAction(
+  permissions: string[],
+  role: string | undefined,
+  module: "leads" | "students",
+  action: "add" | "export"
+): boolean {
+  if (role === "super_admin") return true;
+  if (!permissions.includes(module)) return false;
+  const aclKey = `${module}_acl`;
+  if (!permissions.includes(aclKey)) {
+    return true;
+  }
+  const key = action === "add" ? `${module}_add` : `${module}_export`;
+  return permissions.includes(key);
+}
+
+export function stripModuleGranularKeys(permissions: string[], module: "leads" | "students"): string[] {
+  const prefix = `${module}_`;
+  return permissions.filter((p) => p !== module && !p.startsWith(prefix));
+}
+
+export function withFullModuleGranular(
+  permissions: string[],
+  module: "leads" | "students"
+): string[] {
+  const rest = stripModuleGranularKeys(permissions, module);
+  return [...rest, module, `${module}_acl`, `${module}_add`, `${module}_export`];
+}
+
 // ─── Default permissions pre-filled when a role is chosen in the user form ──
 export const ROLE_DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
   super_admin: [
@@ -216,8 +246,8 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
 
 // ─── All available module permissions (used to render checkboxes) ────────────
 export const ALL_PERMISSIONS: { key: Permission; label: string; description: string }[] = [
-  { key: "leads",         label: "Leads",             description: "Create, view & manage leads" },
-  { key: "students",      label: "Students",          description: "View & manage enrolled students" },
+  { key: "leads",         label: "Leads",             description: "View list; Add lead & Export are optional below" },
+  { key: "students",      label: "Students",          description: "View list; Add student & Export are optional below" },
   { key: "documents",     label: "Documents",         description: "Upload, verify & download documents" },
   { key: "applications",  label: "Applications",      description: "Track university applications" },
   { key: "admissions",    label: "Admissions",        description: "Manage admission pipeline" },

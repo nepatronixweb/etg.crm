@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const student = searchParams.get("student");
     const lead = searchParams.get("lead");
+    const enquiry = searchParams.get("enquiry");
     const country = searchParams.get("country");
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "50", 10)));
@@ -22,6 +23,7 @@ export async function GET(req: NextRequest) {
     const filter: Record<string, any> = {};
     if (student) filter.student = student;
     if (lead) filter.lead = lead;
+    if (enquiry) filter.enquiry = enquiry;
     if (country) filter.country = country;
 
     const [documents, total] = await Promise.all([
@@ -50,6 +52,7 @@ export async function POST(req: NextRequest) {
     const contentType = req.headers.get("content-type") || "";
     let studentId: string | null = null;
     let leadId: string | null = null;
+    let enquiryId: string | null = null;
     let country = "";
     let documentName = "";
     let filePath = "";
@@ -62,6 +65,7 @@ export async function POST(req: NextRequest) {
       const body = await req.json();
       studentId = body.studentId || null;
       leadId = body.leadId || null;
+      enquiryId = body.enquiryId || null;
       country = body.country || "";
       documentName = body.name || "";
       filePath = body.fileUrl || body.blobUrl; // support both keys
@@ -70,11 +74,12 @@ export async function POST(req: NextRequest) {
       fileType = body.fileType || "";
       if (!filePath) return NextResponse.json({ error: "fileUrl is required" }, { status: 400 });
     } else {
-      // FormData upload (leads page) – store directly in GridFS
+      // FormData upload (leads page) - store directly in GridFS
       const formData = await req.formData();
       const file = formData.get("file") as File;
       studentId = formData.get("studentId") as string | null;
       leadId = formData.get("leadId") as string | null;
+      enquiryId = formData.get("enquiryId") as string | null;
       country = (formData.get("country") as string) || "";
       documentName = formData.get("name") as string;
       if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
@@ -100,7 +105,9 @@ export async function POST(req: NextRequest) {
       fileType = file.type;
     }
 
-    if (!studentId && !leadId) return NextResponse.json({ error: "studentId or leadId required" }, { status: 400 });
+    if (!studentId && !leadId && !enquiryId) {
+      return NextResponse.json({ error: "studentId, leadId, or enquiryId required" }, { status: 400 });
+    }
 
     const docData: Record<string, unknown> = {
       name: documentName || originalName,
@@ -112,6 +119,7 @@ export async function POST(req: NextRequest) {
     };
     if (studentId) { docData.student = studentId; docData.country = country; }
     if (leadId) docData.lead = leadId;
+    if (enquiryId) docData.enquiry = enquiryId;
 
     const doc = await StudentDocument.create(docData);
 
@@ -125,7 +133,9 @@ export async function POST(req: NextRequest) {
       targetName: documentName || originalName,
       details: studentId
         ? `Document uploaded for student ${studentId}, country ${country}`
-        : `Document uploaded for lead ${leadId}`,
+        : enquiryId
+          ? `Document uploaded for enquiry ${enquiryId}`
+          : `Document uploaded for lead ${leadId}`,
     });
 
     return NextResponse.json({ message: "Document uploaded", document: doc }, { status: 201 });

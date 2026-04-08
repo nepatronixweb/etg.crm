@@ -279,7 +279,7 @@ export default function InventoryPage() {
   const assignedName = (a: AssetRow) => {
     const u = a.assignedTo;
     if (u && typeof u === "object" && "name" in u) return u.name;
-    return "—";
+    return "-";
   };
 
   return (
@@ -290,7 +290,7 @@ export default function InventoryPage() {
             <Package className="w-6 h-6 text-emerald-600" />
             Assets
           </h1>
-          <p className="text-sm text-gray-500 mt-0.5">Office equipment — assign, return, track</p>
+          <p className="text-sm text-gray-500 mt-0.5">Office equipment - assign, return, track</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -380,7 +380,7 @@ export default function InventoryPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-gray-700">{assignedName(a)}</td>
-                        <td className="px-4 py-3 text-gray-500">{a.location || "—"}</td>
+                        <td className="px-4 py-3 text-gray-500">{a.location || "-"}</td>
                         <td className="px-4 py-3 text-right whitespace-nowrap space-x-2">
                           {a.status === "available" && (
                             <button
@@ -453,7 +453,7 @@ export default function InventoryPage() {
               >
                 <div>
                   <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/85">Add line</p>
-                  <p className="text-xs text-gray-600 mt-1">New consumable row — saved with the list below.</p>
+                  <p className="text-xs text-gray-600 mt-1">New consumable row - saved with the list below.</p>
                 </div>
                 <div className="space-y-1.5">
                   <label htmlFor="stock-new-name" className="text-xs font-semibold text-gray-700">
@@ -580,7 +580,7 @@ export default function InventoryPage() {
                 <div>
                   <h2 className="text-lg font-semibold text-gray-900 tracking-tight">Add new asset</h2>
                   <p className="text-xs text-gray-600 mt-1 max-w-md">
-                    Register equipment — tag, assign, and track from the list on the main page.
+                    Register equipment - tag, assign, and track from the list on the main page.
                   </p>
                 </div>
               </div>
@@ -774,7 +774,7 @@ export default function InventoryPage() {
           <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
             <h3 className="text-lg font-semibold text-gray-900">Assign asset</h3>
             <p className="text-sm text-gray-600">
-              <span className="font-mono font-semibold">{assignFor.assetTag}</span> — {assignFor.name}
+              <span className="font-mono font-semibold">{assignFor.assetTag}</span> - {assignFor.name}
             </p>
             <select
               value={assignUserId}
