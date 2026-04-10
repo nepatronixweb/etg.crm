@@ -27,11 +27,46 @@ export const ADMIN_CHART_WIDGET_IDS = [
 
 export type AdminChartWidgetId = (typeof ADMIN_CHART_WIDGET_IDS)[number];
 
+/** Admin summary metrics; consecutive ids render as one row and can be reordered together on the dashboard. */
+export const ADMIN_KPI_CARD_IDS = [
+  "admin_kpi_total_leads",
+  "admin_kpi_students",
+  "admin_kpi_applications",
+  "admin_kpi_conversion",
+  "admin_kpi_counselled",
+] as const;
+
+export type AdminKpiCardId = (typeof ADMIN_KPI_CARD_IDS)[number];
+
 export const DASHBOARD_WIDGET_DEFINITIONS: DashboardWidgetDef[] = [
   {
-    id: "admin_kpis",
-    label: "Summary KPI cards",
-    description: "Total leads, students, applications, conversion rate (super admin / org admin).",
+    id: "admin_kpi_total_leads",
+    label: "KPI: Total leads",
+    description: "Total leads and conversions snapshot (super admin / org admin).",
+    audience: "super_admin",
+  },
+  {
+    id: "admin_kpi_students",
+    label: "KPI: Students",
+    description: "Student count for the selected period.",
+    audience: "super_admin",
+  },
+  {
+    id: "admin_kpi_applications",
+    label: "KPI: Applications",
+    description: "Application count for the selected period.",
+    audience: "super_admin",
+  },
+  {
+    id: "admin_kpi_conversion",
+    label: "KPI: Conversion rate",
+    description: "Lead to student conversion percentage.",
+    audience: "super_admin",
+  },
+  {
+    id: "admin_kpi_counselled",
+    label: "KPI: Counselled",
+    description: "Leads marked Counselled or phone counselling in period.",
     audience: "super_admin",
   },
   {
@@ -169,6 +204,7 @@ export const DASHBOARD_WIDGET_DEFINITIONS: DashboardWidgetDef[] = [
 ];
 
 const LEGACY_CHART_ROW_ID = "admin_charts_row";
+const LEGACY_ADMIN_KPIS_ID = "admin_kpis";
 
 const AUDIENCE_LABEL: Record<DashboardAudience, string> = {
   super_admin: "Super admin / org admin",
@@ -182,7 +218,7 @@ const AUDIENCE_LABEL: Record<DashboardAudience, string> = {
 /** Default vertical order per audience (also used when no custom order is stored). */
 export const DEFAULT_WIDGET_ORDER: Record<DashboardAudience, string[]> = {
   super_admin: [
-    "admin_kpis",
+    ...ADMIN_KPI_CARD_IDS,
     "admin_pipeline",
     "admin_leads_by_source",
     "admin_students_by_stage",
@@ -212,6 +248,7 @@ export const DEFAULT_WIDGET_ORDER: Record<DashboardAudience, string[]> = {
 };
 
 const CHART_ID_SET = new Set<string>(ADMIN_CHART_WIDGET_IDS);
+const KPI_ID_SET = new Set<string>(ADMIN_KPI_CARD_IDS);
 
 /** Counsellor uses a fixed two-row layout (summary, then leads + sidebar); drag-order is not applied on the live dashboard. */
 export function audienceSupportsOrderCustomization(audience: DashboardAudience): boolean {
@@ -234,7 +271,17 @@ export function mergeDashboardWidgetsWithUserOverrides(
   userOverrides: Record<string, boolean> | null | undefined
 ): Record<string, boolean> {
   if (!userOverrides || typeof userOverrides !== "object") return { ...tenantMerged };
-  return { ...tenantMerged, ...userOverrides };
+  let user = { ...userOverrides };
+  if (Object.prototype.hasOwnProperty.call(user, LEGACY_ADMIN_KPIS_ID)) {
+    const v = Boolean(user[LEGACY_ADMIN_KPIS_ID]);
+    delete user[LEGACY_ADMIN_KPIS_ID];
+    for (const id of ADMIN_KPI_CARD_IDS) {
+      if (!Object.prototype.hasOwnProperty.call(userOverrides, id)) {
+        user[id] = v;
+      }
+    }
+  }
+  return { ...tenantMerged, ...user };
 }
 
 /** Merge order: base (e.g. org Settings) then per-user overrides per audience when non-empty. */
@@ -247,7 +294,7 @@ export function mergeDashboardWidgetOrderStates(
   for (const aud of Object.keys(DEFAULT_WIDGET_ORDER) as DashboardAudience[]) {
     const arr = override[aud];
     if (Array.isArray(arr) && arr.length > 0) {
-      out[aud] = arr;
+      out[aud] = migrateOrderIds(arr.map((x) => String(x)));
     }
   }
   return out;
@@ -285,12 +332,23 @@ function migrateLegacyChartVisibility(s: Record<string, unknown>, base: Record<s
   }
 }
 
+function migrateLegacyKpiVisibility(s: Record<string, unknown>, base: Record<string, boolean>): void {
+  if (!Object.prototype.hasOwnProperty.call(s, LEGACY_ADMIN_KPIS_ID)) return;
+  const v = Boolean(s[LEGACY_ADMIN_KPIS_ID]);
+  for (const id of ADMIN_KPI_CARD_IDS) {
+    if (!Object.prototype.hasOwnProperty.call(s, id)) {
+      base[id] = v;
+    }
+  }
+}
+
 /** Merge API value with defaults; migrate legacy `admin_charts_row`. */
 export function mergeDashboardWidgetsFromApi(stored: unknown): Record<string, boolean> {
   const base = defaultDashboardWidgets();
   if (!stored || typeof stored !== "object" || Array.isArray(stored)) return base;
   const s = stored as Record<string, unknown>;
   migrateLegacyChartVisibility(s, base);
+  migrateLegacyKpiVisibility(s, base);
   for (const w of DASHBOARD_WIDGET_DEFINITIONS) {
     if (Object.prototype.hasOwnProperty.call(s, w.id)) {
       base[w.id] = Boolean(s[w.id]);
@@ -312,6 +370,8 @@ function migrateOrderIds(ids: string[]): string[] {
   for (const id of ids) {
     if (id === LEGACY_CHART_ROW_ID) {
       out.push(...ADMIN_CHART_WIDGET_IDS);
+    } else if (id === LEGACY_ADMIN_KPIS_ID) {
+      out.push(...ADMIN_KPI_CARD_IDS);
     } else {
       out.push(id);
     }
@@ -361,6 +421,7 @@ export function resolveOrderedWidgetIds(
 export type AdminDashboardChunk =
   | { type: "single"; id: string }
   | { type: "charts"; ids: AdminChartWidgetId[] }
+  | { type: "kpis"; ids: AdminKpiCardId[] }
   | { type: "twin"; leftId: string; rightId: string };
 
 function mergeAdjacentActivityNotification(chunks: AdminDashboardChunk[]): AdminDashboardChunk[] {
@@ -397,12 +458,35 @@ export function buildAdminDashboardChunks(orderedVisibleIds: string[]): AdminDas
         i++;
       }
       chunks.push({ type: "charts", ids: batch });
+    } else if (KPI_ID_SET.has(id)) {
+      const batch: AdminKpiCardId[] = [];
+      while (i < orderedVisibleIds.length) {
+        const x = orderedVisibleIds[i];
+        if (!KPI_ID_SET.has(x)) break;
+        batch.push(x as AdminKpiCardId);
+        i++;
+      }
+      chunks.push({ type: "kpis", ids: batch });
     } else {
       chunks.push({ type: "single", id });
       i++;
     }
   }
   return mergeAdjacentActivityNotification(chunks);
+}
+
+/** Serialize admin chunk row order back to widget id order (for saving layout). */
+export function flattenAdminDashboardChunksToOrder(chunks: AdminDashboardChunk[]): string[] {
+  const out: string[] = [];
+  for (const c of chunks) {
+    if (c.type === "single") out.push(c.id);
+    else if (c.type === "charts") out.push(...c.ids);
+    else if (c.type === "kpis") out.push(...c.ids);
+    else if (c.type === "twin") {
+      out.push(c.leftId, c.rightId);
+    }
+  }
+  return out;
 }
 
 /** Resolved order for settings UI (includes hidden widgets so order can be edited). */

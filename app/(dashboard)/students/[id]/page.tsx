@@ -30,6 +30,8 @@ import { formatStandingLabel, standingInlineStyle, standingOptionPrefix } from "
 const DEFAULT_COUNTRIES = COUNTRIES;
 import Link from "next/link";
 import { useBranding } from "@/app/branding-context";
+import { getCounselledEvent } from "@/lib/counselledAt";
+import CounselledClockCard from "@/components/CounselledClockCard";
 
 interface AdmissionCourse {
   name: string;
@@ -122,6 +124,8 @@ interface StudentDetail {
   enrolledAt?: string;
   counsellor: { name: string; email: string };
   branch: { name: string };
+  lead?: { statusDates?: Record<string, string> };
+  enquiry?: { statusDates?: Record<string, string> };
   countries: Array<{ country: string; status: string; universityName?: string; visaStatus?: string; visaApprovedAt?: string }>;
   admissionDetails: AdmissionDetail[];
   notes: Array<{ _id: string; content: string; addedByName: string; addedByRole: string; createdAt: string }>;
@@ -612,6 +616,9 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     !!student.countries?.find((c) => c.country === country)?.visaApprovedAt;
   const filteredDocs = docs.filter((doc) => !selectedCountry || doc.country === selectedCountry);
 
+  const counselledEvent =
+    getCounselledEvent(student.lead?.statusDates) ?? getCounselledEvent(student.enquiry?.statusDates);
+
   return (
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-center gap-3">
@@ -646,6 +653,10 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
           </span>
         </div>
       </div>
+
+      {counselledEvent && (
+        <CounselledClockCard atIso={counselledEvent.atIso} sourceLabel={counselledEvent.sourceLabel} />
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-5">

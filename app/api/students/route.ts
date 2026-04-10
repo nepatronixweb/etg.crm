@@ -77,14 +77,15 @@ export async function GET(req: NextRequest) {
     const needsLead = !enrolled && !stage;
     const originSelect =
       "source interestedService interestedCountry interestedCountries parentName parentPhone1 parentPhone2 academicScore academicInstitution temporaryAddress permanentAddress examType examScore examJoinDate examStartDate examEndDate examPaymentMethod examEstimatedDate gender maritalStatus nationality passportNumber visaExpiryDate senderName academicYear applyLevel course intakeYear intakeQuarter comments";
+    const originWithDates = `${originSelect} statusDates`;
     const leadPopulate = needsLead
       ? [
-          { path: "lead", select: originSelect },
-          { path: "enquiry", select: originSelect },
+          { path: "lead", select: originWithDates },
+          { path: "enquiry", select: originWithDates },
         ]
       : [
-          { path: "lead", select: "_id" },
-          { path: "enquiry", select: "_id" },
+          { path: "lead", select: "statusDates" },
+          { path: "enquiry", select: "statusDates" },
         ];
 
     const skip = (page - 1) * limit;

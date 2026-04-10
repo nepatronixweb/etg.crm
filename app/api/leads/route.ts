@@ -10,43 +10,7 @@ import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
 import { hasModuleAction } from "@/lib/utils";
 import { createNotifications, getSuperAdminIds } from "@/lib/notifications";
-import { mergeTelecallerFreshLeadFilter, TELECALLER_FRESH_BUCKET } from "@/lib/telecallerFreshLeads";
-import {
-  isTelecallerOverviewDashboardBucket,
-  mergeTelecallerOverviewBucketFilter,
-} from "@/lib/telecallerLeadOverviewBuckets";
-
-/** ?from / ?to - datetime-local / ISO, or legacy YYYY-MM-DD (UTC day start / end). */
-function parseLeadCreatedAtBound(raw: string, bound: "from" | "to"): Date {
-  const s = raw.trim();
-  if (!s) return new Date(NaN);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    if (bound === "from") return new Date(`${s}T00:00:00.000Z`);
-    return new Date(`${s}T23:59:59.999Z`);
-  }
-  return new Date(s);
-}
-
-/** Aggregation $match does not cast like find()/countDocuments(); normalize string ObjectIds. */
-const LEAD_MATCH_OBJECT_ID_KEYS = new Set(["branch", "assignedTo", "assignedBy"]);
-
-function castObjectIdsForAggregateMatch(obj: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [key, val] of Object.entries(obj)) {
-    if (LEAD_MATCH_OBJECT_ID_KEYS.has(key) && typeof val === "string" && mongoose.Types.ObjectId.isValid(val)) {
-      out[key] = new mongoose.Types.ObjectId(val);
-    } else if ((key === "$and" || key === "$or") && Array.isArray(val)) {
-      out[key] = val.map((item) =>
-        item && typeof item === "object" && !Array.isArray(item) && !(item instanceof Date)
-          ? castObjectIdsForAggregateMatch(item as Record<string, unknown>)
-          : item
-      );
-    } else {
-      out[key] = val;
-    }
-  }
-  return out;
-}
+import { buildLeadListFilter, castObjectIdsForAggregateMatch } from "@/lib/buildLeadListFilter";
 
 export async function GET(req: NextRequest) {
   try {
@@ -55,98 +19,10 @@ export async function GET(req: NextRequest) {
     await connectDB();
 
     const { searchParams } = new URL(req.url);
-    const branch = searchParams.get("branch");
-    const standing = searchParams.get("standing");
-    const source = searchParams.get("source");
-    const assignedTo = searchParams.get("assignedTo");
-    const country = searchParams.get("country");
-    const status = searchParams.get("status");
-    const from = searchParams.get("from");
-    const to = searchParams.get("to");
-    const service = searchParams.get("service");
-    const stage = searchParams.get("stage");
-    const academicYear = searchParams.get("academicYear");
-    const applyLevel = searchParams.get("applyLevel");
-    const fdStatus = searchParams.get("status"); // FD workflow status (Open/Unassigned, etc.)
-    const search = searchParams.get("search");
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
     const limit = Math.min(500, Math.max(1, parseInt(searchParams.get("limit") || "50", 10)));
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const filter: Record<string, any> = {};
-
-    // Role-based filtering
-    if (session.user.role === "counsellor") filter.assignedTo = session.user.id;
-    else if (session.user.role === "telecaller") filter.source = { $ne: "walk_in" };
-    else if (session.user.role === "front_desk") {
-      filter.branch = session.user.branch;
-    } else if (session.user.role !== "super_admin") {
-      filter.branch = session.user.branch;
-    }
-
-    if (branch) filter.branch = branch;
-    if (standing) filter.standing = standing;
-    if (source) filter.source = source;
-    if (assignedTo) filter.assignedTo = assignedTo;
-    if (country) filter.interestedCountry = country;
-    if (status) filter.status = status;
-    if (from || to) {
-      const createdRange: { $gte?: Date; $lte?: Date } = {};
-      if (from) {
-        const d = parseLeadCreatedAtBound(from, "from");
-        if (!Number.isNaN(d.getTime())) createdRange.$gte = d;
-      }
-      if (to) {
-        const d = parseLeadCreatedAtBound(to, "to");
-        if (!Number.isNaN(d.getTime())) createdRange.$lte = d;
-      }
-      if (Object.keys(createdRange).length > 0) filter.createdAt = createdRange;
-    }
-    if (service) filter.interestedService = service;
-    if (stage) filter.stage = stage;
-    if (academicYear) filter.academicYear = academicYear;
-    if (applyLevel) filter.applyLevel = applyLevel;
-    if (fdStatus) filter.status = fdStatus;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let searchOrClause: any[] | undefined;
-    const bucketParamRaw = searchParams.get("bucket");
-    const bucketParam = bucketParamRaw?.trim() || null;
-    const searchTrimmed = (search ?? "").trim();
-    if (searchTrimmed) {
-      const escaped = searchTrimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const rx = { $regex: escaped, $options: "i" };
-      searchOrClause = [
-        { name: rx },
-        { phone: rx },
-        { email: rx },
-        { interestedCountry: rx },
-        { course: rx },
-        { comments: rx },
-        { parentName: rx },
-        { senderName: rx },
-        { academicInstitution: rx },
-        {
-          interestedCountries: {
-            $elemMatch: {
-              $or: [{ country: rx }, { universityName: rx }],
-            },
-          },
-        },
-      ];
-      const bucketNeedsAndSearch =
-        bucketParam === TELECALLER_FRESH_BUCKET || isTelecallerOverviewDashboardBucket(bucketParam);
-      if (!bucketNeedsAndSearch) {
-        filter.$or = searchOrClause;
-      }
-    }
-
-    if (bucketParam === TELECALLER_FRESH_BUCKET) {
-      mergeTelecallerFreshLeadFilter(filter, searchOrClause);
-    } else if (bucketParam && isTelecallerOverviewDashboardBucket(bucketParam)) {
-      // Apply for any role (counsellor still scoped by assignedTo; telecaller by source).
-      // Do not gate on role - avoids mismatches where the filter was skipped and "all" leads appeared.
-      mergeTelecallerOverviewBucketFilter(filter, bucketParam, searchOrClause);
-    }
+    const { filter, searchTrimmed } = buildLeadListFilter(session, searchParams);
 
     const skip = (page - 1) * limit;
     const escapedForNameRank = searchTrimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

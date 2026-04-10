@@ -3,7 +3,7 @@ import Branch from "@/models/Branch";
 import Organization from "@/models/Organization";
 import { trialEndsAtFromNow } from "@/lib/organizationAccess";
 import type { IOrganizationDocument } from "@/models/Organization";
-import { createTenantAppSettings } from "@/lib/appSettingsScope";
+import { createFreshTrialTenantAppSettings, createTenantAppSettings } from "@/lib/appSettingsScope";
 
 /**
  * Legacy branches without `organization` get a grandfathered **active** org so existing deployments keep working.
@@ -37,6 +37,6 @@ export async function createTrialOrganization(name: string): Promise<IOrganizati
     subscriptionStatus: "trialing",
     trialEndsAt: trialEndsAtFromNow(),
   });
-  await createTenantAppSettings(org._id as mongoose.Types.ObjectId, org.name);
+  await createFreshTrialTenantAppSettings(org._id as mongoose.Types.ObjectId, org.name);
   return org;
 }

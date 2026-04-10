@@ -16,6 +16,8 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     const student = await Student.findById(id)
       .populate("branch", "name location")
       .populate("counsellor", "name email")
+      .populate({ path: "lead", select: "statusDates" })
+      .populate({ path: "enquiry", select: "statusDates" })
       .lean();
     if (!student) return NextResponse.json({ error: "Student not found" }, { status: 404 });
     return NextResponse.json(student);

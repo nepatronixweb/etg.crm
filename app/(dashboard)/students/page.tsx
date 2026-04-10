@@ -18,6 +18,7 @@ import { Search, UserCheck, Plus, X, ChevronDown, MessageSquare, MoreVertical, P
 import { useSession } from "next-auth/react";
 import { useBranding } from "@/app/branding-context";
 import { normalizeUniversitiesArray, universityEntryNames } from "@/lib/countryUniversities";
+import CounselledTimeInline from "@/components/CounselledTimeInline";
 
 const SOURCES = [
   { value: "walk_in", label: "Walk-in" },
@@ -695,7 +696,7 @@ export default function StudentsPage() {
                     <input type="checkbox" checked={filtered.length > 0 && selectedStudents.size === filtered.length} onChange={toggleSelectAll} className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-500 cursor-pointer" />
                   </th>
                 )}
-                {["Student", "Client", "Services", "Stage", "Remarks", "Standing", "Pipeline", "Follow-Up"].map((h) => (
+                {["Student", "Client", "Services", "Stage", "Remarks", "Standing", "Counselling", "Pipeline", "Follow-Up"].map((h) => (
                   <th key={h} className="text-left px-2.5 py-2 text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">
                     {h}
                   </th>
@@ -705,7 +706,7 @@ export default function StudentsPage() {
             <tbody className="divide-y divide-gray-100">
               {loading && (
                 <tr>
-                  <td colSpan={isAdmin ? 9 : 8} className="text-center py-14">
+                  <td colSpan={isAdmin ? 10 : 9} className="text-center py-14">
                     <div className="inline-flex flex-col items-center gap-2 text-gray-400">
                       <div className="w-5 h-5 border-2 border-gray-200 border-t-gray-500 rounded-full animate-spin" />
                       <span className="text-sm">Loading students…</span>
@@ -715,7 +716,7 @@ export default function StudentsPage() {
               )}
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={isAdmin ? 9 : 8} className="text-center py-14">
+                  <td colSpan={isAdmin ? 10 : 9} className="text-center py-14">
                     <div className="inline-flex flex-col items-center gap-2 text-gray-400">
                       <UserCheck size={28} className="text-gray-300" />
                       <span className="text-sm">No students found</span>
@@ -880,6 +881,16 @@ export default function StudentsPage() {
                         })()}
                       </td>
 
+                      {/* COUNSELLING elapsed from linked lead or enquiry statusDates */}
+                      <td className="px-2.5 py-2 min-w-[7rem]">
+                        <CounselledTimeInline
+                          studentOrigin={{
+                            lead: (student as unknown as { lead?: { statusDates?: unknown } }).lead ?? null,
+                            enquiry: (student as unknown as { enquiry?: { statusDates?: unknown } }).enquiry ?? null,
+                          }}
+                        />
+                      </td>
+
                       {/* PIPELINE (currentStage) column */}
                       <td className="px-2.5 py-2 min-w-32">
                         {(() => {
@@ -930,7 +941,7 @@ export default function StudentsPage() {
                     {/* Notes sub-row */}
                     {latestNote && (
                       <tr key={`${student._id}-note`} className="bg-gray-50/50">
-                        <td colSpan={isAdmin ? 9 : 8} className="px-2.5 py-1.5 border-b border-gray-100">
+                        <td colSpan={isAdmin ? 10 : 9} className="px-2.5 py-1.5 border-b border-gray-100">
                           <div className="flex items-start gap-1.5 text-[11px] text-gray-500">
                             <MessageSquare size={11} className="text-gray-400 mt-0.5 shrink-0" />
                             <span className="font-semibold text-gray-600">Notes:</span>

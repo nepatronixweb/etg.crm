@@ -26,6 +26,7 @@ import {
   Table2,
   Activity,
   Phone,
+  Clock,
 } from "lucide-react";
 import { formatDateTime } from "@/lib/utils";
 
@@ -45,6 +46,7 @@ interface AnalyticsSummary {
   totalApplications: number;
   convertedLeads: number;
   conversionRate: number;
+  leadsCounselled: number;
   conditionalOffers: number;
   unconditionalOffers: number;
   coeReceived: number;
@@ -390,6 +392,12 @@ export default function ReportsPage() {
     { label: "Applications", value: s.totalApplications, hint: "Application rows", icon: FileText },
     { label: "Converted leads", value: s.convertedLeads, hint: "Became students", icon: TrendingUp },
     { label: "Conversion rate", value: `${s.conversionRate}%`, hint: "Leads → students", icon: Percent },
+    {
+      label: "Counselled",
+      value: s.leadsCounselled ?? 0,
+      hint: "Leads marked Counselled or Phone counselling (by status date in range)",
+      icon: Clock,
+    },
   ];
 
   const SUMMARY_PIPELINE = [
@@ -503,7 +511,7 @@ export default function ReportsPage() {
       {/* Primary KPIs */}
       <section>
         <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Core metrics</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {SUMMARY_PRIMARY.map((card) => {
             const Icon = card.icon;
             return (

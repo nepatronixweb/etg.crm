@@ -55,6 +55,13 @@ export async function GET(req: NextRequest) {
     if (branch) leadFilter.branch = branch;
     if (source) leadFilter.source = source;
 
+    const structuralLeadFilter = { ...leadFilter };
+    delete structuralLeadFilter.createdAt;
+
+    const counselledAtBounds: Record<string, unknown> = { $ne: null };
+    if (from) counselledAtBounds.$gte = new Date(from);
+    if (to) counselledAtBounds.$lte = new Date(to);
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const studentFilter: Record<string, any> = { ...dateFilter };
     if (branch) studentFilter.branch = branch;
@@ -80,6 +87,7 @@ export async function GET(req: NextRequest) {
       unconditionalOffers,
       coeReceived,
       gsApplied,
+      leadsCounselledAgg,
     ] = await Promise.all([
       Lead.countDocuments(leadFilter),
       Student.countDocuments(studentFilter),
@@ -128,7 +136,25 @@ export async function GET(req: NextRequest) {
       Student.countDocuments({ ...studentFilter, "countries.admissionStatus": "unconditional" }),
       Student.countDocuments({ ...studentFilter, "countries.applicationStatus": "coe_received" }),
       Student.countDocuments({ ...studentFilter, stage: "gs_applied" }),
+      Lead.aggregate<{ n: number }>([
+        { $match: structuralLeadFilter },
+        {
+          $addFields: {
+            _sd: { $ifNull: ["$statusDates", {}] },
+            counselledAt: {
+              $ifNull: [
+                { $getField: { field: "Counselled", input: "$_sd" } },
+                { $getField: { field: "Phone Counselling", input: "$_sd" } },
+              ],
+            },
+          },
+        },
+        { $match: { counselledAt: counselledAtBounds } },
+        { $count: "n" },
+      ]),
     ]);
+
+    const leadsCounselled = (leadsCounselledAgg[0] as { n?: number } | undefined)?.n ?? 0;
 
     const conversionRate = totalLeads > 0 ? Math.round((convertedLeads / totalLeads) * 100) : 0;
     const stageMap = Object.fromEntries((studentsByStage as Array<{ _id: string; count: number }>).map((s) => [s._id, s.count]));
@@ -146,6 +172,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       summary: {
         totalLeads, totalStudents, totalApplications, convertedLeads, conversionRate,
+        leadsCounselled,
         conditionalOffers, unconditionalOffers, coeReceived,
         gsApplied,
         visaLodged: stageMap["visa"] ?? 0,

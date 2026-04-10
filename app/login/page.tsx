@@ -4,9 +4,7 @@ import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff, Lock, Mail, ArrowRight } from "lucide-react";
-import { useBranding } from "@/app/branding-context";
-import Image from "next/image";
-import { INPUT_STYLES, BUTTON_STYLES } from "@/components/FormComponents";
+import { INPUT_STYLES } from "@/components/FormComponents";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,7 +13,6 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const branding = useBranding();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,19 +46,6 @@ export default function LoginPage() {
       <div className="absolute top-1/2 left-1/2 w-96 h-96 bg-purple-600 rounded-full blur-3xl opacity-10 animate-pulse animation-delay-1000" />
 
       <div className="relative w-full max-w-md z-10">
-        {/* Logo / Brand */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4 shadow-2xl overflow-hidden bg-gradient-to-br from-white to-gray-50 ring-2 ring-white/20" style={{ backgroundColor: branding.brandColor }}>
-            {branding.logoPath ? (
-              <Image src={branding.logoPath} alt={branding.shortCode} width={64} height={64} className="w-full h-full object-contain p-2" />
-            ) : (
-              <span className="text-white text-xl font-bold tracking-tight">{branding.shortCode}</span>
-            )}
-          </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight mb-2">{branding.companyName}</h1>
-          <p className="text-sm text-blue-200">{branding.tagline || "CRM Portal - Staff Access"}</p>
-        </div>
-
         {/* Main Card */}
         <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white/20 ring-1 ring-white/10">
           

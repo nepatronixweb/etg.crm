@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Landmark, Pencil, Loader2, X } from "lucide-react";
+import { Landmark, Pencil, Loader2, X, CheckCircle2, XCircle, Trash2 } from "lucide-react";
 
 /** `datetime-local` must use local wall time, not `toISOString()` (UTC). */
 function toDatetimeLocalValue(iso: string | null): string {
@@ -58,7 +58,11 @@ export default function OrganizationsPage() {
   const [rows, setRows] = useState<OrgRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [edit, setEdit] = useState<OrgRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<OrgRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [actingId, setActingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [statusPreview, setStatusPreview] = useState<string>("active");
 
   useEffect(() => {
@@ -105,9 +109,50 @@ export default function OrganizationsPage() {
       if (res.ok) {
         setEdit(null);
         load();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setActionError(typeof d?.error === "string" ? d.error : "Could not save changes.");
       }
     } finally {
       setSaving(false);
+    }
+  };
+
+  const patchStatusOnly = async (orgId: string, subscriptionStatus: (typeof STATUSES)[number]) => {
+    setActionError(null);
+    setActingId(orgId);
+    try {
+      const res = await fetch(`/api/organizations/${orgId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subscriptionStatus }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setActionError(typeof d?.error === "string" ? d.error : "Update failed.");
+        return;
+      }
+      load();
+    } finally {
+      setActingId(null);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/organizations/${deleteTarget._id}`, { method: "DELETE" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setActionError(typeof d?.error === "string" ? d.error : "Delete failed.");
+        return;
+      }
+      setDeleteTarget(null);
+      load();
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -129,9 +174,26 @@ export default function OrganizationsPage() {
         </h1>
         <p className="text-gray-500 text-sm mt-1">
           One subscription covers every branch under an organization. Set status to <strong>active</strong> after you
-          receive payment (manual billing).
+          receive payment (manual billing). Use <strong>Close access</strong> to mark an org as expired;{" "}
+          <strong>Delete</strong> only works when no users or CRM records are linked to its branches.
         </p>
       </div>
+
+      {actionError && (
+        <div
+          className="rounded-xl border border-red-200 bg-red-50 text-red-800 text-sm px-4 py-3 flex items-start justify-between gap-3"
+          role="alert"
+        >
+          <span>{actionError}</span>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            className="shrink-0 text-red-600 hover:text-red-900 font-medium"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
         {loading ? (
@@ -148,7 +210,7 @@ export default function OrganizationsPage() {
                   <th className="px-4 py-3 font-medium">Branches</th>
                   <th className="px-4 py-3 font-medium">Trial ends</th>
                   <th className="px-4 py-3 font-medium">Paid through</th>
-                  <th className="px-4 py-3 font-medium w-24"></th>
+                  <th className="px-4 py-3 font-medium text-right min-w-[11rem]">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -178,14 +240,54 @@ export default function OrganizationsPage() {
                       {r.paidThrough ? new Date(r.paidThrough).toLocaleDateString() : "—"}
                     </td>
                     <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => setEdit(r)}
-                        className="p-2 rounded-lg text-blue-600 hover:bg-blue-50"
-                        title="Edit"
-                      >
-                        <Pencil size={16} />
-                      </button>
+                      <div className="flex flex-wrap items-center justify-end gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActionError(null);
+                            setEdit(r);
+                          }}
+                          disabled={actingId === r._id}
+                          className="p-2 rounded-lg text-blue-600 hover:bg-blue-50 disabled:opacity-40"
+                          title="Edit organization"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        {r.subscriptionStatus !== "active" && (
+                          <button
+                            type="button"
+                            onClick={() => patchStatusOnly(r._id, "active")}
+                            disabled={actingId === r._id}
+                            className="p-2 rounded-lg text-emerald-600 hover:bg-emerald-50 disabled:opacity-40"
+                            title="Mark active (paid / full access)"
+                          >
+                            <CheckCircle2 size={16} />
+                          </button>
+                        )}
+                        {r.subscriptionStatus !== "expired" && (
+                          <button
+                            type="button"
+                            onClick={() => patchStatusOnly(r._id, "expired")}
+                            disabled={actingId === r._id}
+                            className="p-2 rounded-lg text-amber-700 hover:bg-amber-50 disabled:opacity-40"
+                            title="Close access (mark expired)"
+                          >
+                            <XCircle size={16} />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActionError(null);
+                            setDeleteTarget(r);
+                          }}
+                          disabled={actingId === r._id}
+                          className="p-2 rounded-lg text-red-600 hover:bg-red-50 disabled:opacity-40"
+                          title="Delete organization"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -194,6 +296,56 @@ export default function OrganizationsPage() {
           </div>
         )}
       </div>
+
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="org-delete-title"
+          onClick={() => !deleting && setDeleteTarget(null)}
+        >
+          <div
+            className="bg-white text-gray-900 rounded-2xl shadow-xl border border-gray-200 w-full max-w-md p-6 [color-scheme:light]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="org-delete-title" className="text-lg font-semibold text-gray-900">
+              Delete organization?
+            </h2>
+            <p className="text-sm text-gray-600 mt-2 leading-relaxed">
+              <span className="font-medium text-gray-800">{deleteTarget.name}</span> will be removed permanently. Tenant
+              app settings and branches with no linked users, leads, students, or enquiries will be removed. If anything
+              is still linked, delete will be blocked.
+            </p>
+            {actionError && deleteTarget && (
+              <p className="text-sm text-red-600 mt-3" role="alert">
+                {actionError}
+              </p>
+            )}
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => {
+                  setActionError(null);
+                  setDeleteTarget(null);
+                }}
+                className="px-4 py-2.5 text-sm font-medium text-gray-700 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={confirmDelete}
+                className="px-4 py-2.5 text-sm font-medium text-white rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {edit && (
         <div

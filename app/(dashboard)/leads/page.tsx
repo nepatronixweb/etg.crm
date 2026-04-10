@@ -33,6 +33,7 @@ import {
   buildTelecallerTransferPatchFromOutcome,
 } from "@/lib/telecallerTransferConfig";
 import type { TelecallerTransferOutcome } from "@/types/telecallerTransfer";
+import CounselledTimeInline from "@/components/CounselledTimeInline";
 
 const DEFAULT_SOURCES: { value: string; label: string }[] = [
   { value: "walk_in", label: "Walk-in" },
@@ -45,6 +46,24 @@ const DEFAULT_SOURCES: { value: string; label: string }[] = [
 ];
 
 const DEFAULT_STANDINGS = ["heated", "hot", "warm", "out_of_contact"];
+
+type LeadFilterFacetResponse = {
+  standings: string[];
+  sources: string[];
+  services: string[];
+  stages: string[];
+  academicYears: string[];
+  applyLevels: string[];
+  fdStatuses: string[];
+  assignedToIds: string[];
+  countries: string[];
+};
+
+const APPLY_LEVEL_FILTERS: { value: string; label: string }[] = [
+  { value: "bachelor", label: "Bachelor" },
+  { value: "master", label: "Master" },
+  { value: "phd", label: "PhD" },
+];
 
 const FIELD_CLASS =
   "w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-colors";
@@ -103,6 +122,10 @@ function LeadsPageContent() {
   const [filterAcademicYear, setFilterAcademicYear] = useState("");
   const [filterApplyLevel, setFilterApplyLevel] = useState("");
   const [filterFdStatus, setFilterFdStatus] = useState("");
+  /** Cascading filter options for the current scope (from GET /api/leads/filter-meta). */
+  const [filterFacetMeta, setFilterFacetMeta] = useState<LeadFilterFacetResponse | null>(null);
+  /** Narrow lead stages to one pipeline group (UI only; API still uses stage value). */
+  const [filterStageGroup, setFilterStageGroup] = useState("");
   const [branches, setBranches] = useState<{ _id: string; name: string }[]>([]);
   const [counsellors, setCounsellors] = useState<{ _id: string; name: string }[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -145,37 +168,54 @@ function LeadsPageContent() {
   const searchRef = useRef(search);
   searchRef.current = search;
 
+  const appendLeadFilterParams = useCallback(
+    (params: URLSearchParams, searchValue: string) => {
+      const q = searchValue.trim();
+      if (q) params.set("search", q);
+      if (filterStatus) params.set("standing", filterStatus);
+      if (filterCountry) params.set("country", filterCountry);
+      if (filterAssignedTo) params.set("assignedTo", filterAssignedTo);
+      if (filterSource) params.set("source", filterSource);
+      if (filterDateFrom) {
+        const iso = localDateTimeInputToUtcIsoParam(filterDateFrom);
+        if (iso) params.set("from", iso);
+      }
+      if (filterDateTo) {
+        const iso = localDateTimeInputToUtcIsoParam(filterDateTo);
+        if (iso) params.set("to", iso);
+      }
+      if (filterService) params.set("service", filterService);
+      if (filterLeadStage) params.set("stage", filterLeadStage);
+      if (filterAcademicYear) params.set("academicYear", filterAcademicYear);
+      if (filterApplyLevel) params.set("applyLevel", filterApplyLevel);
+      if (filterFdStatus) params.set("status", filterFdStatus);
+      const b = searchParams.get("bucket");
+      if (b === TELECALLER_FRESH_BUCKET || isTelecallerOverviewDashboardBucket(b)) {
+        params.set("bucket", b);
+      }
+    },
+    [
+      filterStatus,
+      filterCountry,
+      filterAssignedTo,
+      filterSource,
+      filterDateFrom,
+      filterDateTo,
+      filterService,
+      filterLeadStage,
+      filterAcademicYear,
+      filterApplyLevel,
+      filterFdStatus,
+      searchParams,
+    ]
+  );
+
   const fetchLeads = useCallback(async (page = 1) => {
     setLoading(true);
     const params = new URLSearchParams();
     params.set("page", page.toString());
     params.set("limit", "50");
-    const q = searchRef.current.trim();
-    if (q) params.set("search", q);
-    if (filterStatus) params.set("standing", filterStatus);
-    if (filterCountry) params.set("country", filterCountry);
-    if (filterAssignedTo) params.set("assignedTo", filterAssignedTo);
-    if (filterSource) params.set("source", filterSource);
-    if (filterDateFrom) {
-      const iso = localDateTimeInputToUtcIsoParam(filterDateFrom);
-      if (iso) params.set("from", iso);
-    }
-    if (filterDateTo) {
-      const iso = localDateTimeInputToUtcIsoParam(filterDateTo);
-      if (iso) params.set("to", iso);
-    }
-    if (filterService) params.set("service", filterService);
-    if (filterLeadStage) params.set("stage", filterLeadStage);
-    if (filterAcademicYear) params.set("academicYear", filterAcademicYear);
-    if (filterApplyLevel) params.set("applyLevel", filterApplyLevel);
-    if (filterFdStatus) params.set("status", filterFdStatus);
-    const b = searchParams.get("bucket");
-    // Always pass bucket from the URL - do not gate on client session (useSession is often
-    // still loading on first paint). The API only applies telecaller bucket filters when
-    // the authenticated user is a telecaller.
-    if (b === TELECALLER_FRESH_BUCKET || isTelecallerOverviewDashboardBucket(b)) {
-      params.set("bucket", b);
-    }
+    appendLeadFilterParams(params, searchRef.current);
     const res = await fetch(`${apiLeadsBase}?${params}`, { cache: "no-store" });
     const data = await res.json();
     if (data && data.leads) {
@@ -201,6 +241,7 @@ function LeadsPageContent() {
     filterFdStatus,
     searchParams,
     apiLeadsBase,
+    appendLeadFilterParams,
   ]);
 
   const fetchLeadsRef = useRef(fetchLeads);
@@ -273,6 +314,35 @@ function LeadsPageContent() {
     fetchLeads,
   ]);
 
+  useEffect(() => {
+    if (isEnquiriesRoute) {
+      setFilterFacetMeta(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      const params = new URLSearchParams();
+      appendLeadFilterParams(params, search);
+      fetch(`/api/leads/filter-meta?${params}`, { cache: "no-store" })
+        .then((r) => r.json())
+        .then((data: LeadFilterFacetResponse & { error?: string }) => {
+          if (cancelled || data?.error) return;
+          if (
+            Array.isArray(data.standings) &&
+            Array.isArray(data.sources) &&
+            Array.isArray(data.services)
+          ) {
+            setFilterFacetMeta(data);
+          }
+        })
+        .catch(() => {});
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [isEnquiriesRoute, search, appendLeadFilterParams]);
+
   /** Debounced server search: name matches are sorted first on page 1 (see GET /api/leads). */
   const skipSearchEffectOnMount = useRef(true);
   useEffect(() => {
@@ -300,6 +370,7 @@ function LeadsPageContent() {
     setFilterAcademicYear("");
     setFilterApplyLevel("");
     setFilterFdStatus("");
+    setFilterStageGroup("");
     const b = searchParams.get("bucket");
     if (b === TELECALLER_FRESH_BUCKET || isTelecallerOverviewDashboardBucket(b)) {
       router.replace(leadsPathBase);
@@ -319,6 +390,8 @@ function LeadsPageContent() {
       filterAcademicYear,
       filterApplyLevel,
       filterFdStatus,
+      filterCountry,
+      filterStageGroup,
     ].filter(Boolean).length + (telecallerBucketBanner ? 1 : 0);
 
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
@@ -535,6 +608,117 @@ function LeadsPageContent() {
   const canUpdateStage = ["super_admin", "org_admin", "telecaller", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
   const canExport = hasModuleAction(userPermissions, userRole, "leads", "export");
   const isAdmin = isOrgWideAdmin(session?.user?.role);
+
+  const leadsTableColumnCount = useMemo(() => {
+    const role = session?.user?.role;
+    let n = 3;
+    if (isAdmin) n += 1;
+    if (!isAdmin) n += 1;
+    if (role !== "front_desk" && role !== "counsellor" && role !== "telecaller") n += 1;
+    n += 3;
+    return n;
+  }, [isAdmin, session?.user?.role]);
+
+  useEffect(() => {
+    if (!filterStageGroup) return;
+    const g = appStageGroups.find((x) => x.label === filterStageGroup);
+    const allowed = g?.stages ?? [];
+    if (filterLeadStage && allowed.length > 0 && !allowed.includes(filterLeadStage)) {
+      setFilterLeadStage("");
+    }
+  }, [filterStageGroup, appStageGroups, filterLeadStage]);
+
+  const allowedAssignedIds = filterFacetMeta?.assignedToIds;
+  const counsellorOptions = useMemo(() => {
+    if (!allowedAssignedIds?.length) return counsellors;
+    const set = new Set(allowedAssignedIds);
+    return counsellors.filter((c) => set.has(c._id));
+  }, [counsellors, allowedAssignedIds]);
+
+  const standingOptions = useMemo(() => {
+    const allow = filterFacetMeta?.standings;
+    if (!allow?.length) return appStandings;
+    const set = new Set(allow);
+    return appStandings.filter((s) => set.has(s));
+  }, [appStandings, filterFacetMeta?.standings]);
+
+  const sourceOptions = useMemo(() => {
+    const allow = filterFacetMeta?.sources;
+    if (!allow?.length) return appSources;
+    const set = new Set(allow);
+    const fromApp = appSources.filter((s) => set.has(s.value));
+    const extras = allow
+      .filter((v) => !appSources.some((s) => s.value === v))
+      .map((v) => ({
+        value: v,
+        label: v.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      }));
+    return [...fromApp, ...extras].sort((a, b) => a.label.localeCompare(b.label));
+  }, [appSources, filterFacetMeta?.sources]);
+
+  const serviceOptions = useMemo(() => {
+    const allow = filterFacetMeta?.services;
+    if (!allow?.length) return SERVICES;
+    const set = new Set(allow);
+    return SERVICES.filter((s) => set.has(s));
+  }, [filterFacetMeta?.services]);
+
+  const yearOptions = useMemo(() => {
+    const years = Array.from({ length: 6 }, (_, i) => (new Date().getFullYear() + i - 1).toString());
+    const allow = filterFacetMeta?.academicYears;
+    if (!allow?.length) return years;
+    const set = new Set(allow);
+    return years.filter((y) => set.has(y));
+  }, [filterFacetMeta?.academicYears]);
+
+  const applyLevelOptions = useMemo(() => {
+    const allow = filterFacetMeta?.applyLevels;
+    if (!allow?.length) return APPLY_LEVEL_FILTERS;
+    const lower = new Set(allow.map((x) => x.toLowerCase()));
+    return APPLY_LEVEL_FILTERS.filter((o) => lower.has(o.value.toLowerCase()));
+  }, [filterFacetMeta?.applyLevels]);
+
+  const fdStatusOptions = useMemo(() => {
+    const allow = filterFacetMeta?.fdStatuses;
+    if (!allow?.length) return appFdStatuses;
+    const set = new Set(allow);
+    return appFdStatuses.filter((s) => set.has(s.value));
+  }, [appFdStatuses, filterFacetMeta?.fdStatuses]);
+
+  const countryFilterOptions = useMemo(() => {
+    const allow = filterFacetMeta?.countries;
+    if (!allow?.length) return appCountries;
+    const lower = new Map(allow.map((c) => [c.toLowerCase(), c]));
+    const merged: string[] = [];
+    for (const c of appCountries) {
+      const hit = lower.get(c.toLowerCase());
+      if (hit) merged.push(hit);
+    }
+    for (const c of allow) {
+      if (!merged.some((m) => m.toLowerCase() === c.toLowerCase())) merged.push(c);
+    }
+    return merged.sort((a, b) => a.localeCompare(b));
+  }, [appCountries, filterFacetMeta?.countries]);
+
+  const stageSelectOptions = useMemo(() => {
+    let stages = appLeadStages;
+    if (filterStageGroup) {
+      const g = appStageGroups.find((x) => x.label === filterStageGroup);
+      const values = new Set(g?.stages ?? []);
+      if (values.size > 0) stages = stages.filter((s) => values.has(s.value));
+    }
+    const allow = filterFacetMeta?.stages;
+    if (allow?.length) {
+      const set = new Set(allow);
+      stages = stages.filter((s) => set.has(s.value));
+    }
+    return stages;
+  }, [appLeadStages, appStageGroups, filterStageGroup, filterFacetMeta?.stages]);
+
+  useEffect(() => {
+    if (!filterLeadStage || !stageSelectOptions.length) return;
+    if (!stageSelectOptions.some((s) => s.value === filterLeadStage)) setFilterLeadStage("");
+  }, [filterLeadStage, stageSelectOptions]);
 
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -887,88 +1071,139 @@ function LeadsPageContent() {
       {/* Filter + Search Bar */}
       <div className="bg-white border border-gray-200 rounded-lg overflow-visible">
         <div className="flex items-stretch gap-0 divide-x divide-gray-200 flex-wrap">
+          {/* Pipeline group — narrows stage list (CRM roles) */}
+          {session?.user?.role !== "front_desk" && session?.user?.role !== "counsellor" && !isAdmin && (
+            <div className="flex-1 min-w-[9.5rem] xl:min-w-28 relative">
+              <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Pipeline</label>
+              <select
+                value={filterStageGroup}
+                onChange={(e) => setFilterStageGroup(e.target.value)}
+                title="Filter stage list by pipeline group"
+                className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
+              >
+                <option value="">All groups</option>
+                {appStageGroups.map((g) => (
+                  <option key={g.label} value={g.label}>{g.label}</option>
+                ))}
+              </select>
+              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            </div>
+          )}
           {/* Lead Stage filter - hidden for FD, counsellors, and admin */}
           {session?.user?.role !== "front_desk" && session?.user?.role !== "counsellor" && !isAdmin && (
-            <div className="flex-1 min-w-22.5 xl:min-w-27.5 relative">
+            <div className="flex-1 min-w-[9.5rem] xl:min-w-28 relative">
               <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Stage</label>
               <select
                 value={filterLeadStage}
                 onChange={(e) => setFilterLeadStage(e.target.value)}
+                title="Stages that appear in your current result set"
                 className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
               >
-                <option value="">All Stages</option>
-                {appLeadStages.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                <option value="">All stages</option>
+                {stageSelectOptions.map((s) => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
               </select>
               <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
           )}
           {/* Status filter - admin only */}
           {isAdmin && (
-            <div className="flex-1 min-w-22.5 xl:min-w-27.5 relative">
+            <div className="flex-1 min-w-[9.5rem] xl:min-w-28 relative">
               <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Status</label>
               <select
                 value={filterFdStatus}
                 onChange={(e) => setFilterFdStatus(e.target.value)}
+                title="FD workflow statuses in current results"
                 className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
               >
-                <option value="">All Statuses</option>
-                {appFdStatuses.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                <option value="">All statuses</option>
+                {fdStatusOptions.map((s) => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
               </select>
               <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
           )}
           {/* Lead Standing */}
-          <div className="flex-1 min-w-22.5 xl:min-w-27.5 relative">
+          <div className="flex-1 min-w-[9.5rem] xl:min-w-28 relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Standing</label>
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
+              title="Standings present in current results"
               className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
             >
-              <option value="">View All Lead</option>
-              {appStandings.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</option>)}
+              <option value="">All standings</option>
+              {standingOptions.map((s) => (
+                <option key={s} value={s}>{s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}</option>
+              ))}
             </select>
             <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
 
           {/* Lead Source */}
-          <div className="flex-1 min-w-22.5 xl:min-w-27.5 relative">
+          <div className="flex-1 min-w-[9.5rem] xl:min-w-28 relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Source</label>
             <select
               value={filterSource}
               onChange={(e) => setFilterSource(e.target.value)}
+              title="Sources in current results"
               className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
             >
-              <option value="">View All Source</option>
-              {appSources.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              <option value="">All sources</option>
+              {sourceOptions.map((s) => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
             </select>
             <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
 
-          {/* All Services */}
-          <div className="flex-1 min-w-22.5 xl:min-w-27.5 relative">
-            <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">All Services</label>
+          {/* Services */}
+          <div className="flex-1 min-w-[9.5rem] xl:min-w-28 relative">
+            <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Service</label>
             <select
               value={filterService}
               onChange={(e) => setFilterService(e.target.value)}
+              title="Services in current results"
               className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
             >
-              <option value="">All Services</option>
-              {SERVICES.map((s) => <option key={s} value={s}>{s}</option>)}
+              <option value="">All services</option>
+              {serviceOptions.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+
+          {/* Destination */}
+          <div className="flex-1 min-w-[9.5rem] xl:min-w-28 relative">
+            <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Destination</label>
+            <select
+              value={filterCountry}
+              onChange={(e) => setFilterCountry(e.target.value)}
+              title="Primary or multi-country interest (exact match)"
+              className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
+            >
+              <option value="">All countries</option>
+              {countryFilterOptions.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
             </select>
             <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
 
           {/* Academic Year */}
-          <div className="flex-1 min-w-22.5 xl:min-w-27.5 relative">
+          <div className="flex-1 min-w-[8rem] xl:min-w-24 relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Acad. Year</label>
             <select
               value={filterAcademicYear}
               onChange={(e) => setFilterAcademicYear(e.target.value)}
+              title="Intake years in current results"
               className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
             >
-              <option value="">All Years</option>
-              {Array.from({ length: 6 }, (_, i) => (new Date().getFullYear() + i - 1).toString()).map((y) => (
+              <option value="">All years</option>
+              {yearOptions.map((y) => (
                 <option key={y} value={y}>{y}</option>
               ))}
             </select>
@@ -976,43 +1211,49 @@ function LeadsPageContent() {
           </div>
 
           {/* Apply Level */}
-          <div className="flex-1 min-w-22.5 xl:min-w-27.5 relative">
+          <div className="flex-1 min-w-[8.5rem] xl:min-w-24 relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Apply Level</label>
             <select
               value={filterApplyLevel}
               onChange={(e) => setFilterApplyLevel(e.target.value)}
+              title="Levels in current results (case-insensitive match)"
               className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
             >
-              <option value="">All Levels</option>
-              <option value="bachelor">Bachelor</option>
-              <option value="master">Master</option>
-              <option value="phd">PhD</option>
+              <option value="">All levels</option>
+              {applyLevelOptions.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
             </select>
             <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
 
           {/* Follow Up (Assigned Counsellor) */}
-          <div className="flex-1 min-w-22.5 xl:min-w-27.5 relative">
-            <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Follow Up</label>
-            <select
-              value={filterAssignedTo}
-              onChange={(e) => setFilterAssignedTo(e.target.value)}
-              className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
-            >
-              <option value="">Follow Up</option>
-              {counsellors.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
-            </select>
-            <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          </div>
+          {session?.user?.role !== "counsellor" && (
+            <div className="flex-1 min-w-[9.5rem] xl:min-w-28 relative">
+              <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Counsellor</label>
+              <select
+                value={filterAssignedTo}
+                onChange={(e) => setFilterAssignedTo(e.target.value)}
+                title="Counsellors with leads in current results"
+                className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
+              >
+                <option value="">All counsellors</option>
+                {counsellorOptions.map((c) => (
+                  <option key={c._id} value={c._id}>{c.name}</option>
+                ))}
+              </select>
+              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            </div>
+          )}
 
           {/* Search */}
-          <div className="flex-2 min-w-37.5 xl:min-w-48 relative">
+          <div className="flex-2 min-w-[12rem] xl:min-w-52 relative">
             <label className="absolute left-10 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Search</label>
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Name, phone, email, destination, university, intake…"
+              placeholder="Name, phone, email, destination, university…"
               className="w-full pt-7 pb-2 pl-9 pr-8 bg-transparent text-sm text-gray-800 focus:outline-none focus:bg-gray-50 placeholder-gray-400"
             />
             {search && (
@@ -1064,6 +1305,10 @@ function LeadsPageContent() {
             )}
             {filterAcademicYear && <span className="flex items-center gap-1 text-xs bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-0.5 rounded-full font-medium">Year: {filterAcademicYear}<button onClick={() => setFilterAcademicYear("")}><X size={10} /></button></span>}
             {filterApplyLevel && <span className="flex items-center gap-1 text-xs bg-teal-50 text-teal-700 border border-teal-100 px-2.5 py-0.5 rounded-full font-medium capitalize">{filterApplyLevel}<button onClick={() => setFilterApplyLevel("")}><X size={10} /></button></span>}
+            {filterCountry && <span className="flex items-center gap-1 text-xs bg-cyan-50 text-cyan-800 border border-cyan-100 px-2.5 py-0.5 rounded-full font-medium">{filterCountry}<button type="button" onClick={() => setFilterCountry("")}><X size={10} /></button></span>}
+            {filterStageGroup && session?.user?.role !== "front_desk" && session?.user?.role !== "counsellor" && !isAdmin && (
+              <span className="flex items-center gap-1 text-xs bg-slate-50 text-slate-700 border border-slate-200 px-2.5 py-0.5 rounded-full font-medium">{filterStageGroup}<button type="button" onClick={() => setFilterStageGroup("")}><X size={10} /></button></span>
+            )}
             {filterFdStatus && <span className="flex items-center gap-1 text-xs bg-orange-50 text-orange-700 border border-orange-100 px-2.5 py-0.5 rounded-full font-medium">{appFdStatuses.find((s) => s.value === filterFdStatus)?.label ?? filterFdStatus}<button onClick={() => setFilterFdStatus("")}><X size={10} /></button></span>}
             <button onClick={clearFilters} className="ml-auto text-xs text-red-500 hover:text-red-700 font-semibold flex items-center gap-1"><X size={11} /> Clear all</button>
           </div>
@@ -1095,7 +1340,7 @@ function LeadsPageContent() {
                   } else {
                     headers.push("Stage");
                   }
-                  headers.push("Standing", "Follow-Up");
+                  headers.push("Standing", "Counselling", "Follow-Up");
                   return headers.map((h, i) => (
                     <th key={h || `chk-${i}`} className={`text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap ${h === "" ? "w-10" : ""}`}>
                       {h === "" ? (
@@ -1109,7 +1354,7 @@ function LeadsPageContent() {
             <tbody className="divide-y divide-gray-100">
               {loading && (
                 <tr>
-                  <td colSpan={6} className="text-center py-14">
+                  <td colSpan={leadsTableColumnCount} className="text-center py-14">
                     <div className="inline-flex flex-col items-center gap-2 text-gray-400">
                       <div className="w-5 h-5 border-2 border-gray-200 border-t-gray-500 rounded-full animate-spin" />
                       <span className="text-sm">Loading leads…</span>
@@ -1119,7 +1364,7 @@ function LeadsPageContent() {
               )}
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="text-center py-14">
+                  <td colSpan={leadsTableColumnCount} className="text-center py-14">
                     <div className="inline-flex flex-col items-center gap-2 text-gray-400">
                       <Users size={28} className="text-gray-300" />
                       <span className="text-sm">No leads found</span>
@@ -1558,6 +1803,13 @@ function LeadsPageContent() {
                             </div>
                           )}
                         </div>
+                      </td>
+
+                      {/* COUNSELLING elapsed (Counselled / Phone counselling from statusDates) */}
+                      <td className="px-4 py-3.5 min-w-[7.5rem]">
+                        <CounselledTimeInline
+                          statusDates={(lead as unknown as { statusDates?: unknown }).statusDates}
+                        />
                       </td>
 
                       {/* FOLLOW-UP column */}

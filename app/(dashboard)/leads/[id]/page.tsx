@@ -8,6 +8,8 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useBranding } from "@/app/branding-context";
 import { normalizeUniversitiesArray, universityEntryNames } from "@/lib/countryUniversities";
+import { getCounselledEvent } from "@/lib/counselledAt";
+import CounselledClockCard from "@/components/CounselledClockCard";
 
 interface CountryEntry {
   country: string;
@@ -334,6 +336,10 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const validEntries = countryEntries.filter((e) => e.country.trim());
   const usedCountries = new Set(countryEntries.map((e) => e.country));
 
+  const counselledEvent = getCounselledEvent(
+    (lead as unknown as { statusDates?: Record<string, unknown> }).statusDates
+  );
+
   // helper: render label + value field row
   const Field = ({ label, value }: { label: string; value?: string | null }) => (
     <div>
@@ -399,6 +405,10 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
           </button>
         )}
       </div>
+
+      {counselledEvent && (
+        <CounselledClockCard atIso={counselledEvent.atIso} sourceLabel={counselledEvent.sourceLabel} />
+      )}
 
       {/* ── Print-Only Letterhead ── */}
       <div className="print-only">

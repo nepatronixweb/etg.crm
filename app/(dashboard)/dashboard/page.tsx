@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useRef, useCallback, Fragment, type ReactNode } from "react";
+import { useEffect, useState, useRef, useCallback, Fragment, useMemo, type ReactNode } from "react";
 import { useSession } from "next-auth/react";
 import * as XLSX from "xlsx";
 import {
@@ -10,18 +10,24 @@ import {
   GraduationCap, Send, ShieldCheck, FileInput, MessageSquare,
   Phone, PhoneMissed, PhoneCall, UserPlus, RefreshCw,
   CalendarCheck, Flame, Wifi, Upload, X, AlertCircle, CheckCircle,
-  FileSpreadsheet, Table2, Globe2,
+  FileSpreadsheet, Table2, Globe2, GripVertical, LayoutGrid,
 } from "lucide-react";
 import { formatDateTime, getStatusColor, hasPermission } from "@/lib/utils";
 import {
   buildAdminDashboardChunks,
+  flattenAdminDashboardChunksToOrder,
   isDashboardWidgetVisible,
   mergeDashboardWidgetsFromApi,
   mergeDashboardWidgetOrderFromApi,
   mergeDashboardWidgetsWithUserOverrides,
   mergeDashboardWidgetOrderStates,
   resolveOrderedWidgetIds,
+  audienceSupportsOrderCustomization,
+  roleSlugToDashboardAudience,
   type AdminChartWidgetId,
+  type AdminDashboardChunk,
+  type AdminKpiCardId,
+  type DashboardAudience,
   type DashboardWidgetOrderState,
 } from "@/lib/dashboardLayout";
 import { TELECALLER_FRESH_BUCKET } from "@/lib/telecallerFreshLeads";
@@ -38,6 +44,7 @@ import Link from "next/link";
 import { useBranding } from "@/app/branding-context";
 import CelebrationOverlay from "./CelebrationOverlay";
 import InventorySummaryWidgets from "@/components/inventory/InventorySummaryWidgets";
+import CounselledTimeInline from "@/components/CounselledTimeInline";
 
 interface AnalyticsData {
   summary: {
@@ -46,6 +53,7 @@ interface AnalyticsData {
     totalApplications: number;
     convertedLeads: number;
     conversionRate: number;
+    leadsCounselled: number;
     gsApplied: number;
     coeReceived: number;
     conditionalOffers: number;
@@ -63,6 +71,7 @@ interface AnalyticsData {
     interestedCountry: string;
     createdAt: string;
     branch: { name: string };
+    statusDates?: Record<string, unknown>;
   }>;
   recentActivity: Array<{
     _id: string;
@@ -126,6 +135,16 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 type FilterPeriod = "all" | "daily" | "weekly" | "3month" | "6month" | "9month" | "year";
+
+const DASHBOARD_DND_MIME = "application/x-etg-dashboard-section";
+const DASHBOARD_KPI_DND_MIME = "application/x-etg-dashboard-kpi-card";
+
+function chunkStableKey(chunk: AdminDashboardChunk, fallbackIdx: number): string {
+  if (chunk.type === "single") return chunk.id;
+  if (chunk.type === "charts") return `charts:${chunk.ids.join(":")}`;
+  if (chunk.type === "kpis") return `kpis:${chunk.ids.join(":")}`;
+  return `twin:${chunk.leftId}:${chunk.rightId}`;
+}
 
 const FILTER_OPTIONS: { value: FilterPeriod; label: string }[] = [
   { value: "all",    label: "All Time" },
@@ -245,6 +264,129 @@ export default function DashboardPage() {
     (id: string) => isDashboardWidgetVisible(id, dashboardWidgetToggles),
     [dashboardWidgetToggles]
   );
+
+  const dashboardAudience = roleSlugToDashboardAudience(role || "other");
+  const canCustomizeDashboardLayout = audienceSupportsOrderCustomization(dashboardAudience);
+  const [dashboardLayoutEdit, setDashboardLayoutEdit] = useState(false);
+  const layoutSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const queueDashboardLayoutSave = useCallback((audience: DashboardAudience, order: string[]) => {
+    if (layoutSaveTimerRef.current) clearTimeout(layoutSaveTimerRef.current);
+    layoutSaveTimerRef.current = setTimeout(() => {
+      layoutSaveTimerRef.current = null;
+      void fetch("/api/users/me/dashboard-layout", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ audience, order }),
+      });
+    }, 450);
+  }, []);
+
+  const reorderAdminDashboardChunks = useCallback(
+    (from: number, to: number) => {
+      const order = resolveOrderedWidgetIds("super_admin", dashboardWidgetToggles, dashboardWidgetOrder);
+      const chunks = [...buildAdminDashboardChunks(order)];
+      if (from < 0 || from >= chunks.length || to < 0 || to >= chunks.length || from === to) return;
+      const [removed] = chunks.splice(from, 1);
+      chunks.splice(to, 0, removed);
+      const flat = flattenAdminDashboardChunksToOrder(chunks);
+      setDashboardWidgetOrder((prev) => ({ ...prev, super_admin: flat }));
+      queueDashboardLayoutSave("super_admin", flat);
+    },
+    [dashboardWidgetToggles, dashboardWidgetOrder, queueDashboardLayoutSave]
+  );
+
+  const reorderAdminKpiCards = useCallback(
+    (chunkIdx: number, from: number, to: number) => {
+      const order = resolveOrderedWidgetIds("super_admin", dashboardWidgetToggles, dashboardWidgetOrder);
+      const chunks = [...buildAdminDashboardChunks(order)];
+      const ch = chunks[chunkIdx];
+      if (!ch || ch.type !== "kpis") return;
+      const ids = [...ch.ids];
+      if (from < 0 || from >= ids.length || to < 0 || to >= ids.length || from === to) return;
+      const [removed] = ids.splice(from, 1);
+      ids.splice(to, 0, removed);
+      chunks[chunkIdx] = { type: "kpis", ids };
+      const flat = flattenAdminDashboardChunksToOrder(chunks);
+      setDashboardWidgetOrder((prev) => ({ ...prev, super_admin: flat }));
+      queueDashboardLayoutSave("super_admin", flat);
+    },
+    [dashboardWidgetToggles, dashboardWidgetOrder, queueDashboardLayoutSave]
+  );
+
+  const reorderAudienceWidgetIds = useCallback(
+    (audience: DashboardAudience, from: number, to: number) => {
+      const order = [...resolveOrderedWidgetIds(audience, dashboardWidgetToggles, dashboardWidgetOrder)];
+      if (from < 0 || from >= order.length || to < 0 || to >= order.length || from === to) return;
+      const [removed] = order.splice(from, 1);
+      order.splice(to, 0, removed);
+      setDashboardWidgetOrder((prev) => ({ ...prev, [audience]: order }));
+      queueDashboardLayoutSave(audience, order);
+    },
+    [dashboardWidgetToggles, dashboardWidgetOrder, queueDashboardLayoutSave]
+  );
+
+  const dashboardLayoutSectionCount = useMemo(() => {
+    if (!canCustomizeDashboardLayout) return 0;
+    if (dashboardAudience === "super_admin") {
+      const o = resolveOrderedWidgetIds("super_admin", dashboardWidgetToggles, dashboardWidgetOrder);
+      return buildAdminDashboardChunks(o).length;
+    }
+    return resolveOrderedWidgetIds(dashboardAudience, dashboardWidgetToggles, dashboardWidgetOrder).length;
+  }, [canCustomizeDashboardLayout, dashboardAudience, dashboardWidgetToggles, dashboardWidgetOrder]);
+
+  const showDashboardLayoutTools =
+    canCustomizeDashboardLayout && dashboardLayoutSectionCount >= 2;
+
+  function wrapDraggableSection(
+    audience: DashboardAudience,
+    index: number,
+    sectionKey: string,
+    inner: ReactNode | null
+  ): ReactNode {
+    if (inner == null) return null;
+    const edit = showDashboardLayoutTools && dashboardLayoutEdit && dashboardAudience === audience;
+    return (
+      <div
+        key={sectionKey}
+        className={`relative rounded-xl ${edit ? "pl-10 ring-1 ring-dashed ring-blue-300/90 bg-blue-50/20" : ""}`}
+        onDragOver={
+          edit
+            ? (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+              }
+            : undefined
+        }
+        onDrop={
+          edit
+            ? (e) => {
+                e.preventDefault();
+                const from = parseInt(e.dataTransfer.getData(DASHBOARD_DND_MIME), 10);
+                if (Number.isNaN(from)) return;
+                reorderAudienceWidgetIds(audience, from, index);
+              }
+            : undefined
+        }
+      >
+        {edit && (
+          <div
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData(DASHBOARD_DND_MIME, String(index));
+              e.dataTransfer.effectAllowed = "move";
+            }}
+            className="absolute left-0 top-3 z-10 flex h-9 w-8 cursor-grab items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-sm hover:bg-gray-50 active:cursor-grabbing"
+            aria-label="Drag to reorder section"
+            title="Drag to reorder"
+          >
+            <GripVertical size={16} />
+          </div>
+        )}
+        {inner}
+      </div>
+    );
+  }
 
   // Counsellor: assigned leads
   const [assignedLeads, setAssignedLeads] = useState<IAssignedLead[]>([]);
@@ -845,7 +987,7 @@ export default function DashboardPage() {
       )}
 
       {/* Page Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">
             {isAdmin ? "Admin overview" : "Dashboard"}
@@ -854,8 +996,9 @@ export default function DashboardPage() {
             Welcome back, {session?.user?.name} - {branding.companyName}
           </p>
         </div>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
         {isAdmin && (
-          <div className="flex items-center gap-2">
+          <>
             {/* Refetch spinner */}
             {refetching && (
               <span className="w-3.5 h-3.5 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
@@ -962,11 +1105,42 @@ export default function DashboardPage() {
               <Upload size={13} />
               Import Leads
             </button>
+            {showDashboardLayoutTools && (
+              <button
+                type="button"
+                onClick={() => setDashboardLayoutEdit((v) => !v)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                  dashboardLayoutEdit
+                    ? "bg-blue-600 text-white border-blue-600"
+                    : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                }`}
+                title="Drag sections by the grip to reorder. Your layout is saved for this account."
+              >
+                <LayoutGrid size={13} />
+                {dashboardLayoutEdit ? "Done arranging" : "Arrange layout"}
+              </button>
+            )}
             <span className="text-xs font-medium px-2.5 py-1 rounded-md bg-gray-100 text-gray-600 border border-gray-200">
               Super Admin
             </span>
-          </div>
+          </>
         )}
+        {!isAdmin && showDashboardLayoutTools && (
+            <button
+              type="button"
+              onClick={() => setDashboardLayoutEdit((v) => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                dashboardLayoutEdit
+                  ? "bg-blue-600 text-white border-blue-600"
+                  : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+              }`}
+              title="Drag sections by the grip to reorder. Saved per user and role."
+            >
+              <LayoutGrid size={13} />
+              {dashboardLayoutEdit ? "Done arranging" : "Arrange layout"}
+            </button>
+        )}
+        </div>
       </div>
 
       {session &&
@@ -1172,64 +1346,100 @@ export default function DashboardPage() {
             </div>
         );
 
-        const renderAdminSingle = (id: string): ReactNode => {
-          if (id === "admin_kpis") {
+        const renderAdminKpiCard = (kid: AdminKpiCardId): ReactNode => {
+          const cardClass =
+            "group flex h-full min-h-[9.5rem] w-full min-w-0 flex-col bg-white border border-gray-200 rounded-lg p-5 hover:border-gray-300 hover:shadow-sm transition-all";
+          if (kid === "admin_kpi_total_leads") {
             return (
-          <div className="grid w-full grid-cols-2 lg:grid-cols-4 gap-4 items-stretch">
-            {[
-              {
-                label: "Total leads",
-                value: data.summary.totalLeads,
-                sub: `${data.summary.convertedLeads} converted to students`,
-                icon: Users,
-                href: "/leads",
-              },
-              {
-                label: "Students",
-                value: data.summary.totalStudents,
-                sub: "Records in selected period",
-                icon: UserCheck,
-                href: "/students",
-              },
-              {
-                label: "Applications",
-                value: data.summary.totalApplications,
-                sub: "Submitted in period",
-                icon: FileText,
-                href: "/applications",
-              },
-              {
-                label: "Conversion rate",
-                value: `${data.summary.conversionRate}%`,
-                sub: "Leads → students",
-                icon: TrendingUp,
-                href: "/reports",
-              },
-            ].map((card) => {
-              const Icon = card.icon;
-              return (
-                <Link
-                  key={card.label}
-                  href={card.href}
-                  className="group flex h-full min-h-[9.5rem] w-full min-w-0 flex-col bg-white border border-gray-200 rounded-lg p-5 hover:border-gray-300 hover:shadow-sm transition-all"
-                >
-                  <div className="flex items-start justify-between shrink-0 mb-3">
-                    <div className="p-2 bg-gray-50 border border-gray-200 rounded-md">
-                      <Icon size={16} className="text-gray-600" />
-                    </div>
-                    <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-500 transition-colors mt-1" />
+              <Link href="/leads" className={cardClass}>
+                <div className="flex items-start justify-between shrink-0 mb-3">
+                  <div className="p-2 bg-gray-50 border border-gray-200 rounded-md">
+                    <Users size={16} className="text-gray-600" />
                   </div>
-                  <p className="text-2xl font-semibold text-gray-900 tracking-tight tabular-nums shrink-0">{card.value}</p>
-                  <div className="mt-auto pt-3 space-y-0.5">
-                    <p className="text-xs font-medium text-gray-700 leading-snug">{card.label}</p>
-                    <p className="text-xs text-gray-500 leading-snug line-clamp-2">{card.sub}</p>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
+                  <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-500 transition-colors mt-1" />
+                </div>
+                <p className="text-2xl font-semibold text-gray-900 tracking-tight tabular-nums shrink-0">{data.summary.totalLeads}</p>
+                <div className="mt-auto pt-3 space-y-0.5">
+                  <p className="text-xs font-medium text-gray-700 leading-snug">Total leads</p>
+                  <p className="text-xs text-gray-500 leading-snug line-clamp-2">
+                    {data.summary.convertedLeads} converted to students
+                  </p>
+                </div>
+              </Link>
             );
           }
+          if (kid === "admin_kpi_students") {
+            return (
+              <Link href="/students" className={cardClass}>
+                <div className="flex items-start justify-between shrink-0 mb-3">
+                  <div className="p-2 bg-gray-50 border border-gray-200 rounded-md">
+                    <UserCheck size={16} className="text-gray-600" />
+                  </div>
+                  <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-500 transition-colors mt-1" />
+                </div>
+                <p className="text-2xl font-semibold text-gray-900 tracking-tight tabular-nums shrink-0">{data.summary.totalStudents}</p>
+                <div className="mt-auto pt-3 space-y-0.5">
+                  <p className="text-xs font-medium text-gray-700 leading-snug">Students</p>
+                  <p className="text-xs text-gray-500 leading-snug line-clamp-2">Records in selected period</p>
+                </div>
+              </Link>
+            );
+          }
+          if (kid === "admin_kpi_applications") {
+            return (
+              <Link href="/applications" className={cardClass}>
+                <div className="flex items-start justify-between shrink-0 mb-3">
+                  <div className="p-2 bg-gray-50 border border-gray-200 rounded-md">
+                    <FileText size={16} className="text-gray-600" />
+                  </div>
+                  <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-500 transition-colors mt-1" />
+                </div>
+                <p className="text-2xl font-semibold text-gray-900 tracking-tight tabular-nums shrink-0">{data.summary.totalApplications}</p>
+                <div className="mt-auto pt-3 space-y-0.5">
+                  <p className="text-xs font-medium text-gray-700 leading-snug">Applications</p>
+                  <p className="text-xs text-gray-500 leading-snug line-clamp-2">Submitted in period</p>
+                </div>
+              </Link>
+            );
+          }
+          if (kid === "admin_kpi_conversion") {
+            return (
+              <Link href="/reports" className={cardClass}>
+                <div className="flex items-start justify-between shrink-0 mb-3">
+                  <div className="p-2 bg-gray-50 border border-gray-200 rounded-md">
+                    <TrendingUp size={16} className="text-gray-600" />
+                  </div>
+                  <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-500 transition-colors mt-1" />
+                </div>
+                <p className="text-2xl font-semibold text-gray-900 tracking-tight tabular-nums shrink-0">{data.summary.conversionRate}%</p>
+                <div className="mt-auto pt-3 space-y-0.5">
+                  <p className="text-xs font-medium text-gray-700 leading-snug">Conversion rate</p>
+                  <p className="text-xs text-gray-500 leading-snug line-clamp-2">Leads → students</p>
+                </div>
+              </Link>
+            );
+          }
+          if (kid === "admin_kpi_counselled") {
+            return (
+              <Link href="/reports" className={cardClass}>
+                <div className="flex items-start justify-between shrink-0 mb-3">
+                  <div className="p-2 bg-gray-50 border border-gray-200 rounded-md">
+                    <Clock size={16} className="text-gray-600" />
+                  </div>
+                  <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-500 transition-colors mt-1" />
+                </div>
+                <p className="text-2xl font-semibold text-gray-900 tracking-tight tabular-nums shrink-0">{data.summary.leadsCounselled ?? 0}</p>
+                <div className="mt-auto pt-3 space-y-0.5">
+                  <p className="text-xs font-medium text-gray-700 leading-snug">Counselled</p>
+                  <p className="text-xs text-gray-500 leading-snug line-clamp-2">Counselled / phone counselling in period</p>
+                </div>
+              </Link>
+            );
+          }
+          return null;
+        };
+
+        const renderAdminSingle = (id: string): ReactNode => {
           if (id === "admin_pipeline") {
             return (
           <div className="w-full">
@@ -1330,12 +1540,13 @@ export default function DashboardPage() {
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
                         {lead.status && (
                           <span className="hidden sm:inline text-[10px] px-2 py-0.5 rounded border border-gray-200 bg-white text-gray-600 max-w-[7rem] truncate">
                             {lead.status}
                           </span>
                         )}
+                        <CounselledTimeInline statusDates={lead.statusDates} />
                         <span className={`text-xs px-2 py-0.5 rounded-md font-medium border border-transparent ${getStatusColor(lead.standing)}`}>
                           {STATUS_LABELS[lead.standing] ?? lead.standing}
                         </span>
@@ -1434,23 +1645,130 @@ export default function DashboardPage() {
           return null;
         };
 
+        const layoutEditActive = showDashboardLayoutTools && dashboardLayoutEdit;
+
+        const wrapAdminSection = (chunk: AdminDashboardChunk, chunkIdx: number, inner: ReactNode) => (
+          <div
+            key={chunkStableKey(chunk, chunkIdx)}
+            className={`relative rounded-xl ${layoutEditActive ? "pl-10 ring-1 ring-dashed ring-blue-300/90 bg-blue-50/20" : ""}`}
+            onDragOver={
+              layoutEditActive
+                ? (e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                  }
+                : undefined
+            }
+            onDrop={
+              layoutEditActive
+                ? (e) => {
+                    e.preventDefault();
+                    const from = parseInt(e.dataTransfer.getData(DASHBOARD_DND_MIME), 10);
+                    if (Number.isNaN(from)) return;
+                    reorderAdminDashboardChunks(from, chunkIdx);
+                  }
+                : undefined
+            }
+          >
+            {layoutEditActive && (
+              <div
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData(DASHBOARD_DND_MIME, String(chunkIdx));
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                className="absolute left-0 top-3 z-10 flex h-9 w-8 cursor-grab items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-sm hover:bg-gray-50 active:cursor-grabbing"
+                aria-label="Drag to reorder section"
+                title="Drag to reorder"
+              >
+                <GripVertical size={16} />
+              </div>
+            )}
+            {inner}
+          </div>
+        );
+
         return (
         <div className={`space-y-6 transition-opacity duration-200 ${refetching ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
           {adminChunks.map((chunk, chunkIdx) => {
             if (chunk.type === "charts") {
               const grid =
                 chunk.ids.length >= 3 ? "lg:grid-cols-3" : chunk.ids.length === 2 ? "lg:grid-cols-2" : "lg:grid-cols-1";
-              return (
-                <div key={`charts-${chunkIdx}`} className={`grid grid-cols-1 gap-4 ${grid}`}>
+              return wrapAdminSection(
+                chunk,
+                chunkIdx,
+                <div className={`grid grid-cols-1 gap-4 ${grid}`}>
                   {chunk.ids.map((cid) => (
                     <Fragment key={cid}>{renderAdminChart(cid)}</Fragment>
                   ))}
                 </div>
               );
             }
+            if (chunk.type === "kpis") {
+              const kpiEdit = layoutEditActive;
+              return wrapAdminSection(
+                chunk,
+                chunkIdx,
+                <div className="grid w-full grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 items-stretch">
+                  {chunk.ids.map((kid, ki) => {
+                    const inner = renderAdminKpiCard(kid);
+                    if (!inner) return null;
+                    return (
+                      <div
+                        key={kid}
+                        className={`relative min-w-0 ${kpiEdit ? "pl-9" : ""}`}
+                        onDragOver={
+                          kpiEdit
+                            ? (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                e.dataTransfer.dropEffect = "move";
+                              }
+                            : undefined
+                        }
+                        onDrop={
+                          kpiEdit
+                            ? (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const raw = e.dataTransfer.getData(DASHBOARD_KPI_DND_MIME);
+                                const parts = raw.split(":");
+                                if (parts.length !== 2) return;
+                                const cIdx = parseInt(parts[0]!, 10);
+                                const fromIdx = parseInt(parts[1]!, 10);
+                                if (Number.isNaN(cIdx) || Number.isNaN(fromIdx) || cIdx !== chunkIdx) return;
+                                reorderAdminKpiCards(chunkIdx, fromIdx, ki);
+                              }
+                            : undefined
+                        }
+                      >
+                        {kpiEdit && (
+                          <div
+                            draggable
+                            onDragStart={(e) => {
+                              e.stopPropagation();
+                              e.dataTransfer.setData(DASHBOARD_KPI_DND_MIME, `${chunkIdx}:${ki}`);
+                              e.dataTransfer.effectAllowed = "move";
+                            }}
+                            className="absolute left-0 top-3 z-10 flex h-8 w-7 cursor-grab items-center justify-center rounded-md border border-blue-200 bg-white text-blue-600 shadow-sm hover:bg-blue-50 active:cursor-grabbing"
+                            aria-label="Drag to reorder KPI card"
+                            title="Reorder card in row"
+                          >
+                            <GripVertical size={14} />
+                          </div>
+                        )}
+                        {inner}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            }
             if (chunk.type === "twin") {
-              return (
-                <div key={`twin-${chunkIdx}`} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              return wrapAdminSection(
+                chunk,
+                chunkIdx,
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <div>
                     {chunk.leftId === "admin_activity" ? renderAdminActivity() : renderAdminNotifications()}
                   </div>
@@ -1461,7 +1779,7 @@ export default function DashboardPage() {
               );
             }
             const node = renderAdminSingle(chunk.id);
-            return node ? <Fragment key={chunk.id}>{node}</Fragment> : null;
+            return node ? wrapAdminSection(chunk, chunkIdx, node) : null;
           })}
         </div>
         );
@@ -1472,14 +1790,16 @@ export default function DashboardPage() {
         <>
           {isOtherDashboardRole && (
             <div className="space-y-6">
-              {resolveOrderedWidgetIds("other", dashboardWidgetToggles, dashboardWidgetOrder).map((wid) => (
-                <Fragment key={wid}>
-                  {wid === "staff_inventory_summary" &&
-                    hasPermission(userPermissions, "inventory", role) &&
-                    showDw("staff_inventory_summary") && (
-                      <InventorySummaryWidgets />
-                    )}
-                  {wid === "generic_quick_links" && showDw("generic_quick_links") && (
+              {resolveOrderedWidgetIds("other", dashboardWidgetToggles, dashboardWidgetOrder).map((wid, idx) => {
+                let block: ReactNode = null;
+                if (
+                  wid === "staff_inventory_summary" &&
+                  hasPermission(userPermissions, "inventory", role) &&
+                  showDw("staff_inventory_summary")
+                ) {
+                  block = <InventorySummaryWidgets />;
+                } else if (wid === "generic_quick_links" && showDw("generic_quick_links")) {
+                  block = (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {[
                         { label: "Leads", href: "/leads", module: "leads", icon: Users, desc: "View and manage your assigned leads" },
@@ -1503,9 +1823,10 @@ export default function DashboardPage() {
                           );
                         })}
                     </div>
-                  )}
-                </Fragment>
-              ))}
+                  );
+                }
+                return wrapDraggableSection("other", idx, wid, block);
+              })}
             </div>
           )}
 
@@ -1664,6 +1985,7 @@ export default function DashboardPage() {
                               </p>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
+                              <CounselledTimeInline statusDates={lead.statusDates} />
                               <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${getStatusColor(lead.standing)}`}>
                                 {STATUS_LABELS[lead.standing] ?? lead.standing}
                               </span>
@@ -2037,9 +2359,10 @@ export default function DashboardPage() {
 
             return (
               <div className="space-y-6">
-                {teleOrder.map((tid) => (
-                  <Fragment key={tid}>
-                {tid === "telecaller_header" && showDw("telecaller_header") && (
+                {teleOrder.map((tid, idx) => {
+                  let block: ReactNode = null;
+                  if (tid === "telecaller_header" && showDw("telecaller_header")) {
+                    block = (
                 <div className="bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-start gap-3">
@@ -2069,9 +2392,9 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </div>
-                )}
-
-                {tid === "telecaller_today_targets" && showDw("telecaller_today_targets") && (
+                    );
+                  } else if (tid === "telecaller_today_targets" && showDw("telecaller_today_targets")) {
+                    block = (
                 <div>
                   <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Today&apos;s targets</h2>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -2113,9 +2436,9 @@ export default function DashboardPage() {
                     })}
                   </div>
                 </div>
-                )}
-
-                {tid === "telecaller_overview_primary" && showDw("telecaller_overview_primary") && (
+                    );
+                  } else if (tid === "telecaller_overview_primary" && showDw("telecaller_overview_primary")) {
+                    block = (
                 <div>
                   <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Lead overview</h2>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -2143,9 +2466,9 @@ export default function DashboardPage() {
                     })}
                   </div>
                 </div>
-                )}
-
-                {tid === "telecaller_overview_secondary" && showDw("telecaller_overview_secondary") && (
+                    );
+                  } else if (tid === "telecaller_overview_secondary" && showDw("telecaller_overview_secondary")) {
+                    block = (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
                     { label: "Phone counselling", value: ot.phoneCounselling, icon: PhoneCall, sub: "Counselled over phone", href: `/enquiries?bucket=${TELECALLER_OVERVIEW_PHONE_COUNSELLING}` as const },
@@ -2172,9 +2495,9 @@ export default function DashboardPage() {
                     );
                   })}
                 </div>
-                )}
-
-                {tid === "telecaller_recent_leads" && showDw("telecaller_recent_leads") && (
+                    );
+                  } else if (tid === "telecaller_recent_leads" && showDw("telecaller_recent_leads")) {
+                    block = (
                 <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
                   <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 bg-gray-50">
                     <div className="flex items-center gap-2">
@@ -2241,9 +2564,10 @@ export default function DashboardPage() {
                     </div>
                   )}
                 </div>
-                )}
-                  </Fragment>
-                ))}
+                    );
+                  }
+                  return wrapDraggableSection("telecaller", idx, tid, block);
+                })}
               </div>
             );
           })()}
