@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Eye, EyeOff, Lock, Mail, ArrowRight } from "lucide-react";
 import { useBranding } from "@/app/branding-context";
 import Image from "next/image";
@@ -160,7 +161,13 @@ export default function LoginPage() {
 
           {/* Additional Info */}
           <p className="text-center text-xs text-white/50">
-            Restricted access - Authorized staff only
+            Restricted access — authorized staff only
+          </p>
+          <p className="text-center text-xs text-blue-200/80 mt-3">
+            New customer?{" "}
+            <Link href="/trial" className="text-white font-semibold hover:underline underline-offset-2">
+              Start a free trial
+            </Link>
           </p>
         </div>
 

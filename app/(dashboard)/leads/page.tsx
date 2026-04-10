@@ -16,6 +16,7 @@ import {
   getLeadStageDotColor,
   hasModuleAction,
 } from "@/lib/utils";
+import { isOrgWideAdmin } from "@/lib/roleGuards";
 
 const DEFAULT_COUNTRIES = COUNTRIES;
 import { ILead, LeadSource, LeadStanding } from "@/types";
@@ -78,7 +79,7 @@ function LeadsPageContent() {
 
   useEffect(() => {
     if (!session?.user) return;
-    if (isEnquiriesRoute && session.user.role !== "telecaller" && session.user.role !== "super_admin") {
+    if (isEnquiriesRoute && session.user.role !== "telecaller" && !isOrgWideAdmin(session.user.role)) {
       router.replace("/dashboard");
     }
   }, [session?.user, isEnquiriesRoute, router]);
@@ -526,14 +527,14 @@ function LeadsPageContent() {
 
   const userPermissions = (session?.user?.permissions ?? []) as string[];
   const userRole = session?.user?.role;
-  const canCreateLeadByRole = ["super_admin", "telecaller", "front_desk", "counsellor"].includes(userRole || "");
+  const canCreateLeadByRole = ["super_admin", "org_admin", "telecaller", "front_desk", "counsellor"].includes(userRole || "");
   const canCreate = canCreateLeadByRole && hasModuleAction(userPermissions, userRole, "leads", "add");
-  const canAssign = ["super_admin", "telecaller", "front_desk"].includes(session?.user?.role || "");
-  const canUpdateStatus = ["super_admin", "counsellor", "telecaller", "front_desk", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
+  const canAssign = ["super_admin", "org_admin", "telecaller", "front_desk"].includes(session?.user?.role || "");
+  const canUpdateStatus = ["super_admin", "org_admin", "counsellor", "telecaller", "front_desk", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
   // counsellors no longer need access to stage controls
-  const canUpdateStage = ["super_admin", "telecaller", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
+  const canUpdateStage = ["super_admin", "org_admin", "telecaller", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
   const canExport = hasModuleAction(userPermissions, userRole, "leads", "export");
-  const isAdmin = session?.user?.role === "super_admin";
+  const isAdmin = isOrgWideAdmin(session?.user?.role);
 
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);

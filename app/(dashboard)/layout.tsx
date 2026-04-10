@@ -3,6 +3,8 @@ import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { hasPermission, getRoleLabel, formatDateTime } from "@/lib/utils";
+import { isOrgWideAdmin } from "@/lib/roleGuards";
+import { differenceInCalendarDays } from "date-fns";
 import {
   LayoutDashboard, Users, UserCheck, FileText, FolderOpen,
   GraduationCap, Plane, BarChart3, Settings, Building2,
@@ -10,6 +12,7 @@ import {
   ClipboardList,
   Package,
   Briefcase,
+  Landmark,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { UserRole } from "@/types";
@@ -205,7 +208,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const userPermissions = (session.user?.permissions ?? []) as string[];
     const chatAllowed =
       hasPermission(userPermissions, "chat", role) &&
-      (!enabledModules || enabledModules.includes("chat") || role === "super_admin");
+      (!enabledModules || enabledModules.includes("chat") || isOrgWideAdmin(role));
     if (!chatAllowed) return;
 
     // Lazy-init audio element
@@ -270,19 +273,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const userPermissions = (session?.user?.permissions ?? []) as string[];
   const canViewUniversityRequirements = hasPermission(userPermissions, "settings", role);
-  const canViewHrManagement = role === "super_admin" || session?.user?.hrRole === "admin";
+  const canViewHrManagement =
+    hasPermission(userPermissions, "hr", role) &&
+    (!enabledModules || enabledModules.includes("hr") || isOrgWideAdmin(role));
 
   const visibleNav = useMemo(() => {
     let items = navItems.filter((item) => {
       if (item.module === "dashboard") return true;
-      if (enabledModules && !enabledModules.includes(item.module) && role !== "super_admin") return false;
+      if (enabledModules && !enabledModules.includes(item.module) && !isOrgWideAdmin(role)) return false;
       return hasPermission(userPermissions, item.module, role);
     });
     if (role === "telecaller") {
       items = items.map((item) =>
         item.href === "/leads" ? { ...item, href: "/enquiries", label: "Enquiries" } : item
       );
-    } else if (role === "super_admin") {
+    } else if (isOrgWideAdmin(role)) {
       const leadsIdx = items.findIndex((i) => i.href === "/leads");
       if (leadsIdx !== -1) {
         const copy = [...items];
@@ -373,6 +378,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             >
               <Briefcase size={18} />
               HR management
+            </Link>
+          )}
+          {role === "super_admin" && (
+            <Link
+              href="/organizations"
+              onClick={() => setSidebarOpen(false)}
+              className={`flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors
+                ${pathname === "/organizations" ? "text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}
+              style={pathname === "/organizations" ? { backgroundColor: branding.brandColor } : undefined}
+            >
+              <Landmark size={18} />
+              Organizations
             </Link>
           )}
           {hasPermission(userPermissions, "settings", role) && (
@@ -484,7 +501,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </Link>
           )}
           {/* Chat Icon */}
-          {hasPermission(userPermissions, "chat", role) && (!enabledModules || enabledModules.includes("chat") || role === "super_admin") && (
+          {hasPermission(userPermissions, "chat", role) && (!enabledModules || enabledModules.includes("chat") || isOrgWideAdmin(role)) && (
             <Link href="/chat" className="relative p-2 rounded-md text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors">
               <MessageCircle size={18} />
               {chatUnreadCount > 0 && (
@@ -590,6 +607,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
+          {session?.user?.role !== "super_admin" &&
+            session?.user?.orgSubscriptionStatus === "trialing" &&
+            session?.user?.orgTrialEndsAt &&
+            session?.user?.orgAccessAllowed && (
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <strong>Free trial.</strong>{" "}
+                {(() => {
+                  const end = new Date(session.user.orgTrialEndsAt);
+                  const days = differenceInCalendarDays(end, new Date());
+                  const label = days < 0 ? "ended" : days === 0 ? "ends today" : `${days} day${days === 1 ? "" : "s"} left`;
+                  return (
+                    <>
+                      {label} ({end.toLocaleDateString(undefined, { dateStyle: "medium" })}). Contact us to keep full
+                      access after trial.
+                    </>
+                  );
+                })()}
+              </div>
+            )}
           {children}
         </main>
       </div>

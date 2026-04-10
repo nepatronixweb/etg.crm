@@ -3,11 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { Briefcase, Calendar, Loader2, Users, RefreshCw, MapPin } from "lucide-react";
+import { canAccessHrManagement } from "@/lib/hr/auth";
 
 function isHrAdminClient(session: ReturnType<typeof useSession>["data"]): boolean {
-  if (!session?.user) return false;
-  if (session.user.role === "super_admin") return true;
-  return session.user.hrRole === "admin";
+  return canAccessHrManagement(session?.user ?? null);
 }
 
 function normalizeIpDisplay(ip: string): string {

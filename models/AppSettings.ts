@@ -1,9 +1,11 @@
-import mongoose, { Schema, Document, Model } from "mongoose";
+import mongoose, { Schema, Document, Model, Types } from "mongoose";
 import { DEFAULT_APPLICATION_ROLES } from "@/lib/applicationRoles";
 import { DEFAULT_TELECALLER_TRANSFER_OUTCOMES } from "@/lib/telecallerTransferConfig";
 import { universityEntriesFromNames, type UniversityEntry } from "@/lib/countryUniversities";
 
 export interface IAppSettings extends Document {
+  /** When set, this row is the app config for that tenant only. Exactly one row has `null` (platform / legacy ETG). */
+  organization: Types.ObjectId | null;
   // Branding
   companyName: string;
   shortCode: string;
@@ -63,6 +65,10 @@ export interface IAppSettings extends Document {
     requiresCounsellor?: boolean;
     requiresAppointmentDate?: boolean;
   }[];
+  /** Dashboard section visibility (widget id → shown). Omitted ids default to visible. */
+  dashboardWidgets: Record<string, boolean>;
+  /** Per-audience widget order (ids only; merged with defaults on read). */
+  dashboardWidgetOrder: Record<string, string[]>;
 }
 
 /** String-only seed; converted to `UniversityEntry[]` for schema default typing. */
@@ -101,6 +107,7 @@ const DEFAULT_COUNTRIES_SEEDED = RAW_SEED_COUNTRIES.map((c) => ({
 
 const AppSettingsSchema = new Schema<IAppSettings>(
   {
+    organization: { type: Schema.Types.ObjectId, ref: "Organization", default: null },
     // Branding
     companyName: { type: String, default: "Education Tree Global" },
     shortCode:   { type: String, default: "ETG" },
@@ -343,7 +350,7 @@ const AppSettingsSchema = new Schema<IAppSettings>(
       type: [String],
       default: [
         "leads", "students", "documents", "applications", "admissions", "visa", "analytics",
-        "branches", "users", "activity_logs", "settings", "commission", "inventory",
+        "branches", "users", "activity_logs", "settings", "commission", "inventory", "hr",
       ],
     },
     commissionPercentByCountry: { type: Schema.Types.Mixed, default: () => ({}) },
@@ -379,8 +386,16 @@ const AppSettingsSchema = new Schema<IAppSettings>(
       ],
       default: () => DEFAULT_TELECALLER_TRANSFER_OUTCOMES.map((o) => ({ ...o })),
     },
+    dashboardWidgets: { type: Schema.Types.Mixed, default: () => ({}) },
+    dashboardWidgetOrder: { type: Schema.Types.Mixed, default: () => ({}) },
   },
   { timestamps: true }
+);
+
+/** Tenant rows must have unique `organization`; multiple platform rows (`organization: null`) allowed only by convention (app uses one). */
+AppSettingsSchema.index(
+  { organization: 1 },
+  { unique: true, partialFilterExpression: { organization: { $type: "objectId" } } }
 );
 
 const AppSettings: Model<IAppSettings> =

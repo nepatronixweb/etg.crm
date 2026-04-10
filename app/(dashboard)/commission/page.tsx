@@ -102,6 +102,33 @@ function commissionStatusLabel(raw: unknown): string {
   return "-";
 }
 
+/** Parse course fee / money-like text (strip commas, spaces). */
+function parseMoneyLikeInput(s: string): number {
+  const t = String(s).replace(/,/g, "").replace(/\s/g, "").trim();
+  if (!t) return NaN;
+  const n = parseFloat(t);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function formatCalculatedCommissionAmount(n: number): string {
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function effectiveCommissionPercent(percentField: string, country: string, percentMap: Record<string, number>): number {
+  const p = parseFloat(String(percentField).replace(",", ".").trim());
+  if (Number.isFinite(p) && p >= 0) return p;
+  return resolveCommissionPercent(country, percentMap);
+}
+
+function calculatedCommissionFromRow(row: Record<string, unknown>): string {
+  const pct = Number(row.commissionPercent);
+  const fee = parseMoneyLikeInput(String(row.courseAnnualFee ?? ""));
+  if (!Number.isFinite(pct) || !Number.isFinite(fee) || fee <= 0) return "-";
+  const sym = String(row.currencySymbol ?? "").trim();
+  const amount = formatCalculatedCommissionAmount((pct / 100) * fee);
+  return sym ? `${sym} ${amount}` : amount;
+}
+
 const fieldClass =
   "w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400";
 const labelClass = "block text-xs font-semibold text-gray-600 mb-1.5";
@@ -115,6 +142,8 @@ const emptyForm = {
   courseEndDate: "",
   courseAnnualFee: "",
   tuitionFeePaid: "",
+  /** Editable % for this record; empty uses Settings default for the destination when calculating. */
+  commissionPercent: "",
   amountFromPercent: "",
   intakeQuarter: "" as "" | "Q1" | "Q2" | "Q3" | "Q4",
   intakeYear: "",
@@ -188,6 +217,10 @@ function mapCommissionToForm(doc: Record<string, unknown>): typeof emptyForm {
     courseEndDate: dateFieldToInput(doc.courseEndDate),
     courseAnnualFee: String(doc.courseAnnualFee ?? ""),
     tuitionFeePaid: String(doc.tuitionFeePaid ?? ""),
+    commissionPercent:
+      doc.commissionPercent != null && doc.commissionPercent !== ""
+        ? String(doc.commissionPercent)
+        : "",
     amountFromPercent: String(doc.amountFromPercent ?? ""),
     intakeQuarter,
     intakeYear: String(doc.intakeYear ?? ""),
@@ -279,8 +312,23 @@ export default function CommissionPage() {
     return !form.universityName || universitiesForCountry.includes(form.universityName);
   }, [universitiesForCountry, form.universityName]);
 
-  const commissionPercent = resolveCommissionPercent(form.destinationCountry, percentMap);
   const currencySymbol = getCurrencySymbolForCountry(form.destinationCountry);
+  const resolvedDefaultPercent = useMemo(
+    () => resolveCommissionPercent(form.destinationCountry, percentMap),
+    [form.destinationCountry, percentMap]
+  );
+  const commissionPercentToSave = effectiveCommissionPercent(
+    form.commissionPercent,
+    form.destinationCountry,
+    percentMap
+  );
+  const calculatedCommissionDisplay = useMemo(() => {
+    const fee = parseMoneyLikeInput(form.courseAnnualFee);
+    if (!Number.isFinite(fee) || fee <= 0) return null;
+    const raw = (commissionPercentToSave / 100) * fee;
+    const formatted = formatCalculatedCommissionAmount(raw);
+    return currencySymbol ? `${currencySymbol} ${formatted}` : formatted;
+  }, [form.courseAnnualFee, commissionPercentToSave, currencySymbol]);
 
   useEffect(() => {
     if (!showCreateForm || !canAccess) return;
@@ -314,6 +362,7 @@ export default function CommissionPage() {
     setForm({
       ...emptyForm,
       ...filled,
+      commissionPercent: String(resolveCommissionPercent(filled.destinationCountry, percentMap)),
       amountFromPercent: "",
       claimableIntake: "",
       commissionDuration: "",
@@ -353,7 +402,7 @@ export default function CommissionPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...form,
-        commissionPercent,
+        commissionPercent: commissionPercentToSave,
         currencySymbol,
       }),
     });
@@ -526,13 +575,15 @@ export default function CommissionPage() {
             <select
               required
               value={form.destinationCountry}
-              onChange={(e) =>
+              onChange={(e) => {
+                const v = e.target.value;
                 setForm((f) => ({
                   ...f,
-                  destinationCountry: e.target.value,
+                  destinationCountry: v,
                   universityName: "",
-                }))
-              }
+                  commissionPercent: v ? String(resolveCommissionPercent(v, percentMap)) : "",
+                }));
+              }}
               className={fieldClass}
             >
               <option value="">Select country</option>
@@ -675,19 +726,39 @@ export default function CommissionPage() {
         </div>
 
         {form.destinationCountry && (
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Commission % (this destination)</p>
-              <p className="text-lg font-bold text-slate-900 mt-1">
-                {currencySymbol ? (
-                  <>
-                    {commissionPercent}% <span className="text-slate-500 font-normal">({currencySymbol})</span>
-                  </>
-                ) : (
-                  <>{commissionPercent}%</>
-                )}
+              <label className={labelClass}>Commission % (this destination)</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.01}
+                  value={form.commissionPercent}
+                  onChange={(e) => setForm((f) => ({ ...f, commissionPercent: e.target.value }))}
+                  className={fieldClass}
+                  placeholder={String(resolvedDefaultPercent)}
+                  aria-describedby="commission-percent-hint"
+                />
+                <span className="text-sm font-semibold text-slate-600 shrink-0">%</span>
+              </div>
+              <p id="commission-percent-hint" className="text-[11px] text-slate-400 mt-1">
+                Default from Settings for this country: {resolvedDefaultPercent}%
+                {currencySymbol ? ` (${currencySymbol})` : ""}. Leave blank to use that default for calculations and save.
               </p>
-              <p className="text-[11px] text-slate-400 mt-1">Override per country in Settings (stored as commission %) if needed.</p>
+            </div>
+            <div>
+              <label className={labelClass}>Calculated commission</label>
+              <div
+                className="w-full px-3 py-2.5 rounded-xl text-sm tabular-nums border border-slate-200 bg-white text-slate-900 min-h-[2.75rem] flex items-center"
+                aria-live="polite"
+              >
+                {calculatedCommissionDisplay ?? (
+                  <span className="text-slate-400">Enter course annual fee and commission %</span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">(Commission % ÷ 100) × course annual fee</p>
             </div>
             <div>
               <label className={labelClass}>Amount (after %)</label>
@@ -966,6 +1037,7 @@ export default function CommissionPage() {
                   <th className="px-4 py-2">OSHC claim</th>
                   <th className="px-4 py-2">Remarks</th>
                   <th className="px-4 py-2">%</th>
+                  <th className="px-4 py-2">Calculated commission</th>
                   <th className="px-4 py-2">Amount</th>
                   <th className="px-4 py-2">Status</th>
                   <th className="px-3 py-2 w-14 text-center" aria-label="Actions">
@@ -1031,6 +1103,7 @@ export default function CommissionPage() {
                     <td className="px-4 py-2 text-xs whitespace-nowrap">{oshcClaimLabel(row.oshcClaim)}</td>
                     <td className="px-4 py-2 text-xs whitespace-nowrap">{remarksStatusLabel(row.remarksStatus)}</td>
                     <td className="px-4 py-2 tabular-nums">{String(row.commissionPercent ?? "")}</td>
+                    <td className="px-4 py-2 tabular-nums text-xs">{calculatedCommissionFromRow(row)}</td>
                     <td className="px-4 py-2 tabular-nums">
                       {row.currencySymbol ? `${String(row.currencySymbol)} ` : ""}
                       {String(row.commissionAmount ?? row.amountFromPercent ?? "-")}

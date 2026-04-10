@@ -20,6 +20,12 @@ import {
   withFullModuleGranular,
 } from "@/lib/utils";
 import { useApplicationRolesCatalog, useBranding } from "@/app/branding-context";
+import { UserDashboardFormSection } from "@/components/users/UserDashboardFormSection";
+import {
+  mergeDashboardWidgetsFromApi,
+  mergeDashboardWidgetOrderFromApi,
+  type DashboardWidgetOrderState,
+} from "@/lib/dashboardLayout";
 
 interface User {
   _id: string;
@@ -38,6 +44,8 @@ interface User {
   workingDays?: number;
   workingHoursPerDay?: number;
   officeNetworkIp?: string;
+  dashboardWidgets?: Record<string, boolean>;
+  dashboardWidgetOrder?: DashboardWidgetOrderState;
 }
 
 type UserFormState = {
@@ -54,6 +62,8 @@ type UserFormState = {
   workingHoursPerDay: string;
   workingDays: string;
   officeNetworkIp: string;
+  userDashboardWidgets: Record<string, boolean>;
+  userDashboardOrder: DashboardWidgetOrderState;
 };
 
 /* ─── Role icon color (unknown slugs fall back) ─── */
@@ -65,6 +75,7 @@ const roleIconMap: Record<string, string> = {
   admission_team: "text-yellow-600",
   visa_team: "text-orange-500",
   front_desk: "text-gray-500",
+  account_finance: "text-teal-600",
 };
 
 export default function UsersPage() {
@@ -108,6 +119,8 @@ export default function UsersPage() {
     workingHoursPerDay: "8",
     workingDays: "26",
     officeNetworkIp: "",
+    userDashboardWidgets: {},
+    userDashboardOrder: {},
   }), [defaultCreatableRole, defaultPermissionsForSlug]);
 
   /* ─── State ─── */
@@ -122,21 +135,7 @@ export default function UsersPage() {
   const [showForm, setShowForm] = useState(false);
   const [editUser, setEditUser] = useState<User | null>(null);
   const [adminSessionIp, setAdminSessionIp] = useState<string | null>(null);
-  const [form, setForm] = useState<UserFormState>(() => ({
-    name: "",
-    email: "",
-    password: "",
-    role: "counsellor",
-    branch: "",
-    phone: "",
-    dateOfBirth: "",
-    target: "0",
-    permissions: [...ROLE_DEFAULT_PERMISSIONS.counsellor] as string[],
-    monthlySalary: "0",
-    workingHoursPerDay: "8",
-    workingDays: "26",
-    officeNetworkIp: "",
-  }));
+  const [form, setForm] = useState<UserFormState>(() => buildEmptyForm());
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState("");
   const [formSuccess, setFormSuccess] = useState("");
@@ -154,6 +153,34 @@ export default function UsersPage() {
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(() => new Set());
   const [bulkWorking, setBulkWorking] = useState(false);
   const selectAllRef = useRef<HTMLInputElement>(null);
+
+  const [tenantDashSettings, setTenantDashSettings] = useState<{
+    widgets: Record<string, boolean>;
+    order: DashboardWidgetOrderState;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!showForm) {
+      setTenantDashSettings(null);
+      return;
+    }
+    let cancelled = false;
+    void fetch("/api/settings/app")
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        setTenantDashSettings({
+          widgets: mergeDashboardWidgetsFromApi(d?.dashboardWidgets),
+          order: mergeDashboardWidgetOrderFromApi(d?.dashboardWidgetOrder),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setTenantDashSettings(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showForm]);
 
   /* ─── Fetch ─── */
   const fetchUsers = useCallback(async () => {
@@ -316,6 +343,9 @@ export default function UsersPage() {
       basePayload.officeNetworkIp = (form.officeNetworkIp || "").trim().slice(0, 128);
     }
 
+    basePayload.dashboardWidgets = form.userDashboardWidgets;
+    basePayload.dashboardWidgetOrder = form.userDashboardOrder;
+
     if (editUser) {
       const res = await fetch(`/api/users/${editUser._id}`, {
         method: "PUT",
@@ -370,6 +400,11 @@ export default function UsersPage() {
       workingHoursPerDay: String(u.workingHoursPerDay ?? 8),
       workingDays: String(u.workingDays ?? 26),
       officeNetworkIp: u.officeNetworkIp ?? "",
+      userDashboardWidgets:
+        u.dashboardWidgets && typeof u.dashboardWidgets === "object" && !Array.isArray(u.dashboardWidgets)
+          ? { ...u.dashboardWidgets }
+          : {},
+      userDashboardOrder: mergeDashboardWidgetOrderFromApi(u.dashboardWidgetOrder),
     });
     setFormError("");
     setFormSuccess("");
@@ -883,6 +918,8 @@ export default function UsersPage() {
                               ...form,
                               role: newRole,
                               permissions: defaultPermissionsForSlug(newRole),
+                              userDashboardWidgets: {},
+                              userDashboardOrder: {},
                             });
                           }}
                           className="appearance-none w-full pl-10 pr-9 py-2.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors cursor-pointer"
@@ -921,6 +958,18 @@ export default function UsersPage() {
                     </div>
                   </div>
                 </section>
+
+                {tenantDashSettings && (
+                  <UserDashboardFormSection
+                    roleSlug={form.role}
+                    tenantWidgets={tenantDashSettings.widgets}
+                    tenantOrder={tenantDashSettings.order}
+                    userWidgets={form.userDashboardWidgets}
+                    userOrder={form.userDashboardOrder}
+                    onChangeUserWidgets={(userDashboardWidgets) => setForm((f) => ({ ...f, userDashboardWidgets }))}
+                    onChangeUserOrder={(userDashboardOrder) => setForm((f) => ({ ...f, userDashboardOrder }))}
+                  />
+                )}
 
                 {isSuperAdmin && (
                   <section className="space-y-4">

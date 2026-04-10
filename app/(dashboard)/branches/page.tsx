@@ -1,10 +1,28 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { Plus, Building2 } from "lucide-react";
+import { Plus, Building2, X } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
-interface Branch { _id: string; name: string; location: string; phone?: string; email?: string; isActive: boolean; createdAt: string; }
+interface Branch { _id: string; name: string; location: string; phone?: string; email?: string; isActive: boolean; createdAt: string; organization?: string; }
+
+interface OrgOption { _id: string; name: string; subscriptionStatus: string }
+
+const SUBSCRIPTION_LABEL: Record<string, string> = {
+  trialing: "Free trial",
+  active: "Active",
+  expired: "Expired",
+  suspended: "Suspended",
+};
+
+const branchFieldClass =
+  "w-full min-h-[44px] px-3.5 py-2.5 text-[15px] leading-snug font-normal text-gray-900 " +
+  "placeholder:text-gray-500 " +
+  "bg-white border border-gray-300 rounded-xl shadow-sm " +
+  "focus:outline-none focus:ring-2 focus:ring-blue-500/35 focus:border-blue-600 " +
+  "[color-scheme:light]";
+
+const branchSelectClass = `${branchFieldClass} cursor-pointer appearance-none pr-10 bg-no-repeat`;
 
 export default function BranchesPage() {
   const { data: session } = useSession();
@@ -12,6 +30,10 @@ export default function BranchesPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: "", location: "", phone: "", email: "" });
+  const [orgOptions, setOrgOptions] = useState<OrgOption[]>([]);
+  const [branchOrgMode, setBranchOrgMode] = useState<"existing" | "new">("existing");
+  const [selectedOrgId, setSelectedOrgId] = useState("");
+  const [newOrganizationName, setNewOrganizationName] = useState("");
 
   const fetchBranches = async () => {
     setLoading(true);
@@ -23,16 +45,46 @@ export default function BranchesPage() {
 
   useEffect(() => { fetchBranches(); }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
+  const isSuperAdmin = session?.user?.role === "super_admin";
+  useEffect(() => {
+    if (!showForm || !isSuperAdmin) return;
+    fetch("/api/organizations")
+      .then((r) => r.json())
+      .then((d) => (Array.isArray(d) ? setOrgOptions(d) : setOrgOptions([])))
+      .catch(() => setOrgOptions([]));
+  }, [showForm, isSuperAdmin]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetch("/api/branches", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+    const payload: Record<string, unknown> = { ...form };
+    if (isSuperAdmin) {
+      if (branchOrgMode === "new") {
+        payload.createNewOrganization = true;
+        if (newOrganizationName.trim()) payload.newOrganizationName = newOrganizationName.trim();
+      } else {
+        payload.organizationId = selectedOrgId;
+      }
+    }
+    const res = await fetch("/api/branches", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(typeof err?.error === "string" ? err.error : "Could not create branch");
+      return;
+    }
     setShowForm(false);
     setForm({ name: "", location: "", phone: "", email: "" });
+    setBranchOrgMode("existing");
+    setSelectedOrgId("");
+    setNewOrganizationName("");
     fetchBranches();
   };
 
   const isAdmin =
-    session?.user?.role === "super_admin" ||
+    isSuperAdmin ||
     (session?.user?.permissions ?? []).includes("branches");
 
   return (
@@ -70,30 +122,165 @@ export default function BranchesPage() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-gray-900 text-lg">New Branch</h2>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="new-branch-title"
+          onClick={() => setShowForm(false)}
+        >
+          <div
+            className="bg-white text-gray-900 rounded-2xl shadow-xl border border-gray-200 w-full max-w-md max-h-[min(92vh,720px)] flex flex-col overflow-hidden [color-scheme:light]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 px-6 pt-6 pb-4 border-b border-gray-200">
+              <div>
+                <h2 id="new-branch-title" className="text-lg font-semibold text-gray-900 tracking-tight">
+                  New branch
+                </h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  {isSuperAdmin
+                    ? "Link to an existing billable organization, or start a new 15-day trial for a new customer."
+                    : "Add a location under your company’s subscription."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                className="shrink-0 p-2 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+                aria-label="Close"
+              >
+                <X size={20} />
+              </button>
             </div>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {[
-                { label: "Branch Name *", key: "name" },
-                { label: "Location *", key: "location" },
-                { label: "Phone", key: "phone" },
-                { label: "Email", key: "email" },
-              ].map(({ label, key }) => (
-                <div key={key}>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
-                  <input required={label.includes("*")} value={(form as Record<string, string>)[key]}
-                    onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              ))}
-              <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 border border-gray-200 rounded-lg text-sm">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium">Create</button>
+
+            <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+              <div className="px-6 py-5 overflow-y-auto space-y-5">
+                {isSuperAdmin && (
+                  <section className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-4 [color-scheme:light]">
+                    <h3 className="text-[11px] font-semibold uppercase tracking-wider text-blue-900/80">
+                      Organization
+                    </h3>
+                    <div className="space-y-3">
+                      <label className="flex items-start gap-3 cursor-pointer group">
+                        <input
+                          type="radio"
+                          name="orgMode"
+                          checked={branchOrgMode === "existing"}
+                          onChange={() => setBranchOrgMode("existing")}
+                          className="mt-1 size-4 shrink-0 border-gray-400 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span>
+                          <span className="block text-sm font-semibold text-gray-900">Existing organization</span>
+                          <span className="block text-sm text-gray-600 mt-0.5 leading-snug">
+                            Same subscription or trial as the org you pick below.
+                          </span>
+                        </span>
+                      </label>
+                      <label className="flex items-start gap-3 cursor-pointer group">
+                        <input
+                          type="radio"
+                          name="orgMode"
+                          checked={branchOrgMode === "new"}
+                          onChange={() => setBranchOrgMode("new")}
+                          className="mt-1 size-4 shrink-0 border-gray-400 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span>
+                          <span className="block text-sm font-semibold text-gray-900">New organization</span>
+                          <span className="block text-sm text-gray-600 mt-0.5 leading-snug">
+                            Starts a <span className="font-medium text-gray-800">15-day free trial</span> for a new
+                            customer.
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+                    {branchOrgMode === "existing" && (
+                      <div>
+                        <label htmlFor="branch-org-select" className="block text-sm font-semibold text-gray-900 mb-1.5">
+                          Organization <span className="text-red-600">*</span>
+                        </label>
+                        <select
+                          id="branch-org-select"
+                          required
+                          value={selectedOrgId}
+                          onChange={(e) => setSelectedOrgId(e.target.value)}
+                          className={branchSelectClass}
+                          style={{
+                            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
+                            backgroundPosition: "right 0.75rem center",
+                            backgroundSize: "1rem",
+                          }}
+                        >
+                          <option value="" className="text-gray-500">
+                            Choose an organization…
+                          </option>
+                          {orgOptions.map((o) => (
+                            <option key={o._id} value={o._id} className="text-gray-900">
+                              {o.name} — {SUBSCRIPTION_LABEL[o.subscriptionStatus] ?? o.subscriptionStatus}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    {branchOrgMode === "new" && (
+                      <div>
+                        <label htmlFor="branch-new-org-name" className="block text-sm font-semibold text-gray-900 mb-1.5">
+                          Organization name <span className="text-gray-500 font-normal">(optional)</span>
+                        </label>
+                        <input
+                          id="branch-new-org-name"
+                          value={newOrganizationName}
+                          onChange={(e) => setNewOrganizationName(e.target.value)}
+                          placeholder="Defaults to branch name if empty"
+                          className={branchFieldClass}
+                        />
+                      </div>
+                    )}
+                  </section>
+                )}
+
+                <section className="space-y-4">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Branch details</h3>
+                  {[
+                    { label: "Branch name", key: "name", required: true, placeholder: "e.g. Kathmandu — Main" },
+                    { label: "Location", key: "location", required: true, placeholder: "City, country" },
+                    { label: "Phone", key: "phone", required: false, placeholder: "Optional" },
+                    { label: "Email", key: "email", required: false, placeholder: "Optional" },
+                  ].map(({ label, key, required, placeholder }) => (
+                    <div key={key}>
+                      <label htmlFor={`branch-${key}`} className="block text-sm font-semibold text-gray-900 mb-1.5">
+                        {label}{" "}
+                        {required ? <span className="text-red-600">*</span> : <span className="text-gray-500 font-normal text-xs">(optional)</span>}
+                      </label>
+                      <input
+                        id={`branch-${key}`}
+                        required={required}
+                        value={(form as Record<string, string>)[key]}
+                        onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                        placeholder={placeholder}
+                        type={key === "email" ? "email" : "text"}
+                        autoComplete={key === "email" ? "email" : key === "phone" ? "tel" : "off"}
+                        className={branchFieldClass}
+                      />
+                    </div>
+                  ))}
+                </section>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
+                <button
+                  type="button"
+                  onClick={() => setShowForm(false)}
+                  className="px-4 py-2.5 text-sm font-medium text-gray-800 rounded-xl border border-gray-300 bg-white hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2.5 text-sm font-medium text-white rounded-xl bg-blue-600 hover:bg-blue-700 transition-colors min-w-[96px]"
+                >
+                  Create branch
+                </button>
               </div>
             </form>
           </div>

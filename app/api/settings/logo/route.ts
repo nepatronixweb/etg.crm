@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { put } from "@vercel/blob";
 import connectDB from "@/lib/mongodb";
-import AppSettings from "@/models/AppSettings";
+import { getAppSettingsDocumentForSession } from "@/lib/appSettingsScope";
 
 export async function POST(req: NextRequest) {
   try {
@@ -29,8 +29,7 @@ export async function POST(req: NextRequest) {
     const logoPath = blob.url;
 
     await connectDB();
-    let settings = await AppSettings.findOne();
-    if (!settings) settings = new AppSettings();
+    const settings = await getAppSettingsDocumentForSession(session);
     settings.logoPath = logoPath;
     await settings.save();
 

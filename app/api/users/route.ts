@@ -4,12 +4,36 @@ import connectDB from "@/lib/mongodb";
 import User from "@/models/User";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
-import AppSettings from "@/models/AppSettings";
+import Branch from "@/models/Branch";
+import { getAppSettingsLeanForOrganizationId } from "@/lib/appSettingsScope";
 import { isRoleSlugAllowed, normalizeApplicationRoles } from "@/lib/applicationRoles";
+import { getBranchIdsInOrganization, isBranchInOrganization } from "@/lib/orgUserScope";
 
 function canManageUsers(session: { user: { role: string; permissions?: string[] } }): boolean {
   if (session.user.role === "super_admin") return true;
   return (session.user.permissions ?? []).includes("users");
+}
+
+function sanitizeDashboardWidgets(input: unknown): Record<string, boolean> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {};
+  const o: Record<string, boolean> = {};
+  for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+    const key = String(k).slice(0, 128);
+    if (typeof v === "boolean") o[key] = v;
+  }
+  return o;
+}
+
+function sanitizeDashboardOrder(input: unknown): Record<string, string[]> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {};
+  const o: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+    const key = String(k).slice(0, 64);
+    if (Array.isArray(v) && v.every((x) => typeof x === "string")) {
+      o[key] = v.map((x) => String(x).slice(0, 128));
+    }
+  }
+  return o;
 }
 
 export async function GET(req: NextRequest) {
@@ -23,7 +47,23 @@ export async function GET(req: NextRequest) {
     const roleFilter = searchParams.get("role");
 
     if (roleFilter === "counsellor") {
-      const counsellors = await User.find({ role: "counsellor", isActive: true })
+      if (session.user.role === "super_admin") {
+        const counsellors = await User.find({ role: "counsellor", isActive: true })
+          .populate("branch", "name")
+          .select("_id name email role branch")
+          .sort({ name: 1 });
+        return NextResponse.json(counsellors);
+      }
+      const orgId = session.user.organizationId;
+      if (!orgId) {
+        return NextResponse.json([]);
+      }
+      const branchIds = await getBranchIdsInOrganization(orgId);
+      const counsellors = await User.find({
+        role: "counsellor",
+        isActive: true,
+        branch: { $in: branchIds },
+      })
         .populate("branch", "name")
         .select("_id name email role branch")
         .sort({ name: 1 });
@@ -33,7 +73,15 @@ export async function GET(req: NextRequest) {
     if (!canManageUsers(session)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const users = await User.find({}).populate("branch", "name").select("-password").sort({ createdAt: -1 });
+
+    const listFilter =
+      session.user.role === "super_admin"
+        ? {}
+        : session.user.organizationId
+          ? { branch: { $in: await getBranchIdsInOrganization(session.user.organizationId) } }
+          : { _id: { $exists: false } };
+
+    const users = await User.find(listFilter).populate("branch", "name").select("-password").sort({ createdAt: -1 });
     return NextResponse.json(users);
   } catch {
     return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 });
@@ -69,7 +117,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Only super admins can create super admin accounts" }, { status: 403 });
     }
 
-    const settingsDoc = await AppSettings.findOne().lean();
+    if (session.user.role !== "super_admin") {
+      if (!session.user.organizationId) {
+        return NextResponse.json({ error: "Organization context required" }, { status: 403 });
+      }
+      if (!branch) {
+        return NextResponse.json({ error: "Branch is required" }, { status: 400 });
+      }
+      const inOrg = await isBranchInOrganization(String(branch), session.user.organizationId);
+      if (!inOrg) {
+        return NextResponse.json({ error: "Branch is not in your organization" }, { status: 403 });
+      }
+    }
+
+    let orgIdForCatalog: string | null = session.user.organizationId ?? null;
+    if (branch) {
+      const br = await Branch.findById(branch).select("organization").lean();
+      if (br?.organization) orgIdForCatalog = br.organization.toString();
+    }
+    const settingsDoc = await getAppSettingsLeanForOrganizationId(orgIdForCatalog);
     const roleCatalog = normalizeApplicationRoles(settingsDoc?.applicationRoles);
     if (!isRoleSlugAllowed(String(role), roleCatalog)) {
       return NextResponse.json({ error: "Invalid role" }, { status: 400 });
@@ -79,6 +145,8 @@ export async function POST(req: NextRequest) {
     if (existing) return NextResponse.json({ error: "Email already exists" }, { status: 400 });
 
     const hashed = await bcrypt.hash(password, 10);
+    const dashboardWidgets = sanitizeDashboardWidgets(body.dashboardWidgets);
+    const dashboardWidgetOrder = sanitizeDashboardOrder(body.dashboardWidgetOrder);
     const hrPayload: Record<string, unknown> = {};
     if (session.user.role === "super_admin") {
       if (hrRole === "admin" || hrRole === "employee") hrPayload.hrRole = hrRole;
@@ -101,6 +169,8 @@ export async function POST(req: NextRequest) {
       dateOfBirth,
       phone,
       target,
+      dashboardWidgets,
+      dashboardWidgetOrder,
       ...hrPayload,
     });
 

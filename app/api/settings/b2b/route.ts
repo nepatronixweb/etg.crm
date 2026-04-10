@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import connectDB from "@/lib/mongodb";
 import AppSettings from "@/models/AppSettings";
+import { getAppSettingsDocumentForSession } from "@/lib/appSettingsScope";
 
-// GET - return current b2bNames
+// GET - return current b2bNames for the signed-in tenant (or platform when no session).
 export async function GET() {
   try {
     await connectDB();
-    const s = await AppSettings.findOne().select("b2bNames").lean();
-    return NextResponse.json({ b2bNames: s?.b2bNames || [] });
+    const session = await auth();
+    const s = await getAppSettingsDocumentForSession(session);
+    return NextResponse.json({ b2bNames: s.b2bNames || [] });
   } catch (err) {
     console.error("GET /api/settings/b2b error:", err);
     return NextResponse.json({ b2bNames: [] });
@@ -27,11 +29,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "name required" }, { status: 400 });
     }
     await connectDB();
-    const result = await AppSettings.findOneAndUpdate(
-      {},
+    const target = await getAppSettingsDocumentForSession(session);
+    const result = await AppSettings.findByIdAndUpdate(
+      target._id,
       { $addToSet: { b2bNames: name.trim() } },
-      { new: true, upsert: true }
+      { new: true }
     );
+    if (!result) return NextResponse.json({ error: "Settings not found" }, { status: 404 });
     console.log("POST /api/settings/b2b: added", name, "=> b2bNames:", result.b2bNames);
     return NextResponse.json({ b2bNames: result.b2bNames });
   } catch (err) {
@@ -52,8 +56,9 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "name required" }, { status: 400 });
     }
     await connectDB();
-    const result = await AppSettings.findOneAndUpdate(
-      {},
+    const target = await getAppSettingsDocumentForSession(session);
+    const result = await AppSettings.findByIdAndUpdate(
+      target._id,
       { $pull: { b2bNames: name.trim() } },
       { new: true }
     );

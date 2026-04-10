@@ -1,8 +1,20 @@
 import type { Session } from "next-auth";
+import { hasPermission } from "@/lib/utils";
 
-/** HR admin routes: super_admin or users explicitly marked hrRole admin (CRM `role` unchanged). */
+type HrAccessUser = {
+  role: string;
+  permissions?: string[];
+  hrRole?: string;
+} | null;
+
+/** HR admin UI and /api/hr/admin/* — permission `hr`, legacy hrRole admin, or platform/org admin. */
+export function canAccessHrManagement(user: HrAccessUser): boolean {
+  if (!user) return false;
+  const perms = (user.permissions ?? []) as string[];
+  if (hasPermission(perms, "hr", user.role)) return true;
+  return user.hrRole === "admin";
+}
+
 export function isHrAdmin(session: Session | null): boolean {
-  if (!session?.user) return false;
-  if (session.user.role === "super_admin") return true;
-  return session.user.hrRole === "admin";
+  return canAccessHrManagement(session?.user ?? null);
 }

@@ -4,12 +4,35 @@ import connectDB from "@/lib/mongodb";
 import User from "@/models/User";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
-import AppSettings from "@/models/AppSettings";
+import { getAppSettingsLeanForOrganizationId } from "@/lib/appSettingsScope";
 import { isRoleSlugAllowed, normalizeApplicationRoles } from "@/lib/applicationRoles";
+import { isBranchInOrganization, isUserInOrganization } from "@/lib/orgUserScope";
 
 function canManageUsers(session: { user: { role: string; permissions?: string[] } }): boolean {
   if (session.user.role === "super_admin") return true;
   return (session.user.permissions ?? []).includes("users");
+}
+
+function sanitizeDashboardWidgets(input: unknown): Record<string, boolean> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {};
+  const o: Record<string, boolean> = {};
+  for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+    const key = String(k).slice(0, 128);
+    if (typeof v === "boolean") o[key] = v;
+  }
+  return o;
+}
+
+function sanitizeDashboardOrder(input: unknown): Record<string, string[]> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {};
+  const o: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+    const key = String(k).slice(0, 64);
+    if (Array.isArray(v) && v.every((x) => typeof x === "string")) {
+      o[key] = v.map((x) => String(x).slice(0, 128));
+    }
+  }
+  return o;
 }
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -22,6 +45,15 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     await connectDB();
     const user = await User.findById(id).populate("branch", "name").select("-password");
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+    if (session.user.role !== "super_admin") {
+      if (!session.user.organizationId) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      const allowed = await isUserInOrganization(id, session.user.organizationId);
+      if (!allowed) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
     return NextResponse.json(user);
   } catch {
     return NextResponse.json({ error: "Failed to fetch user" }, { status: 500 });
@@ -36,6 +68,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
     const { id } = await params;
     await connectDB();
+
+    if (session.user.role !== "super_admin") {
+      if (!session.user.organizationId) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      const allowed = await isUserInOrganization(id, session.user.organizationId);
+      if (!allowed) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
+
     const body = await req.json();
 
     if (
@@ -82,7 +125,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     if (body.role !== undefined) {
-      const settingsDoc = await AppSettings.findOne().lean();
+      const targetUser = await User.findById(id).populate<{ branch: { organization?: { toString(): string } } | null }>(
+        "branch",
+        "organization"
+      );
+      let orgIdForCatalog: string | null = session.user.organizationId ?? null;
+      const br = targetUser?.branch;
+      if (br && typeof br === "object" && br.organization) {
+        orgIdForCatalog = br.organization.toString();
+      }
+      const settingsDoc = await getAppSettingsLeanForOrganizationId(orgIdForCatalog);
       const roleCatalog = normalizeApplicationRoles(settingsDoc?.applicationRoles);
       if (!isRoleSlugAllowed(String(body.role), roleCatalog)) {
         return NextResponse.json({ error: "Invalid role" }, { status: 400 });
@@ -99,8 +151,25 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       }
     }
 
+    if (session.user.role !== "super_admin" && session.user.organizationId && body.branch !== undefined) {
+      const raw = body.branch;
+      if (raw === null || raw === "") {
+        return NextResponse.json({ error: "Branch is required" }, { status: 400 });
+      }
+      const inOrg = await isBranchInOrganization(String(raw), session.user.organizationId);
+      if (!inOrg) {
+        return NextResponse.json({ error: "Branch is not in your organization" }, { status: 403 });
+      }
+    }
+
     const isPasswordReset = !!body.password;
     if (body.password) body.password = await bcrypt.hash(body.password, 10);
+    if (body.dashboardWidgets !== undefined) {
+      body.dashboardWidgets = sanitizeDashboardWidgets(body.dashboardWidgets);
+    }
+    if (body.dashboardWidgetOrder !== undefined) {
+      body.dashboardWidgetOrder = sanitizeDashboardOrder(body.dashboardWidgetOrder);
+    }
     const user = await User.findByIdAndUpdate(id, body, { new: true }).select("-password");
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
@@ -136,6 +205,13 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
     await connectDB();
 
     if (session.user.role !== "super_admin") {
+      if (!session.user.organizationId) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      const allowed = await isUserInOrganization(id, session.user.organizationId);
+      if (!allowed) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
       const target = await User.findById(id).select("role").lean();
       if (target?.role === "super_admin") {
         return NextResponse.json({ error: "Only super admins can deactivate super admin accounts" }, { status: 403 });

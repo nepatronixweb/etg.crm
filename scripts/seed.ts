@@ -23,8 +23,30 @@ if (!MONGODB_URI) {
 
 // ── Inline schemas (avoids circular import issues in ts-node) ─────────────────
 
+const OrganizationSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    subscriptionStatus: {
+      type: String,
+      enum: ["trialing", "active", "expired", "suspended"],
+      default: "active",
+    },
+    trialEndsAt: Date,
+    paidThrough: Date,
+    billingNote: { type: String, default: "" },
+  },
+  { timestamps: true }
+);
+
 const BranchSchema = new mongoose.Schema(
-  { name: String, location: String, phone: String, email: String, isActive: { type: Boolean, default: true } },
+  {
+    name: String,
+    location: String,
+    phone: String,
+    email: String,
+    isActive: { type: Boolean, default: true },
+    organization: { type: mongoose.Schema.Types.ObjectId, ref: "Organization" },
+  },
   { timestamps: true }
 );
 
@@ -49,6 +71,7 @@ const UserSchema = new mongoose.Schema(
 
 const AppSettingsSchema = new mongoose.Schema(
   {
+    organization:   { type: mongoose.Schema.Types.ObjectId, ref: "Organization", default: null },
     companyName:    { type: String, default: "Education Tree Global" },
     shortCode:      { type: String, default: "ETG" },
     tagline:        { type: String, default: "Your global education partner" },
@@ -110,12 +133,27 @@ async function seed() {
   await mongoose.connect(MONGODB_URI!);
   console.log("✅  Connected to MongoDB Atlas\n");
 
+  const Organization =
+    mongoose.models.Organization || mongoose.model("Organization", OrganizationSchema);
   const Branch     = mongoose.models.Branch     || mongoose.model("Branch",     BranchSchema);
   const User       = mongoose.models.User       || mongoose.model("User",       UserSchema);
   const AppSetting = mongoose.models.AppSetting || mongoose.model("AppSetting", AppSettingsSchema);
   const Checklist  = mongoose.models.Checklist  || mongoose.model("Checklist",  ChecklistSchema);
 
-  // ── 1. Branches ─────────────────────────────────────────────────────────────
+  // ── 1. Organization (one tenant → all demo branches) ────────────────────────
+  let demoOrg = await Organization.findOne({ name: "Education Tree Global (Demo)" });
+  if (!demoOrg) {
+    demoOrg = await Organization.create({
+      name: "Education Tree Global (Demo)",
+      subscriptionStatus: "active",
+      billingNote: "Seed data — full access for development.",
+    });
+    console.log("  ✅  Organization created: Education Tree Global (Demo)");
+  } else {
+    console.log("  ℹ️   Organization exists:  Education Tree Global (Demo)");
+  }
+
+  // ── 2. Branches ─────────────────────────────────────────────────────────────
   const branchData = [
     { name: "Kathmandu - Main", location: "Kathmandu, Nepal",  phone: "+977-1-4444444",  email: "ktm@etg.com" },
     { name: "Pokhara Branch",   location: "Pokhara, Nepal",    phone: "+977-61-555555",  email: "pkr@etg.com" },
@@ -126,15 +164,21 @@ async function seed() {
   for (const b of branchData) {
     let branch = await Branch.findOne({ name: b.name });
     if (!branch) {
-      branch = await Branch.create(b);
+      branch = await Branch.create({ ...b, organization: demoOrg!._id });
       console.log(`  ✅  Branch created: ${b.name}`);
     } else {
-      console.log(`  ℹ️   Branch exists:  ${b.name}`);
+      if (!branch.organization) {
+        branch.organization = demoOrg!._id as mongoose.Types.ObjectId;
+        await branch.save();
+        console.log(`  ✅  Linked branch to org: ${b.name}`);
+      } else {
+        console.log(`  ℹ️   Branch exists:  ${b.name}`);
+      }
     }
     branches.push(branch);
   }
 
-  // ── 2. Users ─────────────────────────────────────────────────────────────────
+  // ── 3. Users ─────────────────────────────────────────────────────────────────
   console.log("");
   const password = await bcrypt.hash("Admin@123", 10);
   const fdPassword = await bcrypt.hash("FrontDesk@123", 10);
@@ -162,17 +206,17 @@ async function seed() {
     }
   }
 
-  // ── 3. AppSettings (singleton) ───────────────────────────────────────────────
+  // ── 4. AppSettings (singleton) ───────────────────────────────────────────────
   console.log("");
   const existingSettings = await AppSetting.findOne();
   if (!existingSettings) {
-    await AppSetting.create({});
+    await AppSetting.create({ organization: null });
     console.log("  ✅  AppSettings created (defaults)");
   } else {
     console.log("  ℹ️   AppSettings already exists");
   }
 
-  // ── 4. Checklists ─────────────────────────────────────────────────────────────
+  // ── 5. Checklists ─────────────────────────────────────────────────────────────
   console.log("");
   const checklistData = [
     {

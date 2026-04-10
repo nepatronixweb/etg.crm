@@ -2,10 +2,28 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import {
-  MessageCircle, Send, ArrowLeft, Search, Plus, Users, X,
+  MessageCircle, Send, ArrowLeft, Search, Plus, Users, X, AlertCircle,
 } from "lucide-react";
 import { getRoleLabel, hasPermission } from "@/lib/utils";
+import { isOrgWideAdmin } from "@/lib/roleGuards";
 import { UserRole } from "@/types";
+
+async function parseChatError(res: Response): Promise<string> {
+  try {
+    const ct = res.headers.get("content-type") || "";
+    if (ct.includes("application/json")) {
+      const j = (await res.json()) as { error?: string; message?: string; code?: string };
+      const msg = j.error || j.message || j.code;
+      if (typeof msg === "string" && msg.trim()) return msg.trim();
+    }
+  } catch {
+    /* ignore */
+  }
+  if (res.status === 401) return "Your session expired. Please sign in again.";
+  if (res.status === 403) return "You do not have access to chat.";
+  if (res.status === 402) return "Subscription required. Update billing to restore access.";
+  return `Something went wrong (${res.status}). Try again or contact support.`;
+}
 
 interface IUser {
   _id: string;
@@ -56,8 +74,13 @@ export default function ChatPage() {
   const myId = session?.user?.id;
   const role = session?.user?.role as UserRole | undefined;
   const userPermissions = (session?.user?.permissions ?? []) as string[];
-  const canUseChat =
+  const hasChatPermission =
     !!session?.user && hasPermission(userPermissions, "chat", role);
+  const [enabledModules, setEnabledModules] = useState<string[] | null>(null);
+  const chatModuleAllowed =
+    !enabledModules ||
+    enabledModules.includes("chat") ||
+    isOrgWideAdmin(role);
 
   const [conversations, setConversations] = useState<IConversation[]>([]);
   const [activeConv, setActiveConv] = useState<IConversation | null>(null);
@@ -72,6 +95,13 @@ export default function ChatPage() {
   const [showNewChat, setShowNewChat] = useState(false);
   const [allUsers, setAllUsers] = useState<IUser[]>([]);
   const [userSearch, setUserSearch] = useState("");
+  const [apiBanner, setApiBanner] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!apiBanner) return;
+    const t = setTimeout(() => setApiBanner(null), 8000);
+    return () => clearTimeout(t);
+  }, [apiBanner]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatStreamRef = useRef<EventSource | null>(null);
@@ -91,6 +121,15 @@ export default function ChatPage() {
     }
   }, []);
 
+  useEffect(() => {
+    fetch("/api/settings/app")
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d?.enabledModules)) setEnabledModules(d.enabledModules);
+      })
+      .catch(() => {});
+  }, []);
+
   // Fetch conversations
   const fetchConversations = useCallback(async () => {
     try {
@@ -100,16 +139,45 @@ export default function ChatPage() {
         setLoading(false);
         return;
       }
+      const moduleOk =
+        !enabledModules ||
+        enabledModules.includes("chat") ||
+        isOrgWideAdmin(r);
+      if (!moduleOk) {
+        setLoading(false);
+        return;
+      }
       const res = await fetch("/api/chat/conversations");
       if (res.ok) {
         const data = await res.json();
         setConversations(data);
+        setApiBanner(null);
+      } else {
+        setApiBanner(await parseChatError(res));
       }
-    } catch { /* silent */ }
+    } catch {
+      setApiBanner("Could not load conversations. Check your connection and try again.");
+    }
     setLoading(false);
-  }, [session]);
+  }, [session, enabledModules]);
 
   useEffect(() => { fetchConversations(); }, [fetchConversations]);
+
+  useEffect(() => {
+    if (!session?.user) return;
+    const r = session.user.role as UserRole;
+    const perms = (session.user.permissions ?? []) as string[];
+    if (!hasPermission(perms, "chat", r)) return;
+    const allowed =
+      !enabledModules ||
+      enabledModules.includes("chat") ||
+      isOrgWideAdmin(r);
+    if (!allowed) {
+      setConversations([]);
+      setActiveConv(null);
+      setMessages([]);
+    }
+  }, [session, enabledModules]);
 
   // Fetch messages for active conversation
   const fetchMessages = useCallback(async (convId: string) => {
@@ -119,8 +187,13 @@ export default function ChatPage() {
       if (res.ok) {
         const data = await res.json();
         setMessages(data);
+        setApiBanner(null);
+      } else {
+        setApiBanner(await parseChatError(res));
       }
-    } catch { /* silent */ }
+    } catch {
+      setApiBanner("Could not load messages. Check your connection and try again.");
+    }
     setLoadingMsgs(false);
   }, []);
 
@@ -156,6 +229,7 @@ export default function ChatPage() {
         const msg = await res.json();
         setMessages((prev) => [...prev, msg]);
         setMsgText("");
+        setApiBanner(null);
         // Update conversation last message locally
         setConversations((prev) =>
           prev.map((c) =>
@@ -164,8 +238,12 @@ export default function ChatPage() {
               : c
           ).sort((a, b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime())
         );
+      } else {
+        setApiBanner(await parseChatError(res));
       }
-    } catch { /* silent */ }
+    } catch {
+      setApiBanner("Could not send the message. Check your connection and try again.");
+    }
     setSending(false);
     inputRef.current?.focus();
   };
@@ -176,6 +254,11 @@ export default function ChatPage() {
     const r = session.user.role as UserRole;
     const perms = (session.user.permissions ?? []) as string[];
     if (!hasPermission(perms, "chat", r)) return;
+    const moduleOk =
+      !enabledModules ||
+      enabledModules.includes("chat") ||
+      isOrgWideAdmin(r);
+    if (!moduleOk) return;
     let retryTimeout: ReturnType<typeof setTimeout>;
 
     const connect = () => {
@@ -233,7 +316,7 @@ export default function ChatPage() {
       clearTimeout(retryTimeout);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session]);
+  }, [session, enabledModules]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -245,8 +328,15 @@ export default function ChatPage() {
     setShowNewChat(true);
     try {
       const res = await fetch("/api/chat/users");
-      if (res.ok) setAllUsers(await res.json());
-    } catch { /* silent */ }
+      if (res.ok) {
+        setAllUsers(await res.json());
+        setApiBanner(null);
+      } else {
+        setApiBanner(await parseChatError(res));
+      }
+    } catch {
+      setApiBanner("Could not load team members. Check your connection and try again.");
+    }
   };
 
   const startChat = async (userId: string) => {
@@ -259,10 +349,15 @@ export default function ChatPage() {
       });
       if (res.ok) {
         const conv = await res.json();
+        setApiBanner(null);
         await fetchConversations();
         selectConversation({ ...conv, unreadCount: 0 });
+      } else {
+        setApiBanner(await parseChatError(res));
       }
-    } catch { /* silent */ }
+    } catch {
+      setApiBanner("Could not start the conversation. Check your connection and try again.");
+    }
   };
 
   // Helper: get display name for conversation
@@ -307,7 +402,7 @@ export default function ChatPage() {
     );
   }
 
-  if (session && !canUseChat) {
+  if (session && !hasChatPermission) {
     return (
       <div className="flex items-center justify-center min-h-[320px] px-4">
         <div className="max-w-md text-center rounded-xl border border-amber-200 bg-amber-50 px-6 py-8">
@@ -316,6 +411,21 @@ export default function ChatPage() {
           <p className="text-xs text-amber-800/90 mt-2">
             An administrator can turn it on under User management → Module permissions (Chat). After it is assigned,
             your access updates within about a minute, or refresh this page.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (session && hasChatPermission && !chatModuleAllowed) {
+    return (
+      <div className="flex items-center justify-center min-h-[320px] px-4">
+        <div className="max-w-md text-center rounded-xl border border-slate-200 bg-slate-50 px-6 py-8">
+          <MessageCircle size={28} className="text-slate-500 mx-auto mb-3" />
+          <p className="text-sm font-semibold text-slate-900">Chat is turned off for your organization</p>
+          <p className="text-xs text-slate-600 mt-2">
+            An administrator can enable it under System Settings → Module Toggles (turn on <span className="font-medium">Chat</span>).
+            Super admins and organization admins always see Chat when they have permission.
           </p>
         </div>
       </div>
@@ -334,6 +444,24 @@ export default function ChatPage() {
   }
 
   return (
+    <div className="space-y-3">
+      {apiBanner && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-900 shadow-sm"
+        >
+          <AlertCircle size={18} className="shrink-0 text-red-600 mt-0.5" aria-hidden />
+          <p className="flex-1 min-w-0 leading-snug">{apiBanner}</p>
+          <button
+            type="button"
+            onClick={() => setApiBanner(null)}
+            className="shrink-0 rounded-md p-1 text-red-600 hover:bg-red-100"
+            aria-label="Dismiss alert"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
     <div className="flex h-[calc(100vh-7rem)] bg-white border border-gray-200 rounded-xl overflow-hidden">
       {/* Conversation List */}
       <div className={`w-80 border-r border-gray-200 flex flex-col shrink-0 ${activeConv ? "hidden md:flex" : "flex"}`}>
@@ -574,6 +702,7 @@ export default function ChatPage() {
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

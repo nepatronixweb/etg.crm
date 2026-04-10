@@ -2,18 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import connectDB from "@/lib/mongodb";
 import AppSettings from "@/models/AppSettings";
+import { getAppSettingsDocumentForSession } from "@/lib/appSettingsScope";
 import { DEFAULT_APPLICATION_ROLES, normalizeApplicationRoles } from "@/lib/applicationRoles";
 import { DEFAULT_TELECALLER_TRANSFER_OUTCOMES, normalizeTelecallerTransferOutcomes } from "@/lib/telecallerTransferConfig";
 import { normalizeUniversitiesArray } from "@/lib/countryUniversities";
 
-// GET - public (used by layout for branding)
+// GET - public for login branding (no session → platform row); authenticated users get their tenant row.
 export async function GET() {
   try {
     await connectDB();
-    let settings = await AppSettings.findOne();
-    if (!settings) {
-      settings = await AppSettings.create({});
-    }
+    const session = await auth();
+    const settings = await getAppSettingsDocumentForSession(session);
 
     const DEFAULT_REMARK_OPTIONS = [
       "Additional Documents Requested", "Additional Documents Sent",
@@ -162,7 +161,7 @@ export async function GET() {
     // Use lean() for the JSON response to bypass Mongoose schema projection.
     // This ensures fields added after the model was first compiled (e.g. after a
     // hot-reload) are always included - toObject() only returns schema-known fields.
-    const json = (await AppSettings.findOne({}).lean()) ?? settings.toObject();
+    const json = (await AppSettings.findById(settings._id).lean()) ?? settings.toObject();
 
     // Safety fallbacks in case the DB document is somehow missing a field
     if (!Array.isArray(json.remarkOptions) || json.remarkOptions.length === 0) {
@@ -238,6 +237,12 @@ export async function GET() {
       await settings.save();
       json.enabledModules = mods;
     }
+    if (!mods.includes("hr")) {
+      mods.push("hr");
+      settings.enabledModules = mods;
+      await settings.save();
+      json.enabledModules = mods;
+    }
 
     return NextResponse.json(json);
   } catch (err) {
@@ -273,6 +278,8 @@ export async function PUT(req: NextRequest) {
       "countryStages",
       "applicationRoles",
       "telecallerTransferOutcomes",
+      "dashboardWidgets",
+      "dashboardWidgetOrder",
     ];
     for (const field of fields) {
       if (body[field] !== undefined) {
@@ -282,10 +289,11 @@ export async function PUT(req: NextRequest) {
 
     await connectDB();
 
-    const updated = await AppSettings.findOneAndUpdate(
-      {},
+    const target = await getAppSettingsDocumentForSession(session);
+    const updated = await AppSettings.findByIdAndUpdate(
+      target._id,
       { $set },
-      { new: true, upsert: true, runValidators: false }
+      { new: true, runValidators: false }
     ).lean();
 
     return NextResponse.json(updated);

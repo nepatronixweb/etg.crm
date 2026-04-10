@@ -5,13 +5,10 @@ import Link from "next/link";
 import { Loader2, Briefcase } from "lucide-react";
 import HrAdminPanel from "@/components/hr/HrAdminPanel";
 import { useBranding } from "@/app/branding-context";
-import type { UserRole } from "@/types";
+import { canAccessHrManagement } from "@/lib/hr/auth";
 
 function canViewHrManagement(session: ReturnType<typeof useSession>["data"]): boolean {
-  if (!session?.user) return false;
-  const role = session.user.role as UserRole;
-  if (role === "super_admin") return true;
-  return session.user.hrRole === "admin";
+  return canAccessHrManagement(session?.user ?? null);
 }
 
 export default function HrManagementPage() {

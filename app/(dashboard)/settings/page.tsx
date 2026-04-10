@@ -8,9 +8,19 @@ import {
   FileText, Image as ImageIcon, ChevronRight, X,
   Flame, Zap, Target, Layers, GitBranch, GraduationCap, ChevronDown, Pencil,
   UserCog, Loader2, Paperclip, BookOpen, Languages, ExternalLink, GripVertical,
+  LayoutDashboard,
 } from "lucide-react";
 import { useBrandingRefresh } from "@/app/branding-context";
 import { ALL_PERMISSIONS, SETTINGS_SUB_PERMISSIONS, stripModuleGranularKeys, withFullModuleGranular } from "@/lib/utils";
+import {
+  audienceSupportsOrderCustomization,
+  dashboardWidgetsByAudience,
+  defaultDashboardWidgets,
+  mergeDashboardWidgetsFromApi,
+  mergeDashboardWidgetOrderFromApi,
+  resolveWidgetIdsForSettingsEditor,
+  type DashboardWidgetOrderState,
+} from "@/lib/dashboardLayout";
 
 const ROLE_DEFAULT_GRANULAR_KEYS: Record<string, readonly string[]> = {
   leads: ["leads_acl", "leads_add", "leads_export"],
@@ -154,6 +164,8 @@ interface AppSettings {
   paymentQrPath: string;
   applicationRoles: { slug: string; label: string; defaultPermissions: string[] }[];
   telecallerTransferOutcomes: TelecallerTransferOutcome[];
+  dashboardWidgets: Record<string, boolean>;
+  dashboardWidgetOrder: DashboardWidgetOrderState;
 }
 
 interface ChecklistItem { name: string; description?: string; isRequired: boolean; }
@@ -186,6 +198,7 @@ const ALL_MODULES = [
   { key: "settings",      label: "Settings" },
   { key: "commission",    label: "Commission" },
   { key: "inventory",     label: "Inventory" },
+  { key: "hr",            label: "HR management" },
 ];
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -292,7 +305,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     "Visa Assistance","Test Preparation (IELTS/TOEFL)","Scholarship Guidance",
     "Career Counselling","Document Verification",
   ],
-  enabledModules: ["leads","students","documents","applications","admissions","visa","analytics","branches","users","activity_logs","settings","commission","inventory"],
+  enabledModules: ["leads","students","documents","applications","admissions","visa","analytics","branches","users","activity_logs","settings","commission","inventory","hr"],
   smtpHost: "",
   smtpPort: 587,
   smtpUser: "",
@@ -305,6 +318,8 @@ const DEFAULT_SETTINGS: AppSettings = {
     defaultPermissions: [...r.defaultPermissions],
   })),
   telecallerTransferOutcomes: DEFAULT_TELECALLER_TRANSFER_OUTCOMES.map((o) => ({ ...o })),
+  dashboardWidgets: defaultDashboardWidgets(),
+  dashboardWidgetOrder: {},
 };
 
 async function uploadUniversitySettingsDoc(file: File): Promise<UniversityAttachment | null> {
@@ -376,6 +391,81 @@ function reorderArray<T>(arr: T[], fromIndex: number, toIndex: number): T[] {
 
 function reorderStringArray(arr: string[], fromIndex: number, toIndex: number): string[] {
   return reorderArray(arr, fromIndex, toIndex);
+}
+
+const DASHBOARD_WIDGET_ORDER_DND_MIME = "application/x-etg-dashboard-widget-order";
+
+function DashboardWidgetOrderList({
+  orderedIds,
+  onReorder,
+  getLabel,
+}: {
+  orderedIds: string[];
+  onReorder: (ids: string[]) => void;
+  getLabel: (id: string) => string;
+}) {
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
+
+  const onDragStart = (e: DragEvent<HTMLDivElement>, index: number) => {
+    setDraggingIndex(index);
+    e.dataTransfer.setData(DASHBOARD_WIDGET_ORDER_DND_MIME, String(index));
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const onDragOverRow = (e: DragEvent<HTMLDivElement>, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setOverIndex(index);
+  };
+
+  const onDropRow = (e: DragEvent<HTMLDivElement>, dropIndex: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const raw = e.dataTransfer.getData(DASHBOARD_WIDGET_ORDER_DND_MIME);
+    const fromIndex = parseInt(raw, 10);
+    if (Number.isNaN(fromIndex) || fromIndex === dropIndex) {
+      setDraggingIndex(null);
+      setOverIndex(null);
+      return;
+    }
+    onReorder(reorderStringArray(orderedIds, fromIndex, dropIndex));
+    setDraggingIndex(null);
+    setOverIndex(null);
+  };
+
+  const clearDrag = () => {
+    setDraggingIndex(null);
+    setOverIndex(null);
+  };
+
+  return (
+    <div
+      className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden mt-3"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => e.preventDefault()}
+    >
+      {orderedIds.map((id, index) => (
+        <div
+          key={id}
+          draggable
+          onDragStart={(e) => onDragStart(e, index)}
+          onDragOver={(e) => onDragOverRow(e, index)}
+          onDragLeave={() => setOverIndex((o) => (o === index ? null : o))}
+          onDrop={(e) => onDropRow(e, index)}
+          onDragEnd={clearDrag}
+          className={`flex items-center gap-3 px-3 py-2.5 bg-white text-sm cursor-grab active:cursor-grabbing select-none ${
+            draggingIndex === index ? "opacity-50" : ""
+          } ${
+            overIndex === index && draggingIndex !== null && draggingIndex !== index ? "ring-2 ring-gray-300 ring-inset" : ""
+          }`}
+        >
+          <GripVertical size={16} className="text-gray-400 shrink-0" aria-hidden />
+          <span className="text-gray-900 font-medium truncate">{getLabel(id)}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 const PL_GROUP_DND_MIME = "application/x-etg-pl-group-index";
@@ -968,7 +1058,7 @@ function Field({
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
+        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-900/10 transition-shadow disabled:bg-gray-100 disabled:text-gray-500"
       />
       {hint && <p className="text-[11px] text-gray-400 mt-1">{hint}</p>}
     </div>
@@ -1025,7 +1115,12 @@ export default function SettingsPage() {
                 : { name: c.name, universities: normalizeUniversitiesArray(c.universities) }
             );
           }
-          setSettings((prev) => ({ ...prev, ...d }));
+          setSettings((prev) => ({
+            ...prev,
+            ...d,
+            dashboardWidgets: mergeDashboardWidgetsFromApi(d.dashboardWidgets),
+            dashboardWidgetOrder: mergeDashboardWidgetOrderFromApi(d.dashboardWidgetOrder),
+          }));
           if (d.logoPath) setLogoPreview(d.logoPath);
           if (d.paymentQrPath) setQrPreview(d.paymentQrPath);
         }
@@ -1457,53 +1552,69 @@ export default function SettingsPage() {
       {activeTab === "contact" && (
         <div className="space-y-5">
           <SectionCard title="Contact Information" description="Business contact details displayed in the system">
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5 flex items-center gap-1.5">
-                    <Phone size={12} />Phone Number
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="space-y-1.5">
+                  <label className="flex items-center gap-2 text-xs font-semibold text-gray-700">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-600" aria-hidden>
+                      <Phone size={15} strokeWidth={1.75} />
+                    </span>
+                    Phone number
                   </label>
                   <input
                     value={settings.phone}
                     onChange={(e) => set("phone", e.target.value)}
                     placeholder="+1 234 567 8900"
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500"
+                    autoComplete="tel"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 bg-white shadow-sm focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-900/10 transition-shadow"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5 flex items-center gap-1.5">
-                    <Mail size={12} />Email Address
+                <div className="space-y-1.5">
+                  <label className="flex items-center gap-2 text-xs font-semibold text-gray-700">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-600" aria-hidden>
+                      <Mail size={15} strokeWidth={1.75} />
+                    </span>
+                    Email address
                   </label>
                   <input
                     type="email"
                     value={settings.email}
                     onChange={(e) => set("email", e.target.value)}
                     placeholder="contact@yourcompany.com"
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500"
+                    autoComplete="email"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 bg-white shadow-sm focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-900/10 transition-shadow"
                   />
                 </div>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5 flex items-center gap-1.5">
-                  <Globe size={12} />Website URL
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-2 text-xs font-semibold text-gray-700">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-600" aria-hidden>
+                    <Globe size={15} strokeWidth={1.75} />
+                  </span>
+                  Website URL
                 </label>
                 <input
                   value={settings.website}
                   onChange={(e) => set("website", e.target.value)}
                   placeholder="https://www.yourcompany.com"
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500"
+                  autoComplete="url"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 bg-white shadow-sm focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-900/10 transition-shadow"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5 flex items-center gap-1.5">
-                  <MapPin size={12} />Office Address
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-2 text-xs font-semibold text-gray-700">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-600" aria-hidden>
+                    <MapPin size={15} strokeWidth={1.75} />
+                  </span>
+                  Office address
                 </label>
                 <textarea
                   value={settings.address}
                   onChange={(e) => set("address", e.target.value)}
                   placeholder="123 Main Street, City, Country"
-                  rows={3}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500 resize-none"
+                  rows={4}
+                  autoComplete="street-address"
+                  className="w-full min-h-[6.5rem] px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 bg-white shadow-sm leading-relaxed resize-y focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-900/10 transition-shadow"
                 />
               </div>
             </div>
@@ -2554,6 +2665,72 @@ export default function SettingsPage() {
                   </div>
                 );
               })}
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Dashboard layout"
+            description="Show or hide sections on the home dashboard by role. Drag rows to set vertical order where supported. Users with dashboard access still need the relevant module permissions."
+          >
+            <div className="space-y-6">
+              {dashboardWidgetsByAudience().map(({ audience, title, widgets }) => (
+                <div key={audience}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <LayoutDashboard size={14} className="text-gray-500" />
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">{title}</p>
+                  </div>
+                  <div className="space-y-2">
+                    {widgets.map((w) => {
+                      const on = settings.dashboardWidgets[w.id] !== false;
+                      return (
+                        <div
+                          key={w.id}
+                          className="flex items-start justify-between gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900">{w.label}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">{w.description}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const cur = mergeDashboardWidgetsFromApi(settings.dashboardWidgets);
+                              set("dashboardWidgets", { ...cur, [w.id]: !on });
+                            }}
+                            className={`relative w-12 h-6 rounded-full transition-colors focus:outline-none shrink-0 mt-0.5 ${
+                              on ? "bg-gray-900" : "bg-gray-300"
+                            }`}
+                            aria-pressed={on}
+                          >
+                            <span
+                              className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                                on ? "translate-x-6" : "translate-x-0"
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {audienceSupportsOrderCustomization(audience) ? (
+                    <>
+                      <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mt-4 mb-0">Section order</p>
+                      <p className="text-[11px] text-gray-400 mt-1">Drag to reorder. Save settings to apply on the live dashboard.</p>
+                      <DashboardWidgetOrderList
+                        orderedIds={resolveWidgetIdsForSettingsEditor(audience, settings.dashboardWidgetOrder)}
+                        getLabel={(id) => widgets.find((x) => x.id === id)?.label ?? id}
+                        onReorder={(ids) =>
+                          set("dashboardWidgetOrder", { ...settings.dashboardWidgetOrder, [audience]: ids })
+                        }
+                      />
+                    </>
+                  ) : (
+                    <p className="text-[11px] text-gray-400 mt-3">
+                      Order is fixed: summary first, then leads with notifications and remarks beside the list.
+                    </p>
+                  )}
+                </div>
+              ))}
             </div>
           </SectionCard>
 

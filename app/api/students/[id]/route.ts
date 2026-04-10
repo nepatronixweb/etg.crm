@@ -3,8 +3,9 @@ import connectDB from "@/lib/mongodb";
 import Student from "@/models/Student";
 import User from "@/models/User";
 import ActivityLog from "@/models/ActivityLog";
-import AppSettings from "@/models/AppSettings";
+import Branch from "@/models/Branch";
 import { auth } from "@/lib/auth";
+import { getAppSettingsLeanForOrganizationId } from "@/lib/appSettingsScope";
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -161,9 +162,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: "Student not found" }, { status: 404 });
     }
     
-    // Fetch AppSettings to get the stage-to-pipeline mapping
-    const appSettings = await AppSettings.findOne().lean();
-    const stageToPipelineMapping = appSettings?.stageToPipelineMapping || {};
+    let orgIdForStages: string | null = session.user.organizationId ?? null;
+    if (session.user.role === "super_admin" && existingStudent.branch) {
+      const br = await Branch.findById(existingStudent.branch).select("organization").lean();
+      if (br?.organization) orgIdForStages = br.organization.toString();
+    }
+    const appSettings = await getAppSettingsLeanForOrganizationId(orgIdForStages);
+    const stageToPipelineMapping =
+      (appSettings?.stageToPipelineMapping as Record<string, string> | undefined) || {};
     
     // Support raw MongoDB operators ($push, $pull, etc.) passed directly in the body
     const hasOperators = Object.keys(body).some((k) => k.startsWith("$"));

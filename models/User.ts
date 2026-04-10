@@ -22,6 +22,10 @@ export interface IUserDocument extends Document {
   workingHoursPerDay: number;
   /** Optional registered / expected office IP for this employee (HR reference). */
   officeNetworkIp: string;
+  /** Optional per-user dashboard section visibility (merged over org AppSettings). */
+  dashboardWidgets?: Record<string, boolean>;
+  /** Optional per-user dashboard section order per audience (merged over org AppSettings). */
+  dashboardWidgetOrder?: Record<string, string[]>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -52,6 +56,8 @@ const UserSchema = new Schema<IUserDocument>(
     workingDays: { type: Number, default: 26, min: 1 },
     workingHoursPerDay: { type: Number, default: 8, min: 0, max: 24 },
     officeNetworkIp: { type: String, default: "", trim: true, maxlength: 128 },
+    dashboardWidgets: { type: Schema.Types.Mixed, default: () => ({}) },
+    dashboardWidgetOrder: { type: Schema.Types.Mixed, default: () => ({}) },
   },
   { timestamps: true }
 );

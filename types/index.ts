@@ -4,12 +4,14 @@ export type UserRole = string;
 /** Built-in role slugs (defaults in database). */
 export const BUILTIN_USER_ROLE_SLUGS = [
   "super_admin",
+  "org_admin",
   "counsellor",
   "telecaller",
   "application_team",
   "admission_team",
   "visa_team",
   "front_desk",
+  "account_finance",
 ] as const;
 
 export type Permission =
@@ -32,7 +34,8 @@ export type Permission =
   | "activity_logs"
   | "chat"
   | "commission"
-  | "inventory";
+  | "inventory"
+  | "hr";
 
 export type LeadStanding = "warm" | "heated" | "cold" | "missed";
 
@@ -101,6 +104,8 @@ export interface IUser {
   workingDays?: number;
   workingHoursPerDay?: number;
   officeNetworkIp?: string;
+  dashboardWidgets?: Record<string, boolean>;
+  dashboardWidgetOrder?: Record<string, string[]>;
   createdAt: Date;
   updatedAt: Date;
 }

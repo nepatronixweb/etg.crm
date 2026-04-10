@@ -33,6 +33,7 @@ export function getRoleBadgeColor(role: string): string {
     admission_team: "bg-yellow-100 text-yellow-800",
     visa_team: "bg-orange-100 text-orange-800",
     front_desk: "bg-gray-100 text-gray-800",
+    account_finance: "bg-teal-100 text-teal-800",
   };
   return colors[role] || "bg-gray-100 text-gray-800";
 }
@@ -43,12 +44,14 @@ export function getRoleLabel(role: string | undefined | null, catalog?: { slug: 
   if (fromCatalog) return fromCatalog.label;
   const labels: Record<string, string> = {
     super_admin: "Super Admin",
+    org_admin: "Organization Admin",
     counsellor: "Counsellor",
     telecaller: "Telecaller",
     application_team: "Application Team",
     admission_team: "Admission Team",
     visa_team: "Visa Team",
     front_desk: "Front Desk",
+    account_finance: "Accounts & Finance",
   };
   return labels[role] || role.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -169,6 +172,7 @@ export const SERVICES = [
 ];
 
 export function canAccessModule(role: string, module: string): boolean {
+  if (role === "super_admin" || role === "org_admin") return true;
   const permissions: Record<string, string[]> = {
     users: ["super_admin"],
     branches: ["super_admin"],
@@ -182,7 +186,9 @@ export function canAccessModule(role: string, module: string): boolean {
     admissions: ["super_admin", "admission_team"],
     visa: ["super_admin", "visa_team"],
     chat: ["super_admin", "counsellor", "telecaller", "front_desk", "application_team", "admission_team", "visa_team"],
-    commission: ["super_admin", "admission_team"],
+    commission: ["super_admin", "admission_team", "account_finance"],
+    inventory: ["super_admin", "account_finance"],
+    hr: ["super_admin", "account_finance"],
   };
   return permissions[module]?.includes(role) ?? false;
 }
@@ -195,7 +201,7 @@ export function hasPermission(
   module: string,
   role?: string
 ): boolean {
-  if (role === "super_admin") return true;
+  if (role === "super_admin" || role === "org_admin") return true;
   return permissions.includes(module);
 }
 
@@ -206,7 +212,7 @@ export function hasModuleAction(
   module: "leads" | "students",
   action: "add" | "export"
 ): boolean {
-  if (role === "super_admin") return true;
+  if (role === "super_admin" || role === "org_admin") return true;
   if (!permissions.includes(module)) return false;
   const aclKey = `${module}_acl`;
   if (!permissions.includes(aclKey)) {
@@ -234,7 +240,13 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
   super_admin: [
     "leads", "students", "documents", "applications",
     "admissions", "visa", "analytics", "branches",
-    "users", "settings", "activity_logs", "chat", "commission", "inventory",
+    "users", "settings", "activity_logs", "chat", "commission", "inventory", "hr",
+  ],
+  /** Trial / tenant owner: same app modules as super_admin, scoped to one organization in APIs. */
+  org_admin: [
+    "leads", "students", "documents", "applications",
+    "admissions", "visa", "analytics", "branches",
+    "users", "settings", "activity_logs", "chat", "commission", "inventory", "hr",
   ],
   counsellor: ["leads", "students", "documents", "applications", "chat"],
   telecaller: ["leads", "chat"],
@@ -242,6 +254,8 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
   application_team: ["students", "documents", "applications", "chat"],
   admission_team: ["students", "documents", "admissions", "chat", "commission"],
   visa_team: ["students", "documents", "visa", "chat"],
+  /** Payroll-related commissions, stock, HR admin, and reporting — no CRM pipelines by default. */
+  account_finance: ["commission", "inventory", "hr", "analytics"],
 };
 
 // ─── All available module permissions (used to render checkboxes) ────────────
@@ -260,6 +274,7 @@ export const ALL_PERMISSIONS: { key: Permission; label: string; description: str
   { key: "settings",      label: "Settings",          description: "System-wide configuration" },
   { key: "commission",    label: "Commission",        description: "Record partner commissions by destination" },
   { key: "inventory",     label: "Inventory",         description: "Office assets, assignments & consumable stock" },
+  { key: "hr",            label: "HR management",     description: "Attendance, salary views, and HR administration" },
 ];
 
 // ─── Settings sub-permissions (which tabs inside Settings a user can access) ─

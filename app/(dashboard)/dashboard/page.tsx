@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, Fragment, type ReactNode } from "react";
 import { useSession } from "next-auth/react";
 import * as XLSX from "xlsx";
 import {
@@ -13,6 +13,17 @@ import {
   FileSpreadsheet, Table2, Globe2,
 } from "lucide-react";
 import { formatDateTime, getStatusColor, hasPermission } from "@/lib/utils";
+import {
+  buildAdminDashboardChunks,
+  isDashboardWidgetVisible,
+  mergeDashboardWidgetsFromApi,
+  mergeDashboardWidgetOrderFromApi,
+  mergeDashboardWidgetsWithUserOverrides,
+  mergeDashboardWidgetOrderStates,
+  resolveOrderedWidgetIds,
+  type AdminChartWidgetId,
+  type DashboardWidgetOrderState,
+} from "@/lib/dashboardLayout";
 import { TELECALLER_FRESH_BUCKET } from "@/lib/telecallerFreshLeads";
 import {
   TELECALLER_OVERVIEW_APPOINTMENT,
@@ -217,13 +228,23 @@ export default function DashboardPage() {
   const [filterDateTo, setFilterDateTo] = useState("");
   const [dateOpen, setDateOpen] = useState(false);
   const dateRef = useRef<HTMLDivElement>(null);
-  const isAdmin = session?.user?.role === "super_admin";
+  const isAdmin = session?.user?.role === "super_admin" || session?.user?.role === "org_admin";
   const isCounsellor = session?.user?.role === "counsellor";
   const isFrontDesk = session?.user?.role === "front_desk";
   const isAdmissionTeam = session?.user?.role === "admission_team";
   const isTelecaller = session?.user?.role === "telecaller";
+  const isOtherDashboardRole =
+    !isAdmin && !isCounsellor && !isFrontDesk && !isAdmissionTeam && !isTelecaller;
   const role = (session?.user?.role ?? "") as UserRole;
   const userPermissions = (session?.user?.permissions ?? []) as string[];
+  const [dashboardWidgetToggles, setDashboardWidgetToggles] = useState<Record<string, boolean>>(() =>
+    mergeDashboardWidgetsFromApi(undefined)
+  );
+  const [dashboardWidgetOrder, setDashboardWidgetOrder] = useState<DashboardWidgetOrderState>({});
+  const showDw = useCallback(
+    (id: string) => isDashboardWidgetVisible(id, dashboardWidgetToggles),
+    [dashboardWidgetToggles]
+  );
 
   // Counsellor: assigned leads
   const [assignedLeads, setAssignedLeads] = useState<IAssignedLead[]>([]);
@@ -327,8 +348,16 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!session) return;
     fetch("/api/settings/app")
-      .then(r => r.json())
-      .then(d => { if (d?.leadSources?.length) setImportSources(d.leadSources); })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.leadSources?.length) setImportSources(d.leadSources);
+        const tenantWidgets = mergeDashboardWidgetsFromApi(d?.dashboardWidgets);
+        const tenantOrder = mergeDashboardWidgetOrderFromApi(d?.dashboardWidgetOrder);
+        const userW = session.user.dashboardWidgets;
+        const userO = session.user.dashboardWidgetOrder;
+        setDashboardWidgetToggles(mergeDashboardWidgetsWithUserOverrides(tenantWidgets, userW));
+        setDashboardWidgetOrder(mergeDashboardWidgetOrderStates(tenantOrder, userO));
+      })
       .catch(() => {});
   }, [session]);
 
@@ -942,7 +971,9 @@ export default function DashboardPage() {
 
       {session &&
         !isAdmin &&
-        hasPermission(userPermissions, "inventory", role) && (
+        !isOtherDashboardRole &&
+        hasPermission(userPermissions, "inventory", role) &&
+        showDw("staff_inventory_summary") && (
         <div className="mb-6">
           <InventorySummaryWidgets />
         </div>
@@ -966,10 +997,184 @@ export default function DashboardPage() {
         const maxCountry = Math.max(1, ...applicationsByCountry.map((x) => x.count), 0);
         const maxAppSt = Math.max(1, ...applicationsByStatus.map((x) => x.count), 0);
 
-        return (
-        <div className={`space-y-6 transition-opacity duration-200 ${refetching ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
+        const orderedAdmin = resolveOrderedWidgetIds("super_admin", dashboardWidgetToggles, dashboardWidgetOrder);
+        const adminChunks = buildAdminDashboardChunks(orderedAdmin);
 
-          {/* KPIs */}
+        const renderAdminChart = (chartId: AdminChartWidgetId) => {
+          if (chartId === "admin_leads_by_source") {
+            return (
+              <div className="bg-white border border-gray-200 rounded-lg p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="p-1.5 rounded-md border border-gray-200 bg-gray-50">
+                    <Users size={14} className="text-gray-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">Leads by source</h3>
+                    <p className="text-[11px] text-gray-500">Top channels in this period</p>
+                  </div>
+                </div>
+                {leadsBySource.length === 0 ? (
+                  <p className="text-sm text-gray-400 py-6 text-center">No lead source data</p>
+                ) : (
+                  <div className="space-y-3">
+                    {leadsBySource.slice(0, 6).map((row) => (
+                      <div key={String(row._id)}>
+                        <div className="flex justify-between gap-2 text-xs mb-1">
+                          <span className="text-gray-600 truncate">{humanizeAnalyticsKey(String(row._id))}</span>
+                          <span className="font-medium text-gray-900 tabular-nums shrink-0">{row.count}</span>
+                        </div>
+                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-gray-800 rounded-full transition-all" style={{ width: `${(row.count / maxSrc) * 100}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          }
+          if (chartId === "admin_students_by_stage") {
+            return (
+              <div className="bg-white border border-gray-200 rounded-lg p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="p-1.5 rounded-md border border-gray-200 bg-gray-50">
+                    <GraduationCap size={14} className="text-gray-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">Students by stage</h3>
+                    <p className="text-[11px] text-gray-500">Pipeline distribution</p>
+                  </div>
+                </div>
+                {studentsByStage.length === 0 ? (
+                  <p className="text-sm text-gray-400 py-6 text-center">No student stage data</p>
+                ) : (
+                  <div className="space-y-3">
+                    {studentsByStage.slice(0, 6).map((row) => (
+                      <div key={String(row._id)}>
+                        <div className="flex justify-between gap-2 text-xs mb-1">
+                          <span className="text-gray-600 truncate">{humanizeAnalyticsKey(String(row._id))}</span>
+                          <span className="font-medium text-gray-900 tabular-nums shrink-0">{row.count}</span>
+                        </div>
+                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-gray-700 rounded-full transition-all" style={{ width: `${(row.count / maxStage) * 100}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          }
+          return (
+            <div className="bg-white border border-gray-200 rounded-lg p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="p-1.5 rounded-md border border-gray-200 bg-gray-50">
+                  <Globe2 size={14} className="text-gray-600" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Applications by country</h3>
+                  <p className="text-[11px] text-gray-500">Top destinations</p>
+                </div>
+              </div>
+              {applicationsByCountry.length === 0 ? (
+                <p className="text-sm text-gray-400 py-6 text-center">No country data</p>
+              ) : (
+                <div className="space-y-3">
+                  {applicationsByCountry.slice(0, 6).map((row) => (
+                    <div key={String(row._id)}>
+                      <div className="flex justify-between gap-2 text-xs mb-1">
+                        <span className="text-gray-600 truncate">{humanizeAnalyticsKey(String(row._id))}</span>
+                        <span className="font-medium text-gray-900 tabular-nums shrink-0">{row.count}</span>
+                      </div>
+                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-gray-600 rounded-full transition-all" style={{ width: `${(row.count / maxCountry) * 100}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        const renderAdminActivity = () => (
+            <div className="bg-white border border-gray-200 rounded-lg flex flex-col overflow-hidden">
+              <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-200 bg-gray-50/80">
+                <Activity size={15} className="text-gray-500" />
+                <h2 className="text-sm font-semibold text-gray-900">Recent activity</h2>
+              </div>
+              {data.recentActivity.length === 0 ? (
+                <div className="px-5 py-12 text-center text-sm text-gray-400 flex-1">No activity in this period</div>
+              ) : (
+                <div className="divide-y divide-gray-100 flex-1">
+                  {data.recentActivity.map((log) => (
+                    <div key={log._id} className="flex items-start justify-between gap-3 px-5 py-3">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className="w-1.5 h-1.5 rounded-full bg-gray-400 shrink-0 mt-1.5" />
+                        <p className="text-sm text-gray-700 leading-snug">
+                          <span className="font-medium text-gray-900">{log.userName}</span>
+                          {" "}
+                          <span className="text-gray-500 capitalize">{log.action.toLowerCase()}</span>
+                          {" "}
+                          <span className="text-gray-800">{log.targetName}</span>
+                          <span className="text-gray-400"> · {log.module}</span>
+                        </p>
+                      </div>
+                      <span className="text-xs text-gray-400 whitespace-nowrap shrink-0 tabular-nums">
+                        {formatDateTime(log.createdAt)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+        );
+
+        const renderAdminNotifications = () => (
+            <div className="bg-white border border-gray-200 rounded-lg flex flex-col overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 bg-gray-50/80">
+                <div className="flex items-center gap-2">
+                  <Bell size={15} className="text-gray-500" />
+                  <h2 className="text-sm font-semibold text-gray-900">Notifications</h2>
+                  {notifs.filter((n) => !n.read).length > 0 && (
+                    <span className="text-[10px] font-semibold bg-gray-900 text-white px-1.5 py-0.5 rounded">
+                      {notifs.filter((n) => !n.read).length} new
+                    </span>
+                  )}
+                </div>
+              </div>
+              {notifs.length === 0 ? (
+                <div className="px-5 py-12 text-center flex-1">
+                  <Bell size={22} className="text-gray-200 mx-auto mb-2" />
+                  <p className="text-sm text-gray-400">No notifications</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100 flex-1">
+                  {notifs.map((n) => (
+                    <div key={n._id} className={`px-5 py-3.5 flex items-start gap-3 ${n.read ? "" : "bg-gray-50"}`}>
+                      <div className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${n.read ? "bg-gray-200" : "bg-gray-900"}`} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-medium text-gray-900">{n.title}</p>
+                          <span className="text-xs text-gray-400 whitespace-nowrap shrink-0 tabular-nums">{formatDateTime(n.createdAt)}</span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5 leading-snug">{n.message}</p>
+                        {n.link && (
+                          <Link href={n.link} className="text-xs font-medium text-gray-700 hover:text-gray-900 mt-1 inline-block">
+                            Open →
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+        );
+
+        const renderAdminSingle = (id: string): ReactNode => {
+          if (id === "admin_kpis") {
+            return (
           <div className="grid w-full grid-cols-2 lg:grid-cols-4 gap-4 items-stretch">
             {[
               {
@@ -1023,8 +1228,10 @@ export default function DashboardPage() {
               );
             })}
           </div>
-
-          {/* Admissions & visa pipeline - minmax(0,1fr) + min-w-0 on cards keeps seven equal columns at lg */}
+            );
+          }
+          if (id === "admin_pipeline") {
+            return (
           <div className="w-full">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Admissions &amp; visa pipeline</h3>
             <div className="grid w-full grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 items-stretch">
@@ -1056,99 +1263,10 @@ export default function DashboardPage() {
               })}
             </div>
           </div>
-
-          {/* Analytics at a glance */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="bg-white border border-gray-200 rounded-lg p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="p-1.5 rounded-md border border-gray-200 bg-gray-50">
-                  <Users size={14} className="text-gray-600" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900">Leads by source</h3>
-                  <p className="text-[11px] text-gray-500">Top channels in this period</p>
-                </div>
-              </div>
-              {leadsBySource.length === 0 ? (
-                <p className="text-sm text-gray-400 py-6 text-center">No lead source data</p>
-              ) : (
-                <div className="space-y-3">
-                  {leadsBySource.slice(0, 6).map((row) => (
-                    <div key={String(row._id)}>
-                      <div className="flex justify-between gap-2 text-xs mb-1">
-                        <span className="text-gray-600 truncate">{humanizeAnalyticsKey(String(row._id))}</span>
-                        <span className="font-medium text-gray-900 tabular-nums shrink-0">{row.count}</span>
-                      </div>
-                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-gray-800 rounded-full transition-all" style={{ width: `${(row.count / maxSrc) * 100}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="bg-white border border-gray-200 rounded-lg p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="p-1.5 rounded-md border border-gray-200 bg-gray-50">
-                  <GraduationCap size={14} className="text-gray-600" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900">Students by stage</h3>
-                  <p className="text-[11px] text-gray-500">Pipeline distribution</p>
-                </div>
-              </div>
-              {studentsByStage.length === 0 ? (
-                <p className="text-sm text-gray-400 py-6 text-center">No student stage data</p>
-              ) : (
-                <div className="space-y-3">
-                  {studentsByStage.slice(0, 6).map((row) => (
-                    <div key={String(row._id)}>
-                      <div className="flex justify-between gap-2 text-xs mb-1">
-                        <span className="text-gray-600 truncate">{humanizeAnalyticsKey(String(row._id))}</span>
-                        <span className="font-medium text-gray-900 tabular-nums shrink-0">{row.count}</span>
-                      </div>
-                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-gray-700 rounded-full transition-all" style={{ width: `${(row.count / maxStage) * 100}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="bg-white border border-gray-200 rounded-lg p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="p-1.5 rounded-md border border-gray-200 bg-gray-50">
-                  <Globe2 size={14} className="text-gray-600" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900">Applications by country</h3>
-                  <p className="text-[11px] text-gray-500">Top destinations</p>
-                </div>
-              </div>
-              {applicationsByCountry.length === 0 ? (
-                <p className="text-sm text-gray-400 py-6 text-center">No country data</p>
-              ) : (
-                <div className="space-y-3">
-                  {applicationsByCountry.slice(0, 6).map((row) => (
-                    <div key={String(row._id)}>
-                      <div className="flex justify-between gap-2 text-xs mb-1">
-                        <span className="text-gray-600 truncate">{humanizeAnalyticsKey(String(row._id))}</span>
-                        <span className="font-medium text-gray-900 tabular-nums shrink-0">{row.count}</span>
-                      </div>
-                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-gray-600 rounded-full transition-all" style={{ width: `${(row.count / maxCountry) * 100}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Application outcomes (compact) */}
-          {applicationsByStatus.length > 0 && (
+            );
+          }
+          if (id === "admin_application_status" && applicationsByStatus.length > 0) {
+            return (
             <div className="bg-white border border-gray-200 rounded-lg p-5">
               <div className="flex items-center gap-2 mb-4">
                 <div className="p-1.5 rounded-md border border-gray-200 bg-gray-50">
@@ -1171,9 +1289,10 @@ export default function DashboardPage() {
                 ))}
               </div>
             </div>
-          )}
-
-          {/* Recent leads + counsellor targets */}
+            );
+          }
+          if (id === "admin_recent_targets") {
+            return (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
             <div className="lg:col-span-2 bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -1270,9 +1389,10 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
-
-          {/* Lead standing distribution */}
-          {data.leadsByStatus.length > 0 && (
+            );
+          }
+          if (id === "admin_lead_standing" && data.leadsByStatus.length > 0) {
+            return (
             <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 bg-gray-50/80">
                 <div className="flex items-center gap-2">
@@ -1307,83 +1427,42 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
-          )}
+            );
+          }
+          if (id === "admin_activity") return renderAdminActivity();
+          if (id === "admin_notifications") return renderAdminNotifications();
+          return null;
+        };
 
-          {/* Activity + notifications */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
-            <div className="bg-white border border-gray-200 rounded-lg flex flex-col overflow-hidden">
-              <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-200 bg-gray-50/80">
-                <Activity size={15} className="text-gray-500" />
-                <h2 className="text-sm font-semibold text-gray-900">Recent activity</h2>
-              </div>
-              {data.recentActivity.length === 0 ? (
-                <div className="px-5 py-12 text-center text-sm text-gray-400 flex-1">No activity in this period</div>
-              ) : (
-                <div className="divide-y divide-gray-100 flex-1">
-                  {data.recentActivity.map((log) => (
-                    <div key={log._id} className="flex items-start justify-between gap-3 px-5 py-3">
-                      <div className="flex items-start gap-3 min-w-0">
-                        <div className="w-1.5 h-1.5 rounded-full bg-gray-400 shrink-0 mt-1.5" />
-                        <p className="text-sm text-gray-700 leading-snug">
-                          <span className="font-medium text-gray-900">{log.userName}</span>
-                          {" "}
-                          <span className="text-gray-500 capitalize">{log.action.toLowerCase()}</span>
-                          {" "}
-                          <span className="text-gray-800">{log.targetName}</span>
-                          <span className="text-gray-400"> · {log.module}</span>
-                        </p>
-                      </div>
-                      <span className="text-xs text-gray-400 whitespace-nowrap shrink-0 tabular-nums">
-                        {formatDateTime(log.createdAt)}
-                      </span>
-                    </div>
+        return (
+        <div className={`space-y-6 transition-opacity duration-200 ${refetching ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
+          {adminChunks.map((chunk, chunkIdx) => {
+            if (chunk.type === "charts") {
+              const grid =
+                chunk.ids.length >= 3 ? "lg:grid-cols-3" : chunk.ids.length === 2 ? "lg:grid-cols-2" : "lg:grid-cols-1";
+              return (
+                <div key={`charts-${chunkIdx}`} className={`grid grid-cols-1 gap-4 ${grid}`}>
+                  {chunk.ids.map((cid) => (
+                    <Fragment key={cid}>{renderAdminChart(cid)}</Fragment>
                   ))}
                 </div>
-              )}
-            </div>
-
-            <div className="bg-white border border-gray-200 rounded-lg flex flex-col overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 bg-gray-50/80">
-                <div className="flex items-center gap-2">
-                  <Bell size={15} className="text-gray-500" />
-                  <h2 className="text-sm font-semibold text-gray-900">Notifications</h2>
-                  {notifs.filter((n) => !n.read).length > 0 && (
-                    <span className="text-[10px] font-semibold bg-gray-900 text-white px-1.5 py-0.5 rounded">
-                      {notifs.filter((n) => !n.read).length} new
-                    </span>
-                  )}
+              );
+            }
+            if (chunk.type === "twin") {
+              return (
+                <div key={`twin-${chunkIdx}`} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div>
+                    {chunk.leftId === "admin_activity" ? renderAdminActivity() : renderAdminNotifications()}
+                  </div>
+                  <div>
+                    {chunk.rightId === "admin_activity" ? renderAdminActivity() : renderAdminNotifications()}
+                  </div>
                 </div>
-              </div>
-              {notifs.length === 0 ? (
-                <div className="px-5 py-12 text-center flex-1">
-                  <Bell size={22} className="text-gray-200 mx-auto mb-2" />
-                  <p className="text-sm text-gray-400">No notifications</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-100 flex-1">
-                  {notifs.map((n) => (
-                    <div key={n._id} className={`px-5 py-3.5 flex items-start gap-3 ${n.read ? "" : "bg-gray-50"}`}>
-                      <div className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${n.read ? "bg-gray-200" : "bg-gray-900"}`} />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-medium text-gray-900">{n.title}</p>
-                          <span className="text-xs text-gray-400 whitespace-nowrap shrink-0 tabular-nums">{formatDateTime(n.createdAt)}</span>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-0.5 leading-snug">{n.message}</p>
-                        {n.link && (
-                          <Link href={n.link} className="text-xs font-medium text-gray-700 hover:text-gray-900 mt-1 inline-block">
-                            Open →
-                          </Link>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-          </div>
+              );
+            }
+            const node = renderAdminSingle(chunk.id);
+            return node ? <Fragment key={chunk.id}>{node}</Fragment> : null;
+          })}
         </div>
         );
       })()}
@@ -1391,6 +1470,45 @@ export default function DashboardPage() {
       {/* Non-admin quick links */}
       {!isAdmin && (
         <>
+          {isOtherDashboardRole && (
+            <div className="space-y-6">
+              {resolveOrderedWidgetIds("other", dashboardWidgetToggles, dashboardWidgetOrder).map((wid) => (
+                <Fragment key={wid}>
+                  {wid === "staff_inventory_summary" &&
+                    hasPermission(userPermissions, "inventory", role) &&
+                    showDw("staff_inventory_summary") && (
+                      <InventorySummaryWidgets />
+                    )}
+                  {wid === "generic_quick_links" && showDw("generic_quick_links") && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {[
+                        { label: "Leads", href: "/leads", module: "leads", icon: Users, desc: "View and manage your assigned leads" },
+                        { label: "Students", href: "/students", module: "students", icon: UserCheck, desc: "Track your student progress" },
+                      ]
+                        .filter((item) => hasPermission(userPermissions, item.module, role))
+                        .map((item) => {
+                          const Icon = item.icon;
+                          return (
+                            <Link
+                              key={item.href}
+                              href={item.href}
+                              className="group bg-white border border-gray-200 rounded-lg p-5 hover:border-gray-300 hover:shadow-sm transition-all"
+                            >
+                              <div className="p-2 bg-gray-50 border border-gray-100 rounded-md inline-flex mb-4">
+                                <Icon size={16} className="text-gray-600" />
+                              </div>
+                              <h3 className="text-sm font-semibold text-gray-900">{item.label}</h3>
+                              <p className="text-xs text-gray-500 mt-1">{item.desc}</p>
+                            </Link>
+                          );
+                        })}
+                    </div>
+                  )}
+                </Fragment>
+              ))}
+            </div>
+          )}
+
           {/* ── Counsellor Dashboard ── */}
           {isCounsellor && (() => {
             const total   = assignedLeads.length;
@@ -1443,6 +1561,8 @@ export default function DashboardPage() {
             return (
               <div className="space-y-5">
 
+                {showDw("counsellor_summary") && (
+                <>
                 {/* Stats Row */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   {[
@@ -1495,11 +1615,13 @@ export default function DashboardPage() {
                     <Link href="/leads" className="ml-auto text-xs text-blue-600 hover:underline whitespace-nowrap">View →</Link>
                   </div>
                 )}
+                </>
+                )}
 
-                {/* Main Content: Leads + Notifications */}
+                {(showDw("counsellor_leads_list") || showDw("counsellor_notifications") || showDw("counsellor_remarks")) && (
                 <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
 
-                  {/* Assigned Leads - wider */}
+                  {showDw("counsellor_leads_list") && (
                   <div className="lg:col-span-3 bg-white border border-gray-200 rounded-xl flex flex-col">
                     <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
                       <div className="flex items-center gap-2">
@@ -1557,9 +1679,15 @@ export default function DashboardPage() {
                       </div>
                     )}
                   </div>
+                  )}
 
-                  {/* Notifications - narrower */}
-                  <div className="lg:col-span-2 space-y-5">
+                  {(showDw("counsellor_notifications") || showDw("counsellor_remarks")) && (
+                  <div
+                    className={`space-y-5 ${
+                      showDw("counsellor_leads_list") ? "lg:col-span-2" : "lg:col-span-5"
+                    }`}
+                  >
+                    {showDw("counsellor_notifications") && (
                     <div className="bg-white border border-gray-200 rounded-xl flex flex-col">
                       <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
                         <div className="flex items-center gap-2">
@@ -1603,7 +1731,9 @@ export default function DashboardPage() {
                         </div>
                       )}
                     </div>
+                    )}
 
+                    {showDw("counsellor_remarks") && (
                     <div className="bg-white border border-gray-200 rounded-xl flex flex-col">
                       <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
                         <div className="flex items-center gap-2">
@@ -1643,9 +1773,12 @@ export default function DashboardPage() {
                         </div>
                       )}
                     </div>
+                    )}
                   </div>
+                  )}
 
                 </div>
+                )}
               </div>
             );
           })()}
@@ -1653,7 +1786,7 @@ export default function DashboardPage() {
           {/* Front Desk Dashboard */}
           {isFrontDesk && (
             <div className="space-y-5">
-              {/* Stat Cards */}
+              {showDw("front_desk_stats") && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <Link href="/leads" className="group bg-white border border-gray-200 rounded-xl p-5 hover:border-gray-300 hover:shadow-sm transition-all">
                   <div className="flex items-start justify-between mb-4">
@@ -1691,6 +1824,7 @@ export default function DashboardPage() {
                   <p className="text-xs text-gray-400 mt-0.5">Students fully enrolled</p>
                 </Link>
               </div>
+              )}
 
 
             </div>
@@ -1699,7 +1833,8 @@ export default function DashboardPage() {
           {/* Admission Team Dashboard */}
           {isAdmissionTeam && admissionStats && (
             <div className="space-y-5">
-              {/* Stat Cards Grid */}
+              {showDw("admission_dashboard") && (
+              <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {[
                   {
@@ -1865,6 +2000,8 @@ export default function DashboardPage() {
                   </div>
                 )}
               </div>
+              </>
+              )}
             </div>
           )}
 
@@ -1896,10 +2033,13 @@ export default function DashboardPage() {
             // Target progress helpers
             const pct = (val: number, target: number) => target > 0 ? Math.min(100, Math.round((val / target) * 100)) : 0;
 
+            const teleOrder = resolveOrderedWidgetIds("telecaller", dashboardWidgetToggles, dashboardWidgetOrder);
+
             return (
               <div className="space-y-6">
-
-                {/* Header */}
+                {teleOrder.map((tid) => (
+                  <Fragment key={tid}>
+                {tid === "telecaller_header" && showDw("telecaller_header") && (
                 <div className="bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-start gap-3">
@@ -1929,8 +2069,9 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </div>
+                )}
 
-                {/* Today&apos;s targets */}
+                {tid === "telecaller_today_targets" && showDw("telecaller_today_targets") && (
                 <div>
                   <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Today&apos;s targets</h2>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1972,8 +2113,9 @@ export default function DashboardPage() {
                     })}
                   </div>
                 </div>
+                )}
 
-                {/* Lead overview */}
+                {tid === "telecaller_overview_primary" && showDw("telecaller_overview_primary") && (
                 <div>
                   <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Lead overview</h2>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -2001,8 +2143,9 @@ export default function DashboardPage() {
                     })}
                   </div>
                 </div>
+                )}
 
-                {/* Secondary metrics */}
+                {tid === "telecaller_overview_secondary" && showDw("telecaller_overview_secondary") && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
                     { label: "Phone counselling", value: ot.phoneCounselling, icon: PhoneCall, sub: "Counselled over phone", href: `/enquiries?bucket=${TELECALLER_OVERVIEW_PHONE_COUNSELLING}` as const },
@@ -2029,8 +2172,9 @@ export default function DashboardPage() {
                     );
                   })}
                 </div>
+                )}
 
-                {/* Recent assigned leads */}
+                {tid === "telecaller_recent_leads" && showDw("telecaller_recent_leads") && (
                 <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
                   <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 bg-gray-50">
                     <div className="flex items-center gap-2">
@@ -2097,34 +2241,12 @@ export default function DashboardPage() {
                     </div>
                   )}
                 </div>
+                )}
+                  </Fragment>
+                ))}
               </div>
             );
           })()}
-
-          {/* Generic quick links for non-counsellor, non-admin, non-front-desk roles */}
-          {!isCounsellor && !isFrontDesk && !isAdmissionTeam && !isTelecaller && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {[
-                { label: "Leads", href: "/leads", module: "leads", icon: Users, desc: "View and manage your assigned leads" },
-                { label: "Students", href: "/students", module: "students", icon: UserCheck, desc: "Track your student progress" },
-              ].filter((item) => hasPermission(userPermissions, item.module, role)).map((item) => {
-                const Icon = item.icon;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="group bg-white border border-gray-200 rounded-lg p-5 hover:border-gray-300 hover:shadow-sm transition-all"
-                  >
-                    <div className="p-2 bg-gray-50 border border-gray-100 rounded-md inline-flex mb-4">
-                      <Icon size={16} className="text-gray-600" />
-                    </div>
-                    <h3 className="text-sm font-semibold text-gray-900">{item.label}</h3>
-                    <p className="text-xs text-gray-500 mt-1">{item.desc}</p>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
         </>
       )}
     </div>
