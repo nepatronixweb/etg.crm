@@ -199,6 +199,7 @@ const ALL_MODULES = [
   { key: "commission",    label: "Commission" },
   { key: "inventory",     label: "Inventory" },
   { key: "hr",            label: "HR management" },
+  { key: "chat",          label: "Internal chat" },
 ];
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -305,7 +306,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     "Visa Assistance","Test Preparation (IELTS/TOEFL)","Scholarship Guidance",
     "Career Counselling","Document Verification",
   ],
-  enabledModules: ["leads","students","documents","applications","admissions","visa","analytics","branches","users","activity_logs","settings","commission","inventory","hr"],
+  enabledModules: ["leads","students","documents","applications","admissions","visa","analytics","branches","users","activity_logs","settings","commission","inventory","hr","chat"],
   smtpHost: "",
   smtpPort: 587,
   smtpUser: "",

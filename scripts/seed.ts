@@ -104,7 +104,10 @@ const AppSettingsSchema = new mongoose.Schema(
     },
     enabledModules: {
       type: [String],
-      default: ["leads", "students", "documents", "applications", "admissions", "visa", "analytics", "branches", "users", "activity_logs", "settings"],
+      default: [
+        "leads", "students", "documents", "applications", "admissions", "visa", "analytics",
+        "branches", "users", "activity_logs", "settings", "chat",
+      ],
     },
     smtpHost:      { type: String, default: "" },
     smtpPort:      { type: Number, default: 587 },

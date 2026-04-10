@@ -1,4 +1,5 @@
 import NextAuth, { NextAuthOptions, getServerSession } from "next-auth";
+import type { NextRequest } from "next/server";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
@@ -323,10 +324,74 @@ export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
 };
 
-const handler = NextAuth(authOptions);
+/** NextAuth always sets Expires on the JWT cookie (~30d). Strip it so the cookie is session-only (cleared when the browser closes). */
+function isNextAuthSessionCookieName(cookieName: string): boolean {
+  const n = cookieName.trim();
+  return (
+    n === "next-auth.session-token" ||
+    n.startsWith("next-auth.session-token.") ||
+    n === "__Secure-next-auth.session-token" ||
+    n.startsWith("__Secure-next-auth.session-token.")
+  );
+}
 
-// Named exports for the [...nextauth] route
-export { handler as GET, handler as POST };
+function sessionCookieValueLooksSet(setCookieHeader: string): boolean {
+  const eq = setCookieHeader.indexOf("=");
+  if (eq < 0) return false;
+  const rest = setCookieHeader.slice(eq + 1);
+  const semi = rest.indexOf(";");
+  const value = (semi === -1 ? rest : rest.slice(0, semi)).trim();
+  return value.length > 0;
+}
+
+function stripPersistentAttrsFromSetCookie(setCookieHeader: string): string {
+  return setCookieHeader
+    .replace(/;\s*Expires=[^;]*/gi, "")
+    .replace(/;\s*Max-Age=\d+/gi, "");
+}
+
+function getSetCookieList(headers: Headers): string[] {
+  const h = headers as Headers & { getSetCookie?: () => string[] };
+  if (typeof h.getSetCookie === "function") return h.getSetCookie();
+  const single = headers.get("set-cookie");
+  return single ? [single] : [];
+}
+
+function withBrowserSessionCookies(res: Response): Response {
+  const list = getSetCookieList(res.headers);
+  if (list.length === 0) return res;
+
+  const out = new Headers(res.headers);
+  out.delete("set-cookie");
+
+  for (const line of list) {
+    const name = line.split("=", 1)[0]?.trim() ?? "";
+    const useSessionOnly =
+      isNextAuthSessionCookieName(name) && sessionCookieValueLooksSet(line);
+    const next = useSessionOnly ? stripPersistentAttrsFromSetCookie(line) : line;
+    out.append("Set-Cookie", next);
+  }
+
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers: out,
+  });
+}
+
+type NextAuthRouteCtx = { params: Promise<{ nextauth: string[] }> };
+
+const nextAuthHandler = NextAuth(authOptions);
+
+export async function GET(req: NextRequest, ctx: NextAuthRouteCtx) {
+  const res = await nextAuthHandler(req, ctx);
+  return withBrowserSessionCookies(res);
+}
+
+export async function POST(req: NextRequest, ctx: NextAuthRouteCtx) {
+  const res = await nextAuthHandler(req, ctx);
+  return withBrowserSessionCookies(res);
+}
 
 // Server-side session helper - use this in API routes
 export async function auth() {

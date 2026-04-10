@@ -243,6 +243,12 @@ export async function GET() {
       await settings.save();
       json.enabledModules = mods;
     }
+    if (!mods.includes("chat")) {
+      mods.push("chat");
+      settings.enabledModules = mods;
+      await settings.save();
+      json.enabledModules = mods;
+    }
 
     return NextResponse.json(json);
   } catch (err) {

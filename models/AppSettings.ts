@@ -350,7 +350,7 @@ const AppSettingsSchema = new Schema<IAppSettings>(
       type: [String],
       default: [
         "leads", "students", "documents", "applications", "admissions", "visa", "analytics",
-        "branches", "users", "activity_logs", "settings", "commission", "inventory", "hr",
+        "branches", "users", "activity_logs", "settings", "commission", "inventory", "hr", "chat",
       ],
     },
     commissionPercentByCountry: { type: Schema.Types.Mixed, default: () => ({}) },
