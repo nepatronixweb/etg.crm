@@ -7,6 +7,8 @@ import { DEFAULT_APPLICATION_ROLES, normalizeApplicationRoles } from "@/lib/appl
 import { DEFAULT_TELECALLER_TRANSFER_OUTCOMES, normalizeTelecallerTransferOutcomes } from "@/lib/telecallerTransferConfig";
 import { normalizeUniversitiesArray } from "@/lib/countryUniversities";
 
+export const dynamic = "force-dynamic";
+
 // GET - public for login branding (no session → platform row); authenticated users get their tenant row.
 export async function GET() {
   try {

@@ -146,7 +146,23 @@ export default function OrganizationsPage() {
       const res = await fetch(`/api/organizations/${deleteTarget._id}`, { method: "DELETE" });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setActionError(typeof d?.error === "string" ? d.error : "Delete failed.");
+        let msg = typeof d?.error === "string" ? d.error : "Delete failed.";
+        const c = d?.counts as
+          | { userCount?: number; leadCount?: number; studentCount?: number; enquiryCount?: number }
+          | undefined;
+        if (c && typeof c.userCount === "number") {
+          const parts: string[] = [];
+          if (c.userCount > 0) parts.push(`${c.userCount} user${c.userCount !== 1 ? "s" : ""} on branches`);
+          if (c.leadCount && c.leadCount > 0) parts.push(`${c.leadCount} lead${c.leadCount !== 1 ? "s" : ""}`);
+          if (c.studentCount && c.studentCount > 0) parts.push(`${c.studentCount} student${c.studentCount !== 1 ? "s" : ""}`);
+          if (c.enquiryCount && c.enquiryCount > 0) {
+            parts.push(`${c.enquiryCount} ${c.enquiryCount !== 1 ? "enquiries" : "enquiry"}`);
+          }
+          if (parts.length > 0) {
+            msg += ` Currently linked: ${parts.join(", ")}. Deactivated users still count until their branch is changed or removed.`;
+          }
+        }
+        setActionError(msg);
         return;
       }
       setDeleteTarget(null);

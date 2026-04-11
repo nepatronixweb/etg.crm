@@ -1018,14 +1018,14 @@ function SaveBtn({ saving, saved, onClick }: { saving: boolean; saved: boolean; 
     <button
       onClick={onClick}
       disabled={saving}
-      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+      className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold shadow-sm transition-all duration-200 ${
         saved
-          ? "bg-green-600 text-white"
-          : "bg-gray-900 hover:bg-gray-700 text-white disabled:opacity-60"
+          ? "bg-emerald-600 text-white shadow-emerald-600/25 hover:bg-emerald-700"
+          : "bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-500/20 disabled:opacity-55 disabled:shadow-none"
       }`}
     >
-      {saved ? <CheckCircle size={15} /> : <Save size={15} />}
-      {saving ? "Saving…" : saved ? "Saved!" : "Save Changes"}
+      {saved ? <CheckCircle size={16} strokeWidth={2.25} /> : <Save size={16} strokeWidth={2.25} />}
+      {saving ? "Saving…" : saved ? "Saved!" : "Save changes"}
     </button>
   );
 }
@@ -1033,12 +1033,17 @@ function SaveBtn({ saving, saved, onClick }: { saving: boolean; saved: boolean; 
 // ─── Section Card ─────────────────────────────────────────────────────────────
 function SectionCard({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-6">
-      <div className="mb-5">
-        <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-        {description && <p className="text-xs text-gray-500 mt-0.5">{description}</p>}
+    <div className="relative overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm shadow-slate-200/40 transition-shadow duration-300 hover:shadow-md hover:shadow-slate-200/50">
+      <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500 rounded-l-2xl" aria-hidden />
+      <div className="p-6 sm:p-7 pl-6 sm:pl-8">
+        <div className="mb-6 border-b border-slate-100 pb-5">
+          <h3 className="text-base font-semibold tracking-tight text-slate-900">{title}</h3>
+          {description && (
+            <p className="mt-1.5 text-sm leading-relaxed text-slate-500">{description}</p>
+          )}
+        </div>
+        {children}
       </div>
-      {children}
     </div>
   );
 }
@@ -1052,16 +1057,16 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-xs font-semibold text-gray-600 mb-1.5">{label}</label>
+      <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</label>
       <input
         type={type}
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-900/10 transition-shadow disabled:bg-gray-100 disabled:text-gray-500"
+        className="w-full rounded-xl border border-slate-200 bg-slate-50/40 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition-all focus:border-indigo-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
       />
-      {hint && <p className="text-[11px] text-gray-400 mt-1">{hint}</p>}
+      {hint && <p className="mt-1.5 text-xs leading-relaxed text-slate-400">{hint}</p>}
     </div>
   );
 }
@@ -1136,24 +1141,111 @@ export default function SettingsPage() {
     fetch("/api/checklists").then((r) => r.json()).then((d) => setChecklists(Array.isArray(d) ? d : []));
   }, [tab]);
 
-  const set = useCallback(<K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
-    setSettings((prev) => ({ ...prev, [key]: value }));
-    setSaved(false);
+  const settingsRef = useRef(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+
+  const countriesPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const putCountriesNow = useCallback(async (countries: AppSettings["countries"]) => {
+    if (countriesPersistTimerRef.current) {
+      clearTimeout(countriesPersistTimerRef.current);
+      countriesPersistTimerRef.current = null;
+    }
+    try {
+      const res = await fetch("/api/settings/app", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ countries }),
+      });
+      if (!res.ok) console.error("Destination countries/universities autosave failed:", res.status);
+    } catch (e) {
+      console.error("Destination countries autosave:", e);
+    }
   }, []);
 
-  const updateCountryUniversities = useCallback((countryIndex: number, mutator: (list: UniversityEntry[]) => UniversityEntry[]) => {
-    setSettings((prev) => {
-      const countries = [...prev.countries];
-      const row = countries[countryIndex];
-      if (!row) return prev;
-      countries[countryIndex] = {
-        ...row,
-        universities: mutator([...row.universities]),
-      };
-      return { ...prev, countries };
-    });
-    setSaved(false);
+  const schedulePersistCountries = useCallback(() => {
+    if (countriesPersistTimerRef.current) clearTimeout(countriesPersistTimerRef.current);
+    countriesPersistTimerRef.current = setTimeout(() => {
+      countriesPersistTimerRef.current = null;
+      void putCountriesNow(settingsRef.current.countries);
+    }, 450);
+  }, [putCountriesNow]);
+
+  useEffect(() => {
+    return () => {
+      if (countriesPersistTimerRef.current) clearTimeout(countriesPersistTimerRef.current);
+    };
   }, []);
+
+  const set = useCallback(
+    <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
+      setSettings((prev) => ({ ...prev, [key]: value }));
+      setSaved(false);
+      if (key === "countries") {
+        schedulePersistCountries();
+      }
+    },
+    [schedulePersistCountries]
+  );
+
+  const b2bNamesPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const schedulePersistB2bNames = useCallback((names: string[]) => {
+    if (b2bNamesPersistTimerRef.current) clearTimeout(b2bNamesPersistTimerRef.current);
+    b2bNamesPersistTimerRef.current = setTimeout(() => {
+      b2bNamesPersistTimerRef.current = null;
+      fetch("/api/settings/app", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ b2bNames: names }),
+      })
+        .then((res) => {
+          if (!res.ok) console.error("B2B names autosave failed:", res.status);
+        })
+        .catch((e) => console.error("B2B names autosave:", e));
+    }, 450);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (b2bNamesPersistTimerRef.current) clearTimeout(b2bNamesPersistTimerRef.current);
+    };
+  }, []);
+
+  const appendB2bName = useCallback(
+    (raw: string) => {
+      const val = raw.trim();
+      if (!val) return;
+      setSettings((prev) => {
+        const cur = prev.b2bNames || [];
+        if (cur.includes(val)) return prev;
+        const next = [...cur, val];
+        schedulePersistB2bNames(next);
+        return { ...prev, b2bNames: next };
+      });
+      setSaved(false);
+    },
+    [schedulePersistB2bNames]
+  );
+
+  const updateCountryUniversities = useCallback(
+    (countryIndex: number, mutator: (list: UniversityEntry[]) => UniversityEntry[]) => {
+      setSettings((prev) => {
+        const countries = [...prev.countries];
+        const row = countries[countryIndex];
+        if (!row) return prev;
+        countries[countryIndex] = {
+          ...row,
+          universities: mutator([...row.universities]),
+        };
+        return { ...prev, countries };
+      });
+      setSaved(false);
+      schedulePersistCountries();
+    },
+    [schedulePersistCountries]
+  );
 
   const appendUniversityDocuments = useCallback(
     async (ci: number, ui: number, files: FileList | null) => {
@@ -1180,49 +1272,57 @@ export default function SettingsPage() {
     [updateCountryUniversities]
   );
 
-  const addUniversityWithDetails = useCallback(async (ci: number) => {
-    const nameEl = document.getElementById(`new-uni-name-${ci}`) as HTMLInputElement | null;
-    const reqEl = document.getElementById(`new-uni-req-${ci}`) as HTMLTextAreaElement | null;
-    const courseUrlEl = document.getElementById(`new-uni-course-url-${ci}`) as HTMLInputElement | null;
-    const engUrlEl = document.getElementById(`new-uni-eng-url-${ci}`) as HTMLInputElement | null;
-    const fileEl = document.getElementById(`new-uni-files-${ci}`) as HTMLInputElement | null;
-    const name = nameEl?.value?.trim() ?? "";
-    if (!name) return;
-    setUniDocBusy(`new-${ci}`);
-    try {
-      const attachments: UniversityAttachment[] = [];
-      if (fileEl?.files?.length) {
-        for (const f of Array.from(fileEl.files)) {
-          const up = await uploadUniversitySettingsDoc(f);
-          if (up) attachments.push(up);
+  const addUniversityWithDetails = useCallback(
+    async (ci: number) => {
+      const nameEl = document.getElementById(`new-uni-name-${ci}`) as HTMLInputElement | null;
+      const reqEl = document.getElementById(`new-uni-req-${ci}`) as HTMLTextAreaElement | null;
+      const courseUrlEl = document.getElementById(`new-uni-course-url-${ci}`) as HTMLInputElement | null;
+      const engUrlEl = document.getElementById(`new-uni-eng-url-${ci}`) as HTMLInputElement | null;
+      const fileEl = document.getElementById(`new-uni-files-${ci}`) as HTMLInputElement | null;
+      const name = nameEl?.value?.trim() ?? "";
+      if (!name) return;
+      setUniDocBusy(`new-${ci}`);
+      try {
+        const attachments: UniversityAttachment[] = [];
+        if (fileEl?.files?.length) {
+          for (const f of Array.from(fileEl.files)) {
+            const up = await uploadUniversitySettingsDoc(f);
+            if (up) attachments.push(up);
+          }
         }
+        const requirements = reqEl?.value ?? "";
+        const findCourseUrl = courseUrlEl?.value?.trim() ?? "";
+        const englishRequirementsUrl = engUrlEl?.value?.trim() ?? "";
+        let nextCountries: AppSettings["countries"] | null = null;
+        setSettings((prev) => {
+          const countries = [...prev.countries];
+          const row = countries[ci];
+          if (!row || row.universities.some((u) => u.name === name)) return prev;
+          countries[ci] = {
+            ...row,
+            universities: [
+              ...row.universities,
+              { name, requirements, attachments, findCourseUrl, englishRequirementsUrl },
+            ],
+          };
+          nextCountries = countries;
+          return { ...prev, countries };
+        });
+        setSaved(false);
+        if (nextCountries) {
+          await putCountriesNow(nextCountries);
+        }
+        if (nameEl) nameEl.value = "";
+        if (reqEl) reqEl.value = "";
+        if (courseUrlEl) courseUrlEl.value = "";
+        if (engUrlEl) engUrlEl.value = "";
+        if (fileEl) fileEl.value = "";
+      } finally {
+        setUniDocBusy(null);
       }
-      const requirements = reqEl?.value ?? "";
-      const findCourseUrl = courseUrlEl?.value?.trim() ?? "";
-      const englishRequirementsUrl = engUrlEl?.value?.trim() ?? "";
-      setSettings((prev) => {
-        const countries = [...prev.countries];
-        const row = countries[ci];
-        if (!row || row.universities.some((u) => u.name === name)) return prev;
-        countries[ci] = {
-          ...row,
-          universities: [
-            ...row.universities,
-            { name, requirements, attachments, findCourseUrl, englishRequirementsUrl },
-          ],
-        };
-        return { ...prev, countries };
-      });
-      setSaved(false);
-      if (nameEl) nameEl.value = "";
-      if (reqEl) reqEl.value = "";
-      if (courseUrlEl) courseUrlEl.value = "";
-      if (engUrlEl) engUrlEl.value = "";
-      if (fileEl) fileEl.value = "";
-    } finally {
-      setUniDocBusy(null);
-    }
-  }, []);
+    },
+    [putCountriesNow]
+  );
 
   // ── Save app settings ──
   const saveSettings = async () => {
@@ -1249,6 +1349,10 @@ export default function SettingsPage() {
   /** Persist destination countries / universities (partial PUT). One row per card for UX. */
   const saveCountriesOnly = useCallback(
     async (cardKey: string) => {
+      if (countriesPersistTimerRef.current) {
+        clearTimeout(countriesPersistTimerRef.current);
+        countriesPersistTimerRef.current = null;
+      }
       setUniCardSavingKey(cardKey);
       setUniCardSavedKey(null);
       try {
@@ -1351,12 +1455,14 @@ export default function SettingsPage() {
 
   if (!hasSettingsAccess) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-3 text-gray-400">
-        <div className="p-3 bg-gray-100 border border-gray-200 rounded-full">
-          <Lock size={20} className="text-gray-500" />
+      <div className="mx-auto flex max-w-md flex-col items-center justify-center gap-4 rounded-2xl border border-slate-200 bg-white px-8 py-14 text-center shadow-sm">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 ring-1 ring-slate-200/80">
+          <Lock size={24} className="text-slate-500" strokeWidth={2} />
         </div>
-        <p className="text-sm font-medium text-gray-600">Access Restricted</p>
-        <p className="text-xs text-gray-400">You don&apos;t have permission to access settings.</p>
+        <div>
+          <p className="text-base font-semibold text-slate-900">Access restricted</p>
+          <p className="mt-1.5 text-sm text-slate-500">You don&apos;t have permission to open system settings.</p>
+        </div>
       </div>
     );
   }
@@ -1366,41 +1472,55 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+      <div className="mx-auto flex max-w-5xl flex-col items-center justify-center gap-4 rounded-2xl border border-slate-200 bg-slate-50/50 py-24">
+        <div className="h-10 w-10 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-600" />
+        <p className="text-sm font-medium text-slate-600">Loading settings…</p>
       </div>
     );
   }
 
   return (
-    <div className="max-w-5xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-8 pb-12">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-gray-100 border border-gray-200 rounded-lg">
-            <Settings size={16} className="text-gray-600" />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold text-gray-900">System Settings</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Customize every aspect of your platform</p>
+      <div className="relative overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-6 shadow-sm sm:p-8">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-indigo-100/80 blur-3xl" aria-hidden />
+        <div className="pointer-events-none absolute -bottom-12 -left-12 h-40 w-40 rounded-full bg-violet-100/60 blur-3xl" aria-hidden />
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-600/25">
+              <Settings size={22} strokeWidth={2} />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">System settings</h1>
+              <p className="mt-1 max-w-xl text-sm leading-relaxed text-slate-500">
+                Branding, CRM lists, modules, email, and team options—organized in one place.
+              </p>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Tab Navigation */}
-      <div className="border-b border-gray-200">
-        <nav className="flex gap-1 overflow-x-auto pb-px">
+      <div className="rounded-2xl border border-slate-200/90 bg-slate-100/80 p-1.5 shadow-inner">
+        <nav className="flex gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {visibleTabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
+              type="button"
               onClick={() => setTab(id)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+              className={`group flex min-h-[44px] shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-all duration-200 ${
                 activeTab === id
-                  ? "border-gray-900 text-gray-900"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  ? "bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200/90"
+                  : "text-slate-600 hover:bg-white/80 hover:text-slate-900"
               }`}
             >
-              <Icon size={14} />
+              <span
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                  activeTab === id ? "bg-indigo-50 text-indigo-600" : "bg-transparent text-slate-400 group-hover:text-slate-600"
+                }`}
+              >
+                <Icon size={16} strokeWidth={2} />
+              </span>
               {label}
             </button>
           ))}
@@ -1409,7 +1529,7 @@ export default function SettingsPage() {
 
       {/* ── Tab: Branding ── */}
       {activeTab === "branding" && (
-        <div className="space-y-5">
+        <div className="space-y-6">
           <SectionCard title="Brand Identity" description="Configure your company name, logo, and visual identity">
             <div className="space-y-5">
               {/* Logo Upload */}
@@ -1543,7 +1663,7 @@ export default function SettingsPage() {
             </div>
           </SectionCard>
 
-          <div className="flex justify-end">
+          <div className="mt-2 flex justify-end rounded-2xl border border-slate-100 bg-slate-50/70 p-4 shadow-sm">
             <SaveBtn saving={saving} saved={saved} onClick={saveSettings} />
           </div>
         </div>
@@ -1551,7 +1671,7 @@ export default function SettingsPage() {
 
       {/* ── Tab: Contact Info ── */}
       {activeTab === "contact" && (
-        <div className="space-y-5">
+        <div className="space-y-6">
           <SectionCard title="Contact Information" description="Business contact details displayed in the system">
             <div className="space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -1620,7 +1740,7 @@ export default function SettingsPage() {
               </div>
             </div>
           </SectionCard>
-          <div className="flex justify-end">
+          <div className="mt-2 flex justify-end rounded-2xl border border-slate-100 bg-slate-50/70 p-4 shadow-sm">
             <SaveBtn saving={saving} saved={saved} onClick={saveSettings} />
           </div>
         </div>
@@ -1773,8 +1893,19 @@ export default function SettingsPage() {
             <div className="space-y-3">
               <DraggableChipList
                 items={settings.b2bNames || []}
-                onChange={(next) => set("b2bNames", next)}
-                onRemoveItem={(item) => set("b2bNames", (settings.b2bNames || []).filter((i) => i !== item))}
+                onChange={(next) => {
+                  setSettings((prev) => ({ ...prev, b2bNames: next }));
+                  setSaved(false);
+                  schedulePersistB2bNames(next);
+                }}
+                onRemoveItem={(item) => {
+                  setSettings((prev) => {
+                    const next = (prev.b2bNames || []).filter((i) => i !== item);
+                    schedulePersistB2bNames(next);
+                    return { ...prev, b2bNames: next };
+                  });
+                  setSaved(false);
+                }}
                 emptyLabel="No B2B names defined"
                 accent="teal"
               />
@@ -1784,28 +1915,23 @@ export default function SettingsPage() {
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
-                      const val = (e.target as HTMLInputElement).value.trim();
-                      if (val && !(settings.b2bNames || []).includes(val)) {
-                        set("b2bNames", [...(settings.b2bNames || []), val]);
-                        (e.target as HTMLInputElement).value = "";
-                      }
+                      const val = (e.target as HTMLInputElement).value;
+                      appendB2bName(val);
+                      (e.target as HTMLInputElement).value = "";
                     }
                   }}
                   className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder-gray-400"
                 />
                 <button type="button" onClick={() => {
                   const input = document.getElementById("b2bNameInput") as HTMLInputElement;
-                  const val = input.value.trim();
-                  if (val && !(settings.b2bNames || []).includes(val)) {
-                    set("b2bNames", [...(settings.b2bNames || []), val]);
-                    input.value = "";
-                  }
+                  appendB2bName(input.value);
+                  input.value = "";
                 }} className="px-4 py-2.5 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm">
                   <Plus size={13} /> Add
                 </button>
               </div>
               <p className="text-[11px] text-gray-400 flex items-center gap-1">
-                <Zap size={10} /> {(settings.b2bNames || []).length} names configured. These appear as suggestions in the B2B Name field on admission details.
+                <Zap size={10} /> {(settings.b2bNames || []).length} names configured. Saved automatically; they appear as suggestions in admission details, commission, and anywhere the B2B name is used.
               </p>
             </div>
           </SectionCard>
@@ -2254,7 +2380,7 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="flex justify-end pt-2">
+          <div className="mt-2 flex justify-end rounded-2xl border border-slate-100 bg-slate-50/70 p-4 shadow-sm">
             <SaveBtn saving={saving} saved={saved} onClick={saveSettings} />
           </div>
         </div>
@@ -2542,6 +2668,9 @@ export default function SettingsPage() {
                         {uniDocBusy === `new-${ci}` ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                         Add university
                       </button>
+                      <p className="text-[11px] text-gray-400 leading-relaxed">
+                        Saves automatically. New names appear in admission forms, leads, commission, and filters without clicking Save.
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -2609,7 +2738,7 @@ export default function SettingsPage() {
             />
           </SectionCard>
 
-          <div className="flex justify-end">
+          <div className="mt-2 flex justify-end rounded-2xl border border-slate-100 bg-slate-50/70 p-4 shadow-sm">
             <SaveBtn saving={saving} saved={saved} onClick={saveSettings} />
           </div>
         </div>
@@ -2735,7 +2864,7 @@ export default function SettingsPage() {
             </div>
           </SectionCard>
 
-          <div className="flex justify-end">
+          <div className="mt-2 flex justify-end rounded-2xl border border-slate-100 bg-slate-50/70 p-4 shadow-sm">
             <SaveBtn saving={saving} saved={saved} onClick={saveSettings} />
           </div>
         </div>
@@ -2780,7 +2909,7 @@ export default function SettingsPage() {
               </p>
             </div>
           </SectionCard>
-          <div className="flex justify-end">
+          <div className="mt-2 flex justify-end rounded-2xl border border-slate-100 bg-slate-50/70 p-4 shadow-sm">
             <SaveBtn saving={saving} saved={saved} onClick={saveSettings} />
           </div>
         </div>
@@ -3131,7 +3260,7 @@ export default function SettingsPage() {
             </div>
           </SectionCard>
 
-          <div className="flex justify-end">
+          <div className="mt-2 flex justify-end rounded-2xl border border-slate-100 bg-slate-50/70 p-4 shadow-sm">
             <SaveBtn saving={saving} saved={saved} onClick={saveSettings} />
           </div>
         </div>

@@ -4,6 +4,8 @@ import connectDB from "@/lib/mongodb";
 import AppSettings from "@/models/AppSettings";
 import { getAppSettingsDocumentForSession } from "@/lib/appSettingsScope";
 
+export const dynamic = "force-dynamic";
+
 // GET - return current b2bNames for the signed-in tenant (or platform when no session).
 export async function GET() {
   try {

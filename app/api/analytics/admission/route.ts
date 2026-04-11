@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import Student from "@/models/Student";
 import { auth } from "@/lib/auth";
+import { getBranchIdsInOrganization } from "@/lib/orgUserScope";
 
 export async function GET() {
   try {
@@ -14,7 +15,16 @@ export async function GET() {
     if (!canView) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     await connectDB();
 
-    const enrolledFilter = { enrolled: true };
+    const isSuperAdmin = session.user.role === "super_admin";
+    const orgId = session.user.organizationId ?? undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let branchScope: Record<string, any> = {};
+    if (!isSuperAdmin && orgId) {
+      const branchIds = await getBranchIdsInOrganization(orgId);
+      branchScope = branchIds.length === 0 ? { branch: { $in: [] } } : { branch: { $in: branchIds } };
+    }
+
+    const enrolledFilter = { enrolled: true, ...branchScope };
 
     const [
       enrolled,

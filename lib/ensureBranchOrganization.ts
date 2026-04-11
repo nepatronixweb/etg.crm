@@ -31,12 +31,24 @@ export async function ensureBranchLinkedToOrganization(
   return org;
 }
 
-export async function createTrialOrganization(name: string): Promise<IOrganizationDocument> {
-  const org = await Organization.create({
+/**
+ * New trial tenant: own Organization + empty tenant AppSettings (no shared CRM seed data).
+ * Pass `session` so signup can run inside a transaction (all-or-nothing with branch + user).
+ */
+export async function createTrialOrganization(
+  name: string,
+  options?: { session?: mongoose.ClientSession | null }
+): Promise<IOrganizationDocument> {
+  const payload = {
     name: name.trim() || "New organization",
-    subscriptionStatus: "trialing",
+    subscriptionStatus: "trialing" as const,
     trialEndsAt: trialEndsAtFromNow(),
+  };
+  const org = options?.session
+    ? (await Organization.create([payload], { session: options.session }))[0]
+    : await Organization.create(payload);
+  await createFreshTrialTenantAppSettings(org._id as mongoose.Types.ObjectId, org.name, {
+    session: options?.session ?? undefined,
   });
-  await createFreshTrialTenantAppSettings(org._id as mongoose.Types.ObjectId, org.name);
   return org;
 }

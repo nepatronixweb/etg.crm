@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import mongoose from "mongoose";
 import connectDB from "@/lib/mongodb";
 import Lead from "@/models/Lead";
 import Student from "@/models/Student";
@@ -6,6 +7,7 @@ import User from "@/models/User";
 import Application from "@/models/Application";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
+import { getBranchIdsInOrganization } from "@/lib/orgUserScope";
 
 /** Merge aggregate buckets (e.g. Application + Student countries) by string key */
 function mergeCountBuckets(
@@ -55,9 +57,6 @@ export async function GET(req: NextRequest) {
     if (branch) leadFilter.branch = branch;
     if (source) leadFilter.source = source;
 
-    const structuralLeadFilter = { ...leadFilter };
-    delete structuralLeadFilter.createdAt;
-
     const counselledAtBounds: Record<string, unknown> = { $ne: null };
     if (from) counselledAtBounds.$gte = new Date(from);
     if (to) counselledAtBounds.$lte = new Date(to);
@@ -67,6 +66,63 @@ export async function GET(req: NextRequest) {
     if (branch) studentFilter.branch = branch;
     if (counsellor) studentFilter.counsellor = counsellor;
     if (country) studentFilter["countries.country"] = country;
+
+    const isSuperAdmin = session.user.role === "super_admin";
+    const orgId = session.user.organizationId ?? undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const applicationFilter: Record<string, any> = { ...dateFilter };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let activityLogFilter: Record<string, any> = { ...dateFilter };
+    let counsellorQuery: Record<string, unknown> = { role: "counsellor", isActive: true };
+
+    if (!isSuperAdmin && orgId) {
+      const tenantBranchIds = await getBranchIdsInOrganization(orgId);
+      const noBranches = tenantBranchIds.length === 0;
+
+      if (branch) {
+        const allowed = tenantBranchIds.some((id) => id.toString() === branch);
+        if (allowed) {
+          leadFilter.branch = branch;
+          studentFilter.branch = branch;
+        } else {
+          leadFilter.branch = { $in: [] };
+          studentFilter.branch = { $in: [] };
+        }
+      } else if (noBranches) {
+        leadFilter.branch = { $in: [] };
+        studentFilter.branch = { $in: [] };
+      } else {
+        leadFilter.branch = { $in: tenantBranchIds };
+        studentFilter.branch = { $in: tenantBranchIds };
+      }
+
+      const lb = leadFilter.branch;
+      if (typeof lb === "string") {
+        const ids = await Student.find({ branch: lb }).distinct("_id");
+        applicationFilter.student = { $in: ids };
+      } else if (lb && typeof lb === "object" && Array.isArray((lb as { $in?: unknown }).$in)) {
+        const arr = (lb as { $in: mongoose.Types.ObjectId[] }).$in;
+        if (arr.length === 0) {
+          applicationFilter.student = { $in: [] };
+        } else {
+          const ids = await Student.find({ branch: { $in: arr } }).distinct("_id");
+          applicationFilter.student = { $in: ids };
+        }
+      }
+
+      counsellorQuery = {
+        ...counsellorQuery,
+        branch: noBranches ? { $in: [] } : { $in: tenantBranchIds },
+      };
+
+      const orgUserIds = await User.find({
+        branch: noBranches ? { $in: [] } : { $in: tenantBranchIds },
+      }).distinct("_id");
+      activityLogFilter = { ...activityLogFilter, user: { $in: orgUserIds } };
+    }
+
+    const structuralLeadFilter = { ...leadFilter };
+    delete structuralLeadFilter.createdAt;
 
     const [
       totalLeads,
@@ -91,13 +147,13 @@ export async function GET(req: NextRequest) {
     ] = await Promise.all([
       Lead.countDocuments(leadFilter),
       Student.countDocuments(studentFilter),
-      Application.countDocuments(dateFilter),
+      Application.countDocuments(applicationFilter),
       Lead.countDocuments({ ...leadFilter, convertedToStudent: true }),
       Lead.aggregate([{ $match: leadFilter }, { $group: { _id: "$source", count: { $sum: 1 } } }]),
       Lead.aggregate([{ $match: leadFilter }, { $group: { _id: "$standing", count: { $sum: 1 } } }]),
       Student.aggregate([{ $match: studentFilter }, { $group: { _id: "$currentStage", count: { $sum: 1 } } }]),
-      Application.aggregate([{ $match: dateFilter }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
-      Application.aggregate([{ $match: dateFilter }, { $group: { _id: "$country", count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+      Application.aggregate([{ $match: applicationFilter }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
+      Application.aggregate([{ $match: applicationFilter }, { $group: { _id: "$country", count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
       /* Per-country rows on students (where most CRM application data lives) */
       Student.aggregate([
         { $match: studentFilter },
@@ -129,9 +185,9 @@ export async function GET(req: NextRequest) {
         { $group: { _id: "$_statusLabel", count: { $sum: 1 } } },
         { $sort: { count: -1 } },
       ]),
-      User.find({ role: "counsellor", isActive: true }).select("name target currentCount branch").populate("branch", "name"),
+      User.find(counsellorQuery).select("name target currentCount branch").populate("branch", "name"),
       Lead.find(leadFilter).sort({ createdAt: -1 }).limit(5).populate("branch", "name").populate("assignedTo", "name"),
-      ActivityLog.find(dateFilter).sort({ createdAt: -1 }).limit(10).populate("user", "name"),
+      ActivityLog.find(activityLogFilter).sort({ createdAt: -1 }).limit(10).populate("user", "name"),
       Student.countDocuments({ ...studentFilter, "countries.admissionStatus": "conditional" }),
       Student.countDocuments({ ...studentFilter, "countries.admissionStatus": "unconditional" }),
       Student.countDocuments({ ...studentFilter, "countries.applicationStatus": "coe_received" }),

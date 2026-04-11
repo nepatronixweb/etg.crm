@@ -126,6 +126,53 @@ function countryHasVisaApproved(countries: unknown, countryName: string): boolea
   });
 }
 
+/**
+ * Pick which admission row should drive top-level student.stage / remarks / standing / currentStage.
+ * Using only "last non-closed" breaks when the user edits an earlier university row but a later row exists.
+ * Prefer the last open row that actually changed vs the previous DB snapshot (by subdocument _id).
+ */
+function pickPrimaryAdmissionForTopLevelSync(
+  oldDetails: unknown[],
+  newDetails: Record<string, unknown>[],
+): Record<string, unknown> | undefined {
+  const oldList = Array.isArray(oldDetails) ? (oldDetails as Record<string, unknown>[]) : [];
+  const oldById = new Map<string, Record<string, unknown>>();
+  for (const d of oldList) {
+    const id = admissionSubdocIdString(d._id);
+    if (id) oldById.set(id, d);
+  }
+  const tracked = ["stage", "pipeline", "standing", "remarks"] as const;
+  let candidate: Record<string, unknown> | undefined;
+
+  for (let i = 0; i < newDetails.length; i++) {
+    const n = newDetails[i] as Record<string, unknown>;
+    if (n.closed) continue;
+    const id = admissionSubdocIdString(n._id);
+    const o = id ? oldById.get(id) : undefined;
+    let changed = false;
+    if (!o) {
+      changed = true;
+    } else {
+      for (const f of tracked) {
+        const a = String(o[f] ?? "").trim();
+        const b = String(n[f] ?? "").trim();
+        if (a !== b) {
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (changed) candidate = n;
+  }
+
+  if (candidate) return candidate;
+
+  const open = [...newDetails].reverse().find((e) => !(e as { closed?: boolean }).closed);
+  if (open) return open as Record<string, unknown>;
+  const last = newDetails[newDetails.length - 1];
+  return last as Record<string, unknown> | undefined;
+}
+
 /** After visa approval, stage / pipeline / standing / remarks cannot change for that country. */
 function freezeVisaLockedAdmissionFields(
   existingStudent: { countries?: unknown; admissionDetails?: unknown },
@@ -207,10 +254,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         // Replace the entire admissionDetails array with updated one
         setFields.admissionDetails = updatedAdmissionDetails;
 
-        // Use the last non-closed entry as the primary source of truth
-        const primary =
-          [...updatedAdmissionDetails].reverse().find((e: { closed?: boolean }) => !e.closed) ??
-          updatedAdmissionDetails[updatedAdmissionDetails.length - 1];
+        const primary = pickPrimaryAdmissionForTopLevelSync(
+          Array.isArray(existingStudent.admissionDetails) ? existingStudent.admissionDetails : [],
+          updatedAdmissionDetails as Record<string, unknown>[],
+        );
         if (primary) {
           if (primary.stage !== undefined) {
             setFields.stage = primary.stage;
@@ -222,8 +269,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           if (primary.standing !== undefined) {
             setFields.standing = primary.standing;
           }
-          if (primary.pipeline !== undefined && primary.pipeline !== "") {
-            setFields.currentStage = primary.pipeline;
+          const mappedFromStage =
+            primary.stage && typeof primary.stage === "string"
+              ? stageToPipelineMapping[primary.stage]
+              : undefined;
+          const pipelineStr =
+            primary.pipeline !== undefined && String(primary.pipeline).trim() !== ""
+              ? String(primary.pipeline).trim()
+              : mappedFromStage && String(mappedFromStage).trim() !== ""
+                ? String(mappedFromStage).trim()
+                : "";
+          if (pipelineStr) {
+            setFields.currentStage = pipelineStr;
           }
         }
       }
@@ -268,11 +325,48 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       update = { $set: setFields };
     }
 
-    const student = await Student.findByIdAndUpdate(id, update, { returnDocument: "after", runValidators: false })
+    let student = await Student.findByIdAndUpdate(id, update, { returnDocument: "after", runValidators: false })
       .populate("branch", "name location")
       .populate("counsellor", "name email")
       .lean();
     if (!student) return NextResponse.json({ error: "Student not found" }, { status: 404 });
+
+    // $pull on admissionDetails does not run Direction A — re-sync list-facing fields from remaining rows.
+    if (hasOperators && body && typeof body === "object") {
+      const pull = (body as Record<string, unknown>).$pull as Record<string, unknown> | undefined;
+      if (pull && pull.admissionDetails != null) {
+        const details = Array.isArray(student.admissionDetails)
+          ? (student.admissionDetails as Record<string, unknown>[])
+          : [];
+        if (details.length > 0) {
+          const primary =
+            [...details].reverse().find((e) => !(e as { closed?: boolean }).closed) ?? details[details.length - 1];
+          const sync: Record<string, unknown> = {};
+          if (primary.stage !== undefined) sync.stage = primary.stage;
+          if (primary.remarks !== undefined) sync.remarks = primary.remarks;
+          if (primary.standing !== undefined) sync.standing = primary.standing;
+          const mappedFromStage =
+            primary.stage && typeof primary.stage === "string"
+              ? stageToPipelineMapping[primary.stage]
+              : undefined;
+          const pipelineStr =
+            primary.pipeline !== undefined && String(primary.pipeline).trim() !== ""
+              ? String(primary.pipeline).trim()
+              : mappedFromStage && String(mappedFromStage).trim() !== ""
+                ? String(mappedFromStage).trim()
+                : "";
+          if (pipelineStr) sync.currentStage = pipelineStr;
+          if (Object.keys(sync).length > 0) {
+            const synced = await Student.findByIdAndUpdate(id, { $set: sync }, { new: true, runValidators: false })
+              .populate("branch", "name location")
+              .populate("counsellor", "name email")
+              .lean();
+            if (synced) student = synced;
+          }
+        }
+      }
+    }
+
     return NextResponse.json(student);
   } catch (err) {
     console.error("PATCH /api/students/[id] error:", err);

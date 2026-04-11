@@ -64,17 +64,22 @@ export default function TrialSignupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-950 via-blue-900 to-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
-      <div className="absolute top-0 left-0 w-96 h-96 bg-blue-600 rounded-full blur-3xl opacity-20 animate-pulse" />
-      <div className="absolute bottom-0 right-0 w-96 h-96 bg-blue-500 rounded-full blur-3xl opacity-20 animate-pulse animation-delay-2000" />
-      <div className="absolute top-1/2 left-1/2 w-96 h-96 bg-purple-600 rounded-full blur-3xl opacity-10 animate-pulse animation-delay-1000" />
-
+    <div className="min-h-screen bg-blue-950 flex items-center justify-center p-4">
       <div className="relative w-full max-w-lg z-10">
         <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white/20 ring-1 ring-white/10">
           <div className="mb-6">
             <h2 className="text-2xl font-bold text-white mb-2">Create trial account</h2>
             <p className="text-blue-100 text-sm">
-              You will be the organization admin for your team. Full access to all CRM modules during the trial. Your workspace starts empty—no leads, students, or prefilled lists; add your own data and configure options under Settings.
+              You will be the organization admin for your team. Full access to all CRM modules during the trial.
+            </p>
+            <p className="text-blue-100/90 text-xs mt-3 leading-relaxed border-t border-white/10 pt-3">
+              <strong className="text-white">Your own workspace.</strong> Each trial gets a new organization and branch in
+              our database—your CRM data is never mixed with other companies. Lists start empty until you add them in
+              Settings.
+            </p>
+            <p className="text-blue-100/80 text-xs mt-2 leading-relaxed">
+              <strong className="text-white">Security.</strong> Passwords are stored with strong hashing. Always use this
+              site over HTTPS; your host should use encrypted connections to the database (e.g. MongoDB Atlas TLS).
             </p>
           </div>
 
@@ -193,7 +198,7 @@ export default function TrialSignupPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full mt-6 py-3 px-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-500 disabled:to-gray-600 text-white rounded-xl font-bold transition-all duration-200 shadow-lg hover:shadow-xl disabled:shadow-md disabled:cursor-not-allowed flex items-center justify-center gap-2.5 group"
+              className="w-full mt-6 py-3 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 text-white rounded-xl font-bold transition-colors duration-200 shadow-lg hover:shadow-xl disabled:shadow-md disabled:cursor-not-allowed flex items-center justify-center gap-2.5 group"
             >
               {loading ? (
                 <>

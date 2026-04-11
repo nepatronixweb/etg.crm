@@ -274,55 +274,90 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  useEffect(() => {
-    fetch("/api/settings/app").then(r => r.json()).then(d => {
-      if (d?.countries?.length) {
-        setAppCountries(d.countries.map((c: string | { name: string }) => typeof c === "string" ? c : c.name));
-        const uniMap: Record<string, string[]> = {};
-        d.countries.forEach((c: { name: string; universities?: unknown[] } | string) => {
-          if (typeof c !== "string" && c.universities?.length) {
-            uniMap[c.name] = universityEntryNames(normalizeUniversitiesArray(c.universities));
-          }
-        });
-        setCountryUniversities(uniMap);
-      }
-      if (d?.b2bNames?.length) {
-        setB2bNames(d.b2bNames);
-      }
-      if (d?.courses?.length) {
-        setAppCourses(d.courses);
-      }
-      if (d?.educationLevels?.length) {
-        setAppEducationLevels(d.educationLevels);
-      }
-      if (d?.leadStages?.length) {
-        setAppLeadStages(d.leadStages);
-      }
-      if (d?.leadStageGroups?.length) {
-        setAppLeadStageGroups(d.leadStageGroups);
-      }
-      if (d?.countryStages && typeof d.countryStages === "object") {
-        setCountryStages(d.countryStages);
-      }
-      const globalR = Array.isArray(d?.remarkOptions) && d.remarkOptions.length > 0 ? d.remarkOptions : [];
-      setAppRemarkOptions(globalR);
-      setRemarkOptionsByDept({
-        application:
-          Array.isArray(d?.remarkOptionsApplication) && d.remarkOptionsApplication.length > 0
-            ? d.remarkOptionsApplication
-            : globalR,
-        admission:
-          Array.isArray(d?.remarkOptionsAdmission) && d.remarkOptionsAdmission.length > 0
-            ? d.remarkOptionsAdmission
-            : globalR,
-        visa:
-          Array.isArray(d?.remarkOptionsVisa) && d.remarkOptionsVisa.length > 0 ? d.remarkOptionsVisa : globalR,
-      });
-      if (d?.leadStandings?.length) {
-        setAppStandings(d.leadStandings);
-      }
-    }).catch(() => {});
+  const loadB2bNames = useCallback(() => {
+    fetch("/api/settings/b2b", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d?.b2bNames)) setB2bNames(d.b2bNames);
+      })
+      .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    loadB2bNames();
+  }, [loadB2bNames]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible") loadB2bNames();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [loadB2bNames]);
+
+  const loadDashboardSettings = useCallback(() => {
+    fetch("/api/settings/app", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.countries?.length) {
+          setAppCountries(d.countries.map((c: string | { name: string }) => (typeof c === "string" ? c : c.name)));
+          const uniMap: Record<string, string[]> = {};
+          for (const c of d.countries as (string | { name: string; universities?: unknown[] })[]) {
+            if (typeof c === "string") {
+              uniMap[c] = [];
+            } else if (c?.name) {
+              uniMap[c.name] = universityEntryNames(normalizeUniversitiesArray(c.universities));
+            }
+          }
+          setCountryUniversities(uniMap);
+        }
+        if (d?.courses?.length) {
+          setAppCourses(d.courses);
+        }
+        if (d?.educationLevels?.length) {
+          setAppEducationLevels(d.educationLevels);
+        }
+        if (d?.leadStages?.length) {
+          setAppLeadStages(d.leadStages);
+        }
+        if (d?.leadStageGroups?.length) {
+          setAppLeadStageGroups(d.leadStageGroups);
+        }
+        if (d?.countryStages && typeof d.countryStages === "object") {
+          setCountryStages(d.countryStages);
+        }
+        const globalR = Array.isArray(d?.remarkOptions) && d.remarkOptions.length > 0 ? d.remarkOptions : [];
+        setAppRemarkOptions(globalR);
+        setRemarkOptionsByDept({
+          application:
+            Array.isArray(d?.remarkOptionsApplication) && d.remarkOptionsApplication.length > 0
+              ? d.remarkOptionsApplication
+              : globalR,
+          admission:
+            Array.isArray(d?.remarkOptionsAdmission) && d.remarkOptionsAdmission.length > 0
+              ? d.remarkOptionsAdmission
+              : globalR,
+          visa:
+            Array.isArray(d?.remarkOptionsVisa) && d.remarkOptionsVisa.length > 0 ? d.remarkOptionsVisa : globalR,
+        });
+        if (d?.leadStandings?.length) {
+          setAppStandings(d.leadStandings);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    loadDashboardSettings();
+  }, [loadDashboardSettings]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible") loadDashboardSettings();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [loadDashboardSettings]);
 
   const addNote = async () => {
     if (!note.trim()) return;
@@ -488,28 +523,27 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   };
 
   const saveAdmissionDetail = async () => {
-    if (!admissionForm.country) return;
+    if (!student || !admissionForm.country) return;
     if (admissionForm.courses.some((course) => !course.name.trim())) return;
 
     setSavingAdmission(true);
 
+    const newEntry = {
+      ...admissionForm,
+      courses: admissionForm.courses.map((course) => ({ ...course })),
+    };
+    const admissionDetails = [...(student.admissionDetails || []), newEntry];
+
     const res = await fetch(`/api/students/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        $push: {
-          admissionDetails: {
-            ...admissionForm,
-            courses: admissionForm.courses.map((course) => ({ ...course })),
-          },
-        },
-      }),
+      body: JSON.stringify({ admissionDetails }),
     });
     const updatedStudent = await res.json();
     setSavingAdmission(false);
     setShowAdmissionForm(false);
     setAdmissionForm(EMPTY_ADMISSION_FORM);
-    setStudent((prev) => prev ? { ...prev, admissionDetails: updatedStudent.admissionDetails ?? prev.admissionDetails } : prev);
+    setStudent((prev) => (prev ? { ...prev, ...updatedStudent } : prev));
   };
 
   const quickUpdateAdmission = (index: number, field: string, value: string) => {
@@ -550,14 +584,19 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     const entry = student?.admissionDetails?.[index];
     if (!entry) return;
 
-    // Optimistic removal
     setStudent((prev) => prev ? { ...prev, admissionDetails: prev.admissionDetails.filter((_, i) => i !== index) } : prev);
 
-    await fetch(`/api/students/${id}`, {
+    const res = await fetch(`/api/students/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ $pull: { admissionDetails: { _id: entry._id } } }),
     });
+    if (res.ok) {
+      const saved = await res.json();
+      setStudent((prev) => (prev ? { ...prev, ...saved } : prev));
+    } else {
+      fetchData();
+    }
   };
 
   const updateAdmissionDetail = async (index: number) => {
@@ -580,7 +619,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     const updatedStudent = await res.json();
     setSavingAdmission(false);
     setEditingAdmission(null);
-    setStudent((prev) => prev ? { ...prev, admissionDetails: updatedStudent.admissionDetails ?? updated } : prev);
+    setStudent((prev) => (prev ? { ...prev, ...updatedStudent } : prev));
   };
 
   const toggleAdmissionClosed = async (index: number) => {
@@ -589,13 +628,17 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
       entryIndex === index ? { ...entry, closed: !entry.closed } : entry
     ));
 
-    await fetch(`/api/students/${id}`, {
+    const res = await fetch(`/api/students/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ admissionDetails: updated }),
     });
-
-    setStudent({ ...student, admissionDetails: updated });
+    if (res.ok) {
+      const saved = await res.json();
+      setStudent((prev) => (prev ? { ...prev, ...saved } : prev));
+    } else {
+      fetchData();
+    }
   };
 
   if (!student) {
@@ -764,7 +807,11 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                           <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Country <span className="text-red-400">*</span></label>
                           <select
                             value={admissionForm.country}
-                            onChange={(e) => setAdmissionForm((form) => ({ ...form, country: e.target.value }))}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setAdmissionForm((form) => ({ ...form, country: v }));
+                              loadDashboardSettings();
+                            }}
                             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 focus:bg-white transition-all"
                           >
                             <option value="">Select country</option>
@@ -781,7 +828,10 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                               setAdmissionForm((form) => ({ ...form, universityName: e.target.value }));
                               setUniDropdownOpen("new");
                             }}
-                            onFocus={() => setUniDropdownOpen("new")}
+                            onFocus={() => {
+                              loadDashboardSettings();
+                              setUniDropdownOpen("new");
+                            }}
                             onBlur={() => setTimeout(() => setUniDropdownOpen(null), 150)}
                             placeholder="Type or select university"
                             autoComplete="off"
@@ -797,7 +847,18 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                 </ul>
                               );
                             }
-                            if (filtered.length === 0) return null;
+                            if (filtered.length === 0) {
+                              if (unis.length === 0) {
+                                return (
+                                  <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
+                                    <li className="px-4 py-2.5 text-xs text-gray-500">
+                                      No universities listed for {admissionForm.country} in Settings → Destination countries. Add one there to see suggestions here.
+                                    </li>
+                                  </ul>
+                                );
+                              }
+                              return null;
+                            }
                             return (
                               <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
                                 {filtered.map((name) => (
@@ -849,7 +910,10 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                               setAdmissionForm((form) => ({ ...form, b2bName: e.target.value }));
                               setB2bDropdownOpen("new");
                             }}
-                            onFocus={() => setB2bDropdownOpen("new")}
+                            onFocus={() => {
+                              loadB2bNames();
+                              setB2bDropdownOpen("new");
+                            }}
                             onBlur={() => setTimeout(() => setB2bDropdownOpen(null), 150)}
                             placeholder="Type or select a B2B name"
                             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 focus:bg-white transition-all"
@@ -887,7 +951,19 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Stage</label>
                             <select
                               value={admissionForm.stage}
-                              onChange={(e) => setAdmissionForm((form) => ({ ...form, stage: e.target.value, statusDate: new Date().toISOString().split("T")[0] }))}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                const list = getStagesForCountry(admissionForm.country);
+                                const autoPipeline = list.find((s) => s.value === v)?.group || "";
+                                setAdmissionForm((form) => ({
+                                  ...form,
+                                  stage: v,
+                                  statusDate: new Date().toISOString().split("T")[0],
+                                  pipeline: autoPipeline,
+                                  remarks: "",
+                                  standing: "",
+                                }));
+                              }}
                               className="w-full px-4 py-3 bg-white border border-emerald-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all"
                             >
                               <option value="">Select stage</option>
@@ -1188,7 +1264,11 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Country</label>
                                 <select
                                   value={editAdmissionForm.country}
-                                  onChange={(e) => setEditAdmissionForm((form) => ({ ...form, country: e.target.value }))}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    setEditAdmissionForm((form) => ({ ...form, country: v }));
+                                    loadDashboardSettings();
+                                  }}
                                   className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-all"
                                 >
                                   <option value="">Select country</option>
@@ -1202,7 +1282,10 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                 <input
                                   value={editAdmissionForm.universityName}
                                   onChange={(e) => { setEditAdmissionForm((form) => ({ ...form, universityName: e.target.value })); setUniDropdownOpen("edit"); }}
-                                  onFocus={() => setUniDropdownOpen("edit")}
+                                  onFocus={() => {
+                                    loadDashboardSettings();
+                                    setUniDropdownOpen("edit");
+                                  }}
                                   onBlur={() => setTimeout(() => setUniDropdownOpen(null), 150)}
                                   placeholder="Type or select university"
                                   autoComplete="off"
@@ -1216,7 +1299,18 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                       <li className="px-4 py-2.5 text-sm text-gray-400 italic">Select a country first</li>
                                     </ul>
                                   );
-                                  if (filtered.length === 0) return null;
+                                  if (filtered.length === 0) {
+                                    if (unis.length === 0) {
+                                      return (
+                                        <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-40 overflow-y-auto">
+                                          <li className="px-4 py-2.5 text-xs text-gray-500">
+                                            No universities listed for {editAdmissionForm.country} in Settings → Destination countries.
+                                          </li>
+                                        </ul>
+                                      );
+                                    }
+                                    return null;
+                                  }
                                   return (
                                     <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-48 overflow-y-auto">
                                       {filtered.map((name) => (
@@ -1253,7 +1347,10 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                 <input
                                   value={editAdmissionForm.b2bName}
                                   onChange={(e) => { setEditAdmissionForm((form) => ({ ...form, b2bName: e.target.value })); setB2bDropdownOpen("edit"); }}
-                                  onFocus={() => setB2bDropdownOpen("edit")}
+                                  onFocus={() => {
+                                    loadB2bNames();
+                                    setB2bDropdownOpen("edit");
+                                  }}
                                   onBlur={() => setTimeout(() => setB2bDropdownOpen(null), 150)}
                                   placeholder="Type or select a B2B partner name"
                                   className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-all"
@@ -1284,7 +1381,19 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                   <select
                                     value={editAdmissionForm.stage}
                                     disabled={isCountryVisaApproved(editAdmissionForm.country)}
-                                    onChange={(e) => setEditAdmissionForm((form) => ({ ...form, stage: e.target.value, statusDate: new Date().toISOString().split("T")[0] }))}
+                                    onChange={(e) => {
+                                      const v = e.target.value;
+                                      const list = getStagesForCountry(editAdmissionForm.country);
+                                      const autoPipeline = list.find((s) => s.value === v)?.group || "";
+                                      setEditAdmissionForm((form) => ({
+                                        ...form,
+                                        stage: v,
+                                        statusDate: new Date().toISOString().split("T")[0],
+                                        pipeline: autoPipeline,
+                                        remarks: "",
+                                        standing: "",
+                                      }));
+                                    }}
                                     className="w-full px-4 py-2.5 bg-white border border-yellow-200 rounded-xl text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                                   >
                                     <option value="">Select stage</option>

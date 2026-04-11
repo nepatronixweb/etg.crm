@@ -12,7 +12,9 @@
     "seed": "npx tsx --env-file=.env.local scripts/seed.ts",
     "reset-admin": "npx tsx --env-file=.env.local scripts/reset-admin-password.ts",
     "seed:frontdesk": "npx tsx --env-file=.env.local scripts/seed-frontdesk.ts",
-    "db:copy-prod-local": "npx tsx --env-file=.env.local scripts/copy-prod-to-local.ts"
+    "db:copy-prod-local": "npx tsx --env-file=.env.local scripts/copy-prod-to-local.ts",
+    "db:nuke-razu-nepatronix": "npx tsx --env-file=.env.local scripts/force-remove-razu-nepatronix.ts",
+    "db:nuke-razu-nepatronix:execute": "npx tsx --env-file=.env.local scripts/force-remove-razu-nepatronix.ts --execute"
   },
   "dependencies": {
     "@auth/mongodb-adapter": "^3.11.1",

@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   formatDate,
@@ -127,43 +127,66 @@ export default function StudentsPage() {
     fetch("/api/users").then((r) => r.json()).then((u) =>
       setCounsellors(Array.isArray(u) ? u.filter((x: { role: string }) => x.role === "counsellor") : [])
     );
-    fetch("/api/settings/app").then((r) => r.json()).then((d) => {
-      if (d?.leadStages?.length) {
-        setAppLeadStages(d.leadStages.map((s: { value: string; label: string; group: string }) => {
-          const existing = LEAD_STAGES.find(ls => ls.value === s.value);
-          return { value: s.value, label: s.label, color: existing?.color || "bg-gray-100 text-gray-700" };
-        }));
-      }
-      if (d?.leadStageGroups?.length && d?.leadStages?.length) {
-        const groupDots: Record<string, string> = {
-          Application: "bg-amber-400", Offer: "bg-blue-400", GS: "bg-purple-400",
-          COE: "bg-emerald-400", Visa: "bg-teal-400",
-        };
-        setAppStageGroups(d.leadStageGroups.map((g: string) => ({
-          label: g,
-          dot: groupDots[g] || "bg-gray-400",
-          stages: d.leadStages.filter((s: { group: string }) => s.group === g).map((s: { value: string }) => s.value),
-        })));
-      }
-      if (Array.isArray(d?.remarkOptions) && d.remarkOptions.length > 0) {
-        setAppRemarkOptions(d.remarkOptions);
-      }
-      if (Array.isArray(d?.leadStandings) && d.leadStandings.length > 0) {
-        setAppStandings(d.leadStandings);
-      }
-      // Collect all universities from all countries (deduplicated)
-      if (Array.isArray(d?.countries)) {
-        const unis: string[] = [];
-        for (const c of d.countries) {
-          if (c && typeof c === "object" && Array.isArray(c.universities)) {
-            unis.push(...universityEntryNames(normalizeUniversitiesArray(c.universities)));
-          }
-        }
-        setAllUniversities([...new Set(unis)].sort());
-      }
-    }).catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const loadStudentsPageSettings = useCallback(() => {
+    fetch("/api/settings/app", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.leadStages?.length) {
+          setAppLeadStages(
+            d.leadStages.map((s: { value: string; label: string; group: string }) => {
+              const existing = LEAD_STAGES.find((ls) => ls.value === s.value);
+              return { value: s.value, label: s.label, color: existing?.color || "bg-gray-100 text-gray-700" };
+            })
+          );
+        }
+        if (d?.leadStageGroups?.length && d?.leadStages?.length) {
+          const groupDots: Record<string, string> = {
+            Application: "bg-amber-400",
+            Offer: "bg-blue-400",
+            GS: "bg-purple-400",
+            COE: "bg-emerald-400",
+            Visa: "bg-teal-400",
+          };
+          setAppStageGroups(
+            d.leadStageGroups.map((g: string) => ({
+              label: g,
+              dot: groupDots[g] || "bg-gray-400",
+              stages: d.leadStages.filter((s: { group: string }) => s.group === g).map((s: { value: string }) => s.value),
+            }))
+          );
+        }
+        if (Array.isArray(d?.remarkOptions) && d.remarkOptions.length > 0) {
+          setAppRemarkOptions(d.remarkOptions);
+        }
+        if (Array.isArray(d?.leadStandings) && d.leadStandings.length > 0) {
+          setAppStandings(d.leadStandings);
+        }
+        if (Array.isArray(d?.countries)) {
+          const unis: string[] = [];
+          for (const c of d.countries) {
+            if (c && typeof c === "object" && Array.isArray(c.universities)) {
+              unis.push(...universityEntryNames(normalizeUniversitiesArray(c.universities)));
+            }
+          }
+          setAllUniversities([...new Set(unis)].sort());
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    loadStudentsPageSettings();
+  }, [loadStudentsPageSettings]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible") loadStudentsPageSettings();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [loadStudentsPageSettings]);
 
   const [stageDropdownId, setStageDropdownId] = useState<string | null>(null);
   const [crmStageDropdownId, setCrmStageDropdownId] = useState<string | null>(null);
@@ -647,7 +670,10 @@ export default function StudentsPage() {
           {allUniversities.length > 0 && (
             <div className="flex-1 min-w-44 relative">
               <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">University</label>
-              <select value={filterUniversity} onChange={(e) => setFilterUniversity(e.target.value)}
+              <select
+                value={filterUniversity}
+                onFocus={() => loadStudentsPageSettings()}
+                onChange={(e) => setFilterUniversity(e.target.value)}
                 className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8">
                 <option value="">All Universities</option>
                 {allUniversities.map((u) => <option key={u} value={u}>{u}</option>)}

@@ -254,6 +254,15 @@ export default function CommissionPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
+  const loadB2bNames = useCallback(() => {
+    fetch("/api/settings/b2b", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d?.b2bNames)) setB2bNames(d.b2bNames);
+      })
+      .catch(() => {});
+  }, []);
+
   const [applicantSuggestions, setApplicantSuggestions] = useState<LooseStudentForCommission[]>([]);
   const [applicantSuggestLoading, setApplicantSuggestLoading] = useState(false);
   const [applicantListOpen, setApplicantListOpen] = useState(false);
@@ -265,8 +274,8 @@ export default function CommissionPage() {
   const [editingCommissionId, setEditingCommissionId] = useState<string | null>(null);
   const [busyRowId, setBusyRowId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch("/api/settings/app")
+  const loadCommissionSettings = useCallback(() => {
+    fetch("/api/settings/app", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => {
         if (Array.isArray(d?.countries)) {
@@ -281,13 +290,38 @@ export default function CommissionPage() {
             )
           );
         }
-        if (Array.isArray(d?.b2bNames)) setB2bNames(d.b2bNames);
         if (d?.commissionPercentByCountry && typeof d.commissionPercentByCountry === "object") {
           setPercentMap(d.commissionPercentByCountry as Record<string, number>);
         }
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    loadCommissionSettings();
+  }, [loadCommissionSettings]);
+
+  useEffect(() => {
+    loadB2bNames();
+  }, [loadB2bNames]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible") {
+        loadB2bNames();
+        loadCommissionSettings();
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [loadB2bNames, loadCommissionSettings]);
+
+  useEffect(() => {
+    if (showCreateForm) {
+      loadB2bNames();
+      loadCommissionSettings();
+    }
+  }, [showCreateForm, loadB2bNames, loadCommissionSettings]);
 
   const loadList = useCallback(() => {
     if (!canAccess) return;
@@ -575,6 +609,7 @@ export default function CommissionPage() {
             <select
               required
               value={form.destinationCountry}
+              onFocus={() => loadCommissionSettings()}
               onChange={(e) => {
                 const v = e.target.value;
                 setForm((f) => ({
@@ -659,6 +694,7 @@ export default function CommissionPage() {
               <select
                 required
                 value={form.universityName}
+                onFocus={() => loadCommissionSettings()}
                 onChange={(e) => setForm((f) => ({ ...f, universityName: e.target.value }))}
                 className={fieldClass}
               >
@@ -911,6 +947,7 @@ export default function CommissionPage() {
             <select
               value={form.b2bName}
               onChange={(e) => setForm((f) => ({ ...f, b2bName: e.target.value }))}
+              onFocus={() => loadB2bNames()}
               className={fieldClass}
             >
               <option value="">Select partner</option>

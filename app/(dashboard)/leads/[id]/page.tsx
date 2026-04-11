@@ -104,47 +104,70 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     void fetchLead();
   }, [fetchLead]);
 
-  // Fetch dynamic settings
-  useEffect(() => {
-    fetch("/api/settings/app").then(r => r.json()).then(d => {
-      if (d?.leadStandings?.length) setAppStandings(d.leadStandings);
-      if (d?.countries?.length) {
-        setAppCountries(
-          d.countries.map((c: string | { name: string; universities?: unknown[] }) =>
-            typeof c === "string"
-              ? { name: c, universities: [] }
-              : {
-                  name: c.name,
-                  universities: universityEntryNames(normalizeUniversitiesArray(c.universities)),
-                }
-          )
-        );
-      }
-      if (d?.fdStatuses?.length) {
-        setAppFdStatuses(d.fdStatuses.map((s: string) => {
-          const existing = FD_STATUSES.find(f => f.value === s);
-          return existing || { value: s, label: s, color: "bg-gray-500 text-white" };
-        }));
-      }
-      if (d?.leadStages?.length) {
-        setAppLeadStages(d.leadStages.map((s: { value: string; label: string; group: string }) => {
-          const existing = LEAD_STAGES.find(ls => ls.value === s.value);
-          return { value: s.value, label: s.label, color: existing?.color || "bg-gray-100 text-gray-700" };
-        }));
-      }
-      if (d?.leadStageGroups?.length && d?.leadStages?.length) {
-        const groupDots: Record<string, string> = {
-          Application: "bg-amber-400", Offer: "bg-blue-400", GS: "bg-purple-400",
-          COE: "bg-emerald-400", Visa: "bg-teal-400",
-        };
-        setAppStageGroups(d.leadStageGroups.map((g: string) => ({
-          label: g,
-          dot: groupDots[g] || "bg-gray-400",
-          stages: d.leadStages.filter((s: { group: string }) => s.group === g).map((s: { value: string }) => s.value),
-        })));
-      }
-    }).catch(() => {});
+  const loadLeadPageSettings = useCallback(() => {
+    fetch("/api/settings/app", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.leadStandings?.length) setAppStandings(d.leadStandings);
+        if (d?.countries?.length) {
+          setAppCountries(
+            d.countries.map((c: string | { name: string; universities?: unknown[] }) =>
+              typeof c === "string"
+                ? { name: c, universities: [] }
+                : {
+                    name: c.name,
+                    universities: universityEntryNames(normalizeUniversitiesArray(c.universities)),
+                  }
+            )
+          );
+        }
+        if (d?.fdStatuses?.length) {
+          setAppFdStatuses(
+            d.fdStatuses.map((s: string) => {
+              const existing = FD_STATUSES.find((f) => f.value === s);
+              return existing || { value: s, label: s, color: "bg-gray-500 text-white" };
+            })
+          );
+        }
+        if (d?.leadStages?.length) {
+          setAppLeadStages(
+            d.leadStages.map((s: { value: string; label: string; group: string }) => {
+              const existing = LEAD_STAGES.find((ls) => ls.value === s.value);
+              return { value: s.value, label: s.label, color: existing?.color || "bg-gray-100 text-gray-700" };
+            })
+          );
+        }
+        if (d?.leadStageGroups?.length && d?.leadStages?.length) {
+          const groupDots: Record<string, string> = {
+            Application: "bg-amber-400",
+            Offer: "bg-blue-400",
+            GS: "bg-purple-400",
+            COE: "bg-emerald-400",
+            Visa: "bg-teal-400",
+          };
+          setAppStageGroups(
+            d.leadStageGroups.map((g: string) => ({
+              label: g,
+              dot: groupDots[g] || "bg-gray-400",
+              stages: d.leadStages.filter((s: { group: string }) => s.group === g).map((s: { value: string }) => s.value),
+            }))
+          );
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    loadLeadPageSettings();
+  }, [loadLeadPageSettings]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible") loadLeadPageSettings();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [loadLeadPageSettings]);
 
   // Auto-scroll to notes and focus textarea when navigating with #notes hash
   useEffect(() => {
@@ -621,7 +644,13 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                     <div className="relative" onClick={(e) => e.stopPropagation()}>
                       <div
                         className={`flex items-center justify-between w-full px-3 py-2 bg-white border rounded-lg text-sm ${canEdit ? "cursor-pointer" : "cursor-default"} transition-colors ${lcOpenDropdown === i ? "border-gray-500 ring-1 ring-gray-400" : "border-gray-200 hover:border-gray-400"}`}
-                        onClick={() => { if (canEdit) { setLcUniOpen(null); setLcOpenDropdown(lcOpenDropdown === i ? null : i); } }}
+                        onClick={() => {
+                          if (canEdit) {
+                            loadLeadPageSettings();
+                            setLcUniOpen(null);
+                            setLcOpenDropdown(lcOpenDropdown === i ? null : i);
+                          }
+                        }}
                       >
                         {entry.country ? <span className="text-gray-800 font-semibold flex items-center gap-1.5"><Globe size={12} className="text-blue-400" />{entry.country}</span> : <span className="text-gray-300 text-sm">Select a country…</span>}
                         {canEdit && <ChevronDown size={13} className={`text-gray-400 transition-transform ${lcOpenDropdown === i ? "rotate-180" : ""}`} />}
@@ -657,7 +686,13 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                     <div className="relative" onClick={(e) => e.stopPropagation()}>
                       <div
                         className={`flex items-center justify-between w-full px-3 py-2 bg-white border rounded-lg text-sm transition-colors ${!entry.country || !canEdit ? "opacity-50 cursor-not-allowed bg-gray-50" : lcUniOpen === i ? "border-gray-500 ring-1 ring-gray-400 cursor-pointer" : "border-gray-200 hover:border-gray-400 cursor-pointer"}`}
-                        onClick={() => { if (entry.country && canEdit) { setLcOpenDropdown(null); setLcUniOpen(lcUniOpen === i ? null : i); } }}
+                        onClick={() => {
+                          if (entry.country && canEdit) {
+                            loadLeadPageSettings();
+                            setLcOpenDropdown(null);
+                            setLcUniOpen(lcUniOpen === i ? null : i);
+                          }
+                        }}
                       >
                         {entry.universityName ? <span className="text-gray-800 font-semibold flex items-center gap-1.5"><GraduationCap size={12} className="text-purple-400" />{entry.universityName}</span> : <span className="text-gray-300 text-sm">{entry.country ? "Select university (optional)…" : "Select country first"}</span>}
                         {canEdit && <ChevronDown size={13} className={`text-gray-400 transition-transform ${lcUniOpen === i ? "rotate-180" : ""}`} />}

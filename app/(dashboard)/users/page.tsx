@@ -150,6 +150,11 @@ export default function UsersPage() {
   const [resetError, setResetError] = useState("");
   const [resetSuccess, setResetSuccess] = useState("");
 
+  /** Super admin: trash opens modal (deactivate vs permanent delete). */
+  const [removeUserModal, setRemoveUserModal] = useState<User | null>(null);
+  const [removeUserWorking, setRemoveUserWorking] = useState(false);
+  const [removeUserModalError, setRemoveUserModalError] = useState("");
+
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(() => new Set());
   const [bulkWorking, setBulkWorking] = useState(false);
   const selectAllRef = useRef<HTMLInputElement>(null);
@@ -298,6 +303,68 @@ export default function UsersPage() {
     fetchUsers();
   };
 
+  const openRemoveUserModal = (u: User) => {
+    setRemoveUserModalError("");
+    setRemoveUserModal(u);
+  };
+
+  const closeRemoveUserModal = () => {
+    if (removeUserWorking) return;
+    setRemoveUserModal(null);
+    setRemoveUserModalError("");
+  };
+
+  const softRemoveFromModal = async () => {
+    const u = removeUserModal;
+    if (!u || !u.isActive) return;
+    setRemoveUserWorking(true);
+    setRemoveUserModalError("");
+    try {
+      const res = await fetch(`/api/users/${u._id}`, { method: "DELETE" });
+      const d = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setRemoveUserModalError(d.error || "Failed to deactivate user");
+        return;
+      }
+      setSelectedUserIds((prev) => {
+        const next = new Set(prev);
+        next.delete(u._id);
+        return next;
+      });
+      setRemoveUserModal(null);
+      fetchUsers();
+    } finally {
+      setRemoveUserWorking(false);
+    }
+  };
+
+  const permanentRemoveFromModal = async () => {
+    const u = removeUserModal;
+    if (!u) return;
+    if (!confirm(`Permanently delete ${u.name} (${u.email})? This cannot be undone and removes their account from the database.`)) {
+      return;
+    }
+    setRemoveUserWorking(true);
+    setRemoveUserModalError("");
+    try {
+      const res = await fetch(`/api/users/${u._id}?permanent=1`, { method: "DELETE" });
+      const d = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setRemoveUserModalError(d.error || "Failed to delete user");
+        return;
+      }
+      setSelectedUserIds((prev) => {
+        const next = new Set(prev);
+        next.delete(u._id);
+        return next;
+      });
+      setRemoveUserModal(null);
+      fetchUsers();
+    } finally {
+      setRemoveUserWorking(false);
+    }
+  };
+
   const bulkDeactivateSelected = async () => {
     const ids = Array.from(selectedUserIds);
     if (ids.length === 0) return;
@@ -423,11 +490,16 @@ export default function UsersPage() {
   const toggleActive = async (u: User) => {
     const action = u.isActive ? "Deactivate" : "Reactivate";
     if (!confirm(`${action} ${u.name}?`)) return;
-    await fetch(`/api/users/${u._id}`, {
+    const res = await fetch(`/api/users/${u._id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ isActive: !u.isActive }),
     });
+    if (!res.ok) {
+      const d = (await res.json().catch(() => ({}))) as { error?: string };
+      alert(d.error || `Failed to ${action.toLowerCase()} user`);
+      return;
+    }
     fetchUsers();
   };
 
@@ -738,10 +810,20 @@ export default function UsersPage() {
                           <RotateCcw size={15} />
                         </button>
                         <button
-                          onClick={() => deactivateUser(user)}
-                          title={user.isActive ? "Deactivate user" : "Already inactive"}
-                          disabled={!user.isActive || bulkWorking}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:pointer-events-none disabled:opacity-30"
+                          onClick={() => (isSuperAdmin ? openRemoveUserModal(user) : deactivateUser(user))}
+                          title={
+                            isSuperAdmin
+                              ? "Remove user (deactivate or delete permanently)"
+                              : user.isActive
+                                ? "Deactivate user"
+                                : "Already inactive"
+                          }
+                          disabled={(!isSuperAdmin && !user.isActive) || bulkWorking}
+                          className={`p-1.5 rounded-lg transition-colors disabled:pointer-events-none disabled:opacity-30 ${
+                            isSuperAdmin || user.isActive
+                              ? "text-gray-600 hover:text-red-600 hover:bg-red-50"
+                              : "text-gray-400"
+                          }`}
                         >
                           <Trash2 size={15} />
                         </button>
@@ -1500,6 +1582,89 @@ export default function UsersPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Super admin: remove user (deactivate vs permanent delete) ─── */}
+      {removeUserModal && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={closeRemoveUserModal}
+          role="presentation"
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden ring-1 ring-black/[0.06]"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-labelledby="remove-user-title"
+          >
+            <div className="px-6 py-5 border-b border-gray-100 flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center shrink-0">
+                  <Trash2 size={20} className="text-red-600" />
+                </div>
+                <div className="min-w-0">
+                  <h2 id="remove-user-title" className="font-bold text-gray-900">
+                    Remove user
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-1 break-words">
+                    <span className="font-semibold text-gray-800">{removeUserModal.name}</span>
+                    <span className="text-gray-400"> · </span>
+                    {removeUserModal.email}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeRemoveUserModal}
+                disabled={removeUserWorking}
+                className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <p className="text-sm text-gray-600 leading-relaxed">
+                <strong className="text-gray-800">Deactivate</strong> keeps the account in the database (inactive, cannot
+                sign in). Use <strong className="text-gray-800">Delete permanently</strong> to remove the user entirely
+                so they no longer block branch or organization cleanup.
+              </p>
+              {removeUserModalError && (
+                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+                  <AlertCircle size={16} className="shrink-0" /> {removeUserModalError}
+                </div>
+              )}
+              <div className="flex flex-col sm:flex-row sm:flex-wrap justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={removeUserWorking}
+                  onClick={closeRemoveUserModal}
+                  className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                {removeUserModal.isActive && (
+                  <button
+                    type="button"
+                    disabled={removeUserWorking}
+                    onClick={() => void softRemoveFromModal()}
+                    className="px-4 py-2.5 rounded-xl text-sm font-semibold border border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    {removeUserWorking ? "…" : "Deactivate only"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={removeUserWorking}
+                  onClick={() => void permanentRemoveFromModal()}
+                  className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  {removeUserWorking ? "…" : "Delete permanently"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

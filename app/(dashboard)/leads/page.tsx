@@ -133,6 +133,8 @@ function LeadsPageContent() {
   const [totalLeads, setTotalLeads] = useState(0);
   const [assignCounsellorForLeadId, setAssignCounsellorForLeadId] = useState<string | null>(null);
   const [assignCounsellorUserId, setAssignCounsellorUserId] = useState("");
+  /** Telecaller transfer UI (same table layout as other roles; action opens from row menu). */
+  const [telecallerTransferModalLeadId, setTelecallerTransferModalLeadId] = useState<string | null>(null);
   const [telecallerFreshTransferChoice, setTelecallerFreshTransferChoice] = useState<Record<string, string>>({});
   const [telecallerFreshTransferCounsellor, setTelecallerFreshTransferCounsellor] = useState<Record<string, string>>({});
   const [telecallerTransferAppointmentDate, setTelecallerTransferAppointmentDate] = useState<Record<string, string>>({});
@@ -377,7 +379,6 @@ function LeadsPageContent() {
     }
   };
 
-  // exclude stage filter from the count for counsellors since they don't see it
   const activeFilterCount =
     [
       filterStatus,
@@ -385,7 +386,7 @@ function LeadsPageContent() {
       filterAssignedTo,
       filterSource,
       filterService,
-      session?.user?.role === "counsellor" ? "" : filterLeadStage,
+      filterLeadStage,
       filterDateFrom || filterDateTo,
       filterAcademicYear,
       filterApplyLevel,
@@ -606,18 +607,15 @@ function LeadsPageContent() {
   const canUpdateStatus = ["super_admin", "org_admin", "counsellor", "telecaller", "front_desk", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
   // counsellors no longer need access to stage controls
   const canUpdateStage = ["super_admin", "org_admin", "telecaller", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
+  /** FD workflow status (same column for all roles; edit only where it was supported before). */
+  const canUpdateFdStatus = ["super_admin", "org_admin", "front_desk", "counsellor", "telecaller"].includes(session?.user?.role || "");
   const canExport = hasModuleAction(userPermissions, userRole, "leads", "export");
   const isAdmin = isOrgWideAdmin(session?.user?.role);
 
-  const leadsTableColumnCount = useMemo(() => {
-    const role = session?.user?.role;
-    let n = 3;
-    if (isAdmin) n += 1;
-    if (!isAdmin) n += 1;
-    if (role !== "front_desk" && role !== "counsellor" && role !== "telecaller") n += 1;
-    n += 3;
-    return n;
-  }, [isAdmin, session?.user?.role]);
+  const leadsTableColumnCount = useMemo(
+    () => (isAdmin ? 1 : 0) + 3 + 1 + 3,
+    [isAdmin]
+  );
 
   useEffect(() => {
     if (!filterStageGroup) return;
@@ -878,25 +876,25 @@ function LeadsPageContent() {
     if (!res.ok) fetchLeads(currentPage);
   };
 
-  const applyTelecallerFreshTransfer = async (leadId: string) => {
+  const applyTelecallerFreshTransfer = async (leadId: string): Promise<boolean> => {
     const raw = telecallerFreshTransferChoice[leadId];
-    if (!raw || !session?.user?.id) return;
+    if (!raw || !session?.user?.id) return false;
     const outcome = telecallerTransferOutcomes.find((o) => o.id === raw);
-    if (!outcome) return;
+    if (!outcome) return false;
     if (outcome.requiresCounsellor) {
       const cid = telecallerFreshTransferCounsellor[leadId];
-      if (!cid) return;
+      if (!cid) return false;
     }
     if (outcome.requiresAppointmentDate) {
       const ad = telecallerTransferAppointmentDate[leadId]?.trim();
-      if (!ad) return;
+      if (!ad) return false;
     }
     const patch = buildTelecallerTransferPatchFromOutcome(outcome, {
       counsellorId: telecallerFreshTransferCounsellor[leadId],
       assignedBy: session.user.id,
       appointmentDate: telecallerTransferAppointmentDate[leadId],
     });
-    if (outcome.effect === "assign_counsellor" && !patch.assignedTo) return;
+    if (outcome.effect === "assign_counsellor" && !patch.assignedTo) return false;
 
     setTelecallerFreshTransferUpdatingId(leadId);
     const res = await fetch(`${apiLeadsBase}/${leadId}`, {
@@ -922,7 +920,9 @@ function LeadsPageContent() {
         return n;
       });
       await fetchLeads(currentPage);
+      return true;
     }
+    return false;
   };
 
   const formatLeadDateTime = (d: Date | string) => {
@@ -1033,15 +1033,7 @@ function LeadsPageContent() {
                       ? `${filtered.length} of ${t} fresh lead${pl} match search`
                       : `${t} fresh lead${pl}`;
                   })()
-                : isTelecallerTransferTableView
-                  ? (() => {
-                      const t = totalLeads;
-                      const pl = t !== 1 ? "s" : "";
-                      return search.trim()
-                        ? `${filtered.length} of ${t} lead${pl} match search`
-                        : `${t} lead${pl}`;
-                    })()
-                  : `${filtered.length} of ${totalLeads || leads.length} leads`}
+                : `${filtered.length} of ${totalLeads || leads.length} leads`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1071,60 +1063,54 @@ function LeadsPageContent() {
       {/* Filter + Search Bar */}
       <div className="bg-white border border-gray-200 rounded-lg overflow-visible">
         <div className="flex items-stretch gap-0 divide-x divide-gray-200 flex-wrap">
-          {/* Pipeline group — narrows stage list (CRM roles) */}
-          {session?.user?.role !== "front_desk" && session?.user?.role !== "counsellor" && !isAdmin && (
-            <div className="flex-1 min-w-[9.5rem] xl:min-w-28 relative">
-              <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Pipeline</label>
-              <select
-                value={filterStageGroup}
-                onChange={(e) => setFilterStageGroup(e.target.value)}
-                title="Filter stage list by pipeline group"
-                className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
-              >
-                <option value="">All groups</option>
-                {appStageGroups.map((g) => (
-                  <option key={g.label} value={g.label}>{g.label}</option>
-                ))}
-              </select>
-              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-            </div>
-          )}
-          {/* Lead Stage filter - hidden for FD, counsellors, and admin */}
-          {session?.user?.role !== "front_desk" && session?.user?.role !== "counsellor" && !isAdmin && (
-            <div className="flex-1 min-w-[9.5rem] xl:min-w-28 relative">
-              <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Stage</label>
-              <select
-                value={filterLeadStage}
-                onChange={(e) => setFilterLeadStage(e.target.value)}
-                title="Stages that appear in your current result set"
-                className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
-              >
-                <option value="">All stages</option>
-                {stageSelectOptions.map((s) => (
-                  <option key={s.value} value={s.value}>{s.label}</option>
-                ))}
-              </select>
-              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-            </div>
-          )}
-          {/* Status filter - admin only */}
-          {isAdmin && (
-            <div className="flex-1 min-w-[9.5rem] xl:min-w-28 relative">
-              <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Status</label>
-              <select
-                value={filterFdStatus}
-                onChange={(e) => setFilterFdStatus(e.target.value)}
-                title="FD workflow statuses in current results"
-                className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
-              >
-                <option value="">All statuses</option>
-                {fdStatusOptions.map((s) => (
-                  <option key={s.value} value={s.value}>{s.label}</option>
-                ))}
-              </select>
-              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-            </div>
-          )}
+          {/* Pipeline group — narrows stage list */}
+          <div className="flex-1 min-w-[9.5rem] xl:min-w-28 relative">
+            <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Pipeline</label>
+            <select
+              value={filterStageGroup}
+              onChange={(e) => setFilterStageGroup(e.target.value)}
+              title="Filter stage list by pipeline group"
+              className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
+            >
+              <option value="">All groups</option>
+              {appStageGroups.map((g) => (
+                <option key={g.label} value={g.label}>{g.label}</option>
+              ))}
+            </select>
+            <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+          {/* Lead Stage filter */}
+          <div className="flex-1 min-w-[9.5rem] xl:min-w-28 relative">
+            <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Stage</label>
+            <select
+              value={filterLeadStage}
+              onChange={(e) => setFilterLeadStage(e.target.value)}
+              title="Stages that appear in your current result set"
+              className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
+            >
+              <option value="">All stages</option>
+              {stageSelectOptions.map((s) => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+            <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+          {/* FD workflow status filter */}
+          <div className="flex-1 min-w-[9.5rem] xl:min-w-28 relative">
+            <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Status</label>
+            <select
+              value={filterFdStatus}
+              onChange={(e) => setFilterFdStatus(e.target.value)}
+              title="FD workflow statuses in current results"
+              className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
+            >
+              <option value="">All statuses</option>
+              {fdStatusOptions.map((s) => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+            <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
           {/* Lead Standing */}
           <div className="flex-1 min-w-[9.5rem] xl:min-w-28 relative">
             <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Lead Standing</label>
@@ -1228,23 +1214,21 @@ function LeadsPageContent() {
           </div>
 
           {/* Follow Up (Assigned Counsellor) */}
-          {session?.user?.role !== "counsellor" && (
-            <div className="flex-1 min-w-[9.5rem] xl:min-w-28 relative">
-              <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Counsellor</label>
-              <select
-                value={filterAssignedTo}
-                onChange={(e) => setFilterAssignedTo(e.target.value)}
-                title="Counsellors with leads in current results"
-                className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
-              >
-                <option value="">All counsellors</option>
-                {counsellorOptions.map((c) => (
-                  <option key={c._id} value={c._id}>{c.name}</option>
-                ))}
-              </select>
-              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-            </div>
-          )}
+          <div className="flex-1 min-w-[9.5rem] xl:min-w-28 relative">
+            <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Counsellor</label>
+            <select
+              value={filterAssignedTo}
+              onChange={(e) => setFilterAssignedTo(e.target.value)}
+              title="Counsellors with leads in current results"
+              className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
+            >
+              <option value="">All counsellors</option>
+              {counsellorOptions.map((c) => (
+                <option key={c._id} value={c._id}>{c.name}</option>
+              ))}
+            </select>
+            <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
 
           {/* Search */}
           <div className="flex-2 min-w-[12rem] xl:min-w-52 relative">
@@ -1306,7 +1290,7 @@ function LeadsPageContent() {
             {filterAcademicYear && <span className="flex items-center gap-1 text-xs bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-0.5 rounded-full font-medium">Year: {filterAcademicYear}<button onClick={() => setFilterAcademicYear("")}><X size={10} /></button></span>}
             {filterApplyLevel && <span className="flex items-center gap-1 text-xs bg-teal-50 text-teal-700 border border-teal-100 px-2.5 py-0.5 rounded-full font-medium capitalize">{filterApplyLevel}<button onClick={() => setFilterApplyLevel("")}><X size={10} /></button></span>}
             {filterCountry && <span className="flex items-center gap-1 text-xs bg-cyan-50 text-cyan-800 border border-cyan-100 px-2.5 py-0.5 rounded-full font-medium">{filterCountry}<button type="button" onClick={() => setFilterCountry("")}><X size={10} /></button></span>}
-            {filterStageGroup && session?.user?.role !== "front_desk" && session?.user?.role !== "counsellor" && !isAdmin && (
+            {filterStageGroup && (
               <span className="flex items-center gap-1 text-xs bg-slate-50 text-slate-700 border border-slate-200 px-2.5 py-0.5 rounded-full font-medium">{filterStageGroup}<button type="button" onClick={() => setFilterStageGroup("")}><X size={10} /></button></span>
             )}
             {filterFdStatus && <span className="flex items-center gap-1 text-xs bg-orange-50 text-orange-700 border border-orange-100 px-2.5 py-0.5 rounded-full font-medium">{appFdStatuses.find((s) => s.value === filterFdStatus)?.label ?? filterFdStatus}<button onClick={() => setFilterFdStatus("")}><X size={10} /></button></span>}
@@ -1322,25 +1306,9 @@ function LeadsPageContent() {
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
                 {(() => {
-                  // build headers dynamically; counsellors only see Status (no Stage)
-                  const isCounsellor = session?.user?.role === "counsellor";
-                  const isFrontDesk = session?.user?.role === "front_desk";
-                  const isTelecaller = session?.user?.role === "telecaller";
                   const headers: string[] = [];
                   if (isAdmin) headers.push(""); // checkbox column
-                  headers.push("Lead", "Client", "Services");
-                  if (isFrontDesk) {
-                    headers.push("Status");
-                  } else if (isCounsellor) {
-                    headers.push("Status");
-                  } else if (isTelecaller) {
-                    headers.push("Transfer");
-                  } else if (isAdmin) {
-                    headers.push("Status");
-                  } else {
-                    headers.push("Stage");
-                  }
-                  headers.push("Standing", "Counselling", "Follow-Up");
+                  headers.push("Lead", "Client", "Services", "Status", "Standing", "Counselling", "Follow-Up");
                   return headers.map((h, i) => (
                     <th key={h || `chk-${i}`} className={`text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap ${h === "" ? "w-10" : ""}`}>
                       {h === "" ? (
@@ -1467,327 +1435,109 @@ function LeadsPageContent() {
                         <p className="text-[11px] text-gray-400 mt-1 tabular-nums whitespace-nowrap">{formatDate(lead.createdAt)}</p>
                       </td>
 
-                      {/* STAGE/STATUS column - hidden for admin */}
-                      {!isAdmin && (
+                      {/* FD workflow status — visible for every role; edit where permitted */}
                       <td className="px-4 py-3.5 min-w-36">
-                        {isTelecallerTransferTableView ? (
-                          <div className="flex flex-col gap-2 min-w-48 max-w-56" onClick={(e) => e.stopPropagation()}>
-                            <select
-                              value={telecallerFreshTransferChoice[lead._id] ?? ""}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                const sel = telecallerTransferOutcomes.find((o) => o.id === v);
-                                setTelecallerFreshTransferChoice((prev) => ({ ...prev, [lead._id]: v }));
-                                if (!sel?.requiresCounsellor) {
-                                  setTelecallerFreshTransferCounsellor((prev) => {
-                                    const next = { ...prev };
-                                    delete next[lead._id];
-                                    return next;
-                                  });
-                                }
-                                if (!sel?.requiresAppointmentDate) {
-                                  setTelecallerTransferAppointmentDate((prev) => {
-                                    const next = { ...prev };
-                                    delete next[lead._id];
-                                    return next;
-                                  });
-                                }
-                              }}
-                              className="w-full text-xs border border-gray-300 rounded-md px-2 py-2 text-gray-800 bg-white focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500"
-                            >
-                              <option value="">Choose transfer…</option>
-                              {telecallerTransferOutcomes.map((o) => (
-                                <option key={o.id} value={o.id}>{o.label}</option>
-                              ))}
-                            </select>
-                            {(() => {
-                              const sel = telecallerTransferOutcomes.find(
-                                (o) => o.id === telecallerFreshTransferChoice[lead._id]
-                              );
-                              return sel?.requiresCounsellor;
-                            })() && (
-                              <select
-                                value={telecallerFreshTransferCounsellor[lead._id] ?? ""}
-                                onChange={(e) =>
-                                  setTelecallerFreshTransferCounsellor((prev) => ({
-                                    ...prev,
-                                    [lead._id]: e.target.value,
-                                  }))
-                                }
-                                className="w-full text-xs border border-gray-300 rounded-md px-2 py-2 text-gray-800 bg-white focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500"
+                        {(() => {
+                          const ext = lead as unknown as { status?: string; statusDates?: Record<string, string> };
+                          const leadStatus = ext.status;
+                          const statusInfo = appFdStatuses.find((s) => s.value === leadStatus);
+                          const statusDate = leadStatus && ext.statusDates?.[leadStatus];
+                          if (!canUpdateFdStatus) {
+                            return (
+                              <div className="inline-block" onClick={(e) => e.stopPropagation()}>
+                                <span
+                                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold cursor-default pointer-events-none ${
+                                    statusInfo
+                                      ? statusInfo.color
+                                      : "bg-white border border-dashed border-gray-300 text-gray-400"
+                                  }`}
+                                >
+                                  <span className="w-2 h-2 rounded-full bg-white/60 shrink-0" />
+                                  {statusInfo ? statusInfo.label : "Set Status"}
+                                  <ChevronDown size={12} className="shrink-0 opacity-50" aria-hidden />
+                                </span>
+                                {statusDate && (
+                                  <p className="text-[10px] text-gray-400 mt-0.5 tabular-nums">{formatDate(new Date(statusDate))}</p>
+                                )}
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={() => setFdStatusDropdownId(fdStatusDropdownId === lead._id ? null : lead._id)}
+                                className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-150 group
+                                  ${
+                                    statusInfo
+                                      ? `${statusInfo.color} cursor-pointer hover:shadow-md hover:scale-105`
+                                      : "bg-white border border-dashed border-gray-300 text-gray-400 cursor-pointer hover:border-gray-400"
+                                  }`}
                               >
-                                <option value="">Select counsellor</option>
-                                {counsellors.map((c) => (
-                                  <option key={c._id} value={c._id}>{c.name}</option>
-                                ))}
-                              </select>
-                            )}
-                            {(() => {
-                              const sel = telecallerTransferOutcomes.find(
-                                (o) => o.id === telecallerFreshTransferChoice[lead._id]
-                              );
-                              return sel?.requiresAppointmentDate;
-                            })() && (
-                              <div>
-                                <label className="block text-[10px] font-semibold text-gray-600 mb-1 uppercase tracking-wide">
-                                  Appointment date
-                                </label>
-                                <input
-                                  type="date"
-                                  value={telecallerTransferAppointmentDate[lead._id] ?? ""}
-                                  onChange={(e) =>
-                                    setTelecallerTransferAppointmentDate((prev) => ({
-                                      ...prev,
-                                      [lead._id]: e.target.value,
-                                    }))
-                                  }
-                                  className="w-full text-xs border border-gray-300 rounded-md px-2 py-2 text-gray-800 bg-white focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500"
-                                />
-                              </div>
-                            )}
-                            <button
-                              type="button"
-                              disabled={(() => {
-                                const choice = telecallerFreshTransferChoice[lead._id];
-                                const sel = telecallerTransferOutcomes.find((o) => o.id === choice);
-                                return (
-                                  telecallerFreshTransferUpdatingId === lead._id ||
-                                  !choice ||
-                                  !sel ||
-                                  (sel.requiresCounsellor &&
-                                    (!telecallerFreshTransferCounsellor[lead._id] || counsellors.length === 0)) ||
-                                  (sel.requiresAppointmentDate && !telecallerTransferAppointmentDate[lead._id]?.trim())
-                                );
-                              })()}
-                              onClick={() => void applyTelecallerFreshTransfer(lead._id)}
-                              className="w-full text-xs font-semibold px-3 py-2 rounded-md bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                            >
-                              {telecallerFreshTransferUpdatingId === lead._id ? "Updating…" : "Update"}
-                            </button>
-                          </div>
-                        ) : (session?.user?.role === "front_desk" || session?.user?.role === "counsellor") ? (
-                          // FD Status column (telecaller uses Transfer column above)
-                          (() => {
-                            const ext = lead as unknown as { status?: string; statusDates?: Record<string, string> };
-                            const leadStatus = ext.status;
-                            const statusInfo = appFdStatuses.find((s) => s.value === leadStatus);
-                            const statusDate = leadStatus && ext.statusDates?.[leadStatus];
-                            return (
-                              <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
-                                <button
-                                  onClick={() => setFdStatusDropdownId(fdStatusDropdownId === lead._id ? null : lead._id)}
-                                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-150 group
-                                    ${
-                                      statusInfo
-                                        ? `${statusInfo.color} cursor-pointer hover:shadow-md hover:scale-105`
-                                        : "bg-white border border-dashed border-gray-300 text-gray-400 cursor-pointer hover:border-gray-400"
-                                    }`}
-                                >
-                                  <span className="w-2 h-2 rounded-full bg-white/60"></span>
-                                  {statusInfo ? statusInfo.label : "Set Status"}
-                                  <ChevronDown size={12} className={`shrink-0 opacity-60 transition-transform duration-200 ${fdStatusDropdownId === lead._id ? "rotate-180" : ""}`} />
-                                </button>
-                                {fdStatusDropdownId === lead._id && (
-                                  <div className="absolute z-30 top-full left-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden min-w-64 max-h-96 overflow-y-auto">
-                                    {/* Dropdown Header */}
-                                    <div className="sticky top-0 bg-linear-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b border-gray-200">
-                                      <p className="text-xs font-bold text-gray-700 uppercase tracking-widest">Change Status</p>
-                                    </div>
-                                    
-                                    {/* Status Grid */}
-                                    <div className="p-3 space-y-1.5">
-                                      {appFdStatuses.map((s) => {
-                                        const isSelected = leadStatus === s.value;
-                                        const bgColor = s.color;
-                                        return (
-                                          <button
-                                            key={s.value}
-                                            onClick={() => {
-                                              if (session?.user?.role === "telecaller" && s.value === "Assigned") {
-                                                setFdStatusDropdownId(null);
-                                                setAssignCounsellorUserId("");
-                                                setAssignCounsellorForLeadId(lead._id);
-                                                return;
-                                              }
-                                              void quickUpdateFdStatus(lead._id, s.value);
-                                            }}
-                                            className={`w-full px-3.5 py-3 rounded-lg text-xs font-semibold transition-all duration-150 flex items-center justify-between group
-                                              ${isSelected 
-                                                ? `${bgColor} shadow-md scale-100 ring-2 ring-offset-1` 
-                                                : `${bgColor} opacity-70 hover:opacity-100 hover:shadow-md hover:scale-105`
-                                              }`}
-                                          >
-                                            <span className="flex items-center gap-2">
-                                              <span className="w-2 h-2 rounded-full bg-white/60 group-hover:bg-white"></span>
-                                              {s.label}
-                                            </span>
-                                            {isSelected && (
-                                              <span className="text-white font-bold animate-pulse">✓</span>
-                                            )}
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
+                                <span className="w-2 h-2 rounded-full bg-white/60" />
+                                {statusInfo ? statusInfo.label : "Set Status"}
+                                <ChevronDown size={12} className={`shrink-0 opacity-60 transition-transform duration-200 ${fdStatusDropdownId === lead._id ? "rotate-180" : ""}`} />
+                              </button>
+                              {fdStatusDropdownId === lead._id && (
+                                <div className="absolute z-30 top-full left-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden min-w-64 max-h-96 overflow-y-auto">
+                                  <div className="sticky top-0 bg-linear-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b border-gray-200">
+                                    <p className="text-xs font-bold text-gray-700 uppercase tracking-widest">Change Status</p>
                                   </div>
-                                )}
-                                {statusDate && (
-                                  <p className="text-[10px] text-gray-400 mt-0.5 tabular-nums">{formatDate(new Date(statusDate))}</p>
-                                )}
-                              </div>
-                            );
-                          })()
-                        ) : (
-                          // Non-FD Stage column
-                          (() => {
-                            const ext = lead as unknown as { stage?: string; stageDates?: Record<string, string> };
-                            const leadStage = ext.stage;
-                            const stageInfo = appLeadStages.find((s) => s.value === leadStage);
-                            const dotColor = leadStage ? getLeadStageDotColor(leadStage) : "";
-                            const stageDate = leadStage && ext.stageDates?.[leadStage];
-                            return (
-                              <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
-                                {/* Trigger pill */}
-                                <button
-                                  onClick={(e) => canUpdateStage && openStageDropdown(e, lead._id)}
-                                  className={`inline-flex items-center gap-2 pl-2.5 pr-2 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 shadow-sm border ${
-                                    stageInfo
-                                      ? `${stageInfo.color} border-transparent hover:shadow-md`
-                                      : "bg-white border-dashed border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500"
-                                  } ${canUpdateStage ? "cursor-pointer" : "cursor-default"}`}
-                                >
-                                  {stageInfo
-                                    ? <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} opacity-70`} />
-                                    : <span className="text-[13px] leading-none opacity-50">+</span>
-                                  }
-                                  <span className="max-w-32 truncate">{stageInfo ? stageInfo.label : "Set Stage"}</span>
-                                  {canUpdateStage && <ChevronDown size={10} className={`shrink-0 opacity-50 transition-transform duration-200 ${crmStageDropdownId === lead._id ? "rotate-180" : ""}`} />}
-                                </button>
-                                {stageDate && (
-                                  <p className="text-[10px] text-gray-400 mt-0.5 tabular-nums">{formatDate(new Date(stageDate))}</p>
-                                )}
-                                {/* Dropdown rendered as fixed portal - see bottom of component */}
-                              </div>
-                            );
-                          })()
-                        )}
-                      </td>
-                      )}
-
-                      {/* STAGE / admin Status column - hidden for FD, counsellors, telecallers (they use Status column above) */}
-                      {session?.user?.role !== "front_desk" && session?.user?.role !== "counsellor" && session?.user?.role !== "telecaller" && (
-                      <td className="px-4 py-3.5 min-w-36">
-                        {isAdmin ? (
-                          // Admin: Status dropdown
-                          (() => {
-                            const ext = lead as unknown as { status?: string; statusDates?: Record<string, string> };
-                            const leadStatus = ext.status;
-                            const statusInfo = appFdStatuses.find((s) => s.value === leadStatus);
-                            const statusDate = leadStatus && ext.statusDates?.[leadStatus];
-                            return (
-                              <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
-                                <button
-                                  onClick={() => setFdStatusDropdownId(fdStatusDropdownId === lead._id ? null : lead._id)}
-                                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-150 group
-                                    ${
-                                      statusInfo
-                                        ? `${statusInfo.color} cursor-pointer hover:shadow-md hover:scale-105`
-                                        : "bg-white border border-dashed border-gray-300 text-gray-400 cursor-pointer hover:border-gray-400"
-                                    }`}
-                                >
-                                  <span className="w-2 h-2 rounded-full bg-white/60"></span>
-                                  {statusInfo ? statusInfo.label : "Set Status"}
-                                  <ChevronDown size={12} className={`shrink-0 opacity-60 transition-transform duration-200 ${fdStatusDropdownId === lead._id ? "rotate-180" : ""}`} />
-                                </button>
-                                {fdStatusDropdownId === lead._id && (
-                                  <div className="absolute z-30 top-full left-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden min-w-64 max-h-96 overflow-y-auto">
-                                    <div className="sticky top-0 bg-linear-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b border-gray-200">
-                                      <p className="text-xs font-bold text-gray-700 uppercase tracking-widest">Change Status</p>
-                                    </div>
-                                    <div className="p-3 space-y-1.5">
-                                      {appFdStatuses.map((s) => {
-                                        const isSelected = leadStatus === s.value;
-                                        const bgColor = s.color;
-                                        return (
-                                          <button
-                                            key={s.value}
-                                            onClick={() => {
-                                              if (session?.user?.role === "telecaller" && s.value === "Assigned") {
-                                                setFdStatusDropdownId(null);
-                                                setAssignCounsellorUserId("");
-                                                setAssignCounsellorForLeadId(lead._id);
-                                                return;
-                                              }
-                                              void quickUpdateFdStatus(lead._id, s.value);
-                                            }}
-                                            className={`w-full px-3.5 py-3 rounded-lg text-xs font-semibold transition-all duration-150 flex items-center justify-between group
-                                              ${isSelected 
-                                                ? `${bgColor} shadow-md scale-100 ring-2 ring-offset-1` 
-                                                : `${bgColor} opacity-70 hover:opacity-100 hover:shadow-md hover:scale-105`
-                                              }`}
-                                          >
-                                            <span className="flex items-center gap-2">
-                                              <span className="w-2 h-2 rounded-full bg-white/60 group-hover:bg-white"></span>
-                                              {s.label}
-                                            </span>
-                                            {isSelected && (
-                                              <span className="text-white font-bold animate-pulse">✓</span>
-                                            )}
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
+                                  <div className="p-3 space-y-1.5">
+                                    {appFdStatuses.map((s) => {
+                                      const isSelected = leadStatus === s.value;
+                                      const bgColor = s.color;
+                                      return (
+                                        <button
+                                          key={s.value}
+                                          type="button"
+                                          onClick={() => {
+                                            if (session?.user?.role === "telecaller" && s.value === "Assigned") {
+                                              setFdStatusDropdownId(null);
+                                              setAssignCounsellorUserId("");
+                                              setAssignCounsellorForLeadId(lead._id);
+                                              return;
+                                            }
+                                            void quickUpdateFdStatus(lead._id, s.value);
+                                          }}
+                                          className={`w-full px-3.5 py-3 rounded-lg text-xs font-semibold transition-all duration-150 flex items-center justify-between group
+                                            ${isSelected
+                                              ? `${bgColor} shadow-md scale-100 ring-2 ring-offset-1`
+                                              : `${bgColor} opacity-70 hover:opacity-100 hover:shadow-md hover:scale-105`
+                                            }`}
+                                        >
+                                          <span className="flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full bg-white/60 group-hover:bg-white" />
+                                            {s.label}
+                                          </span>
+                                          {isSelected && (
+                                            <span className="text-white font-bold animate-pulse">✓</span>
+                                          )}
+                                        </button>
+                                      );
+                                    })}
                                   </div>
-                                )}
-                                {statusDate && (
-                                  <p className="text-[10px] text-gray-400 mt-0.5 tabular-nums">{formatDate(new Date(statusDate))}</p>
-                                )}
-                              </div>
-                            );
-                          })()
-                        ) : (
-                          // Non-admin, non-FD, non-counsellor: Stage dropdown
-                          (() => {
-                            const ext = lead as unknown as { stage?: string; stageDates?: Record<string, string> };
-                            const leadStage = ext.stage;
-                            const stageInfo = appLeadStages.find((s) => s.value === leadStage);
-                            const dotColor = leadStage ? getLeadStageDotColor(leadStage) : "";
-                            const stageDate = leadStage && ext.stageDates?.[leadStage];
-                            return (
-                              <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
-                                <button
-                                  onClick={(e) => canUpdateStage && openStageDropdown(e, lead._id)}
-                                  className={`inline-flex items-center gap-2 pl-2.5 pr-2 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 shadow-sm border ${
-                                    stageInfo
-                                      ? `${stageInfo.color} border-transparent hover:shadow-md`
-                                      : "bg-white border-dashed border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500"
-                                  } ${canUpdateStage ? "cursor-pointer" : "cursor-default"}`}
-                                >
-                                  {stageInfo
-                                    ? <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} opacity-70`} />
-                                    : <span className="text-[13px] leading-none opacity-50">+</span>
-                                  }
-                                  <span className="max-w-32 truncate">{stageInfo ? stageInfo.label : "Set Stage"}</span>
-                                  {canUpdateStage && <ChevronDown size={10} className={`shrink-0 opacity-50 transition-transform duration-200 ${crmStageDropdownId === lead._id ? "rotate-180" : ""}`} />}
-                                </button>
-                                {stageDate && (
-                                  <p className="text-[10px] text-gray-400 mt-0.5 tabular-nums">{formatDate(new Date(stageDate))}</p>
-                                )}
-                              </div>
-                            );
-                          })()
-                        )}
+                                </div>
+                              )}
+                              {statusDate && (
+                                <p className="text-[10px] text-gray-400 mt-0.5 tabular-nums">{formatDate(new Date(statusDate))}</p>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
-                      )}
 
                       {/* STANDING column */}
                       <td className="px-4 py-3.5 min-w-28">
                         <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
                           <button
+                            type="button"
+                            disabled={!canUpdateStatus}
                             onClick={() => canUpdateStatus && setStatusDropdownId(statusDropdownId === lead._id ? null : lead._id)}
-                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${getStatusColor(lead.standing)} ${canUpdateStatus ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${getStatusColor(lead.standing)} ${canUpdateStatus ? "cursor-pointer hover:opacity-80" : "cursor-default opacity-95"}`}
                           >
                             <span className="capitalize max-w-24 truncate">{lead.standing?.replace(/_/g, " ")}</span>
-                            {canUpdateStatus && <ChevronDown size={11} className={`shrink-0 transition-transform ${statusDropdownId === lead._id ? "rotate-180" : ""}`} />}
+                            <ChevronDown size={11} className={`shrink-0 ${canUpdateStatus ? "" : "opacity-60"} transition-transform ${statusDropdownId === lead._id ? "rotate-180" : ""}`} />
                           </button>
                           {canUpdateStatus && statusDropdownId === lead._id && (
                             <div className="absolute z-30 top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden min-w-36">
@@ -1830,8 +1580,32 @@ function LeadsPageContent() {
                               <MoreVertical size={14} />
                             </button>
                             {menuOpenId === lead._id && (
-                              <div className="absolute z-30 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden min-w-28">
+                              <div className="absolute z-30 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden min-w-36">
                                 <Link href={`${leadsPathBase}/${lead._id}`} className="block px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 font-medium">View Details</Link>
+                                {isTelecallerTransferTableView && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setMenuOpenId(null);
+                                      setTelecallerTransferModalLeadId(lead._id);
+                                    }}
+                                    className="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 font-medium"
+                                  >
+                                    Transfer lead…
+                                  </button>
+                                )}
+                                {canUpdateStage && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      setMenuOpenId(null);
+                                      openStageDropdown(e, lead._id);
+                                    }}
+                                    className="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 font-medium"
+                                  >
+                                    Change lead stage…
+                                  </button>
+                                )}
                                 {canCreate && (
                                   <button
                                     onClick={() => { setMenuOpenId(null); openEditForm(lead); }}
@@ -1973,6 +1747,139 @@ function LeadsPageContent() {
           </div>
         </div>
       )}
+
+      {/* Telecaller: transfer outcome (same table as other roles; opened from row menu) */}
+      {telecallerTransferModalLeadId && isTelecallerTransferTableView && (() => {
+        const lid = telecallerTransferModalLeadId;
+        const tLead = leads.find((l) => l._id === lid);
+        const close = () => setTelecallerTransferModalLeadId(null);
+        return (
+          <div
+            className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+            onClick={close}
+            role="presentation"
+          >
+            <div
+              className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-labelledby="telecaller-transfer-title"
+            >
+              <h3 id="telecaller-transfer-title" className="text-base font-semibold text-gray-900">
+                Transfer lead
+              </h3>
+              {tLead && (
+                <p className="text-sm text-gray-500 mt-1">
+                  {tLead.name}
+                  <span className="text-gray-400"> · </span>
+                  {`${branding.shortCode}-${tLead._id.slice(-4).toUpperCase()}`}
+                </p>
+              )}
+              <div className="mt-4 flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
+                <select
+                  value={telecallerFreshTransferChoice[lid] ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    const sel = telecallerTransferOutcomes.find((o) => o.id === v);
+                    setTelecallerFreshTransferChoice((prev) => ({ ...prev, [lid]: v }));
+                    if (!sel?.requiresCounsellor) {
+                      setTelecallerFreshTransferCounsellor((prev) => {
+                        const next = { ...prev };
+                        delete next[lid];
+                        return next;
+                      });
+                    }
+                    if (!sel?.requiresAppointmentDate) {
+                      setTelecallerTransferAppointmentDate((prev) => {
+                        const next = { ...prev };
+                        delete next[lid];
+                        return next;
+                      });
+                    }
+                  }}
+                  className={FIELD_CLASS}
+                >
+                  <option value="">Choose transfer…</option>
+                  {telecallerTransferOutcomes.map((o) => (
+                    <option key={o.id} value={o.id}>{o.label}</option>
+                  ))}
+                </select>
+                {(() => {
+                  const sel = telecallerTransferOutcomes.find((o) => o.id === telecallerFreshTransferChoice[lid]);
+                  return sel?.requiresCounsellor;
+                })() && (
+                  <select
+                    value={telecallerFreshTransferCounsellor[lid] ?? ""}
+                    onChange={(e) =>
+                      setTelecallerFreshTransferCounsellor((prev) => ({
+                        ...prev,
+                        [lid]: e.target.value,
+                      }))
+                    }
+                    className={FIELD_CLASS}
+                  >
+                    <option value="">Select counsellor</option>
+                    {counsellors.map((c) => (
+                      <option key={c._id} value={c._id}>{c.name}</option>
+                    ))}
+                  </select>
+                )}
+                {(() => {
+                  const sel = telecallerTransferOutcomes.find((o) => o.id === telecallerFreshTransferChoice[lid]);
+                  return sel?.requiresAppointmentDate;
+                })() && (
+                  <div>
+                    <label className={LABEL_CLASS}>Appointment date</label>
+                    <input
+                      type="date"
+                      value={telecallerTransferAppointmentDate[lid] ?? ""}
+                      onChange={(e) =>
+                        setTelecallerTransferAppointmentDate((prev) => ({
+                          ...prev,
+                          [lid]: e.target.value,
+                        }))
+                      }
+                      className={FIELD_CLASS}
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-end gap-2 mt-6">
+                <button
+                  type="button"
+                  onClick={close}
+                  className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={(() => {
+                    const choice = telecallerFreshTransferChoice[lid];
+                    const sel = telecallerTransferOutcomes.find((o) => o.id === choice);
+                    return (
+                      telecallerFreshTransferUpdatingId === lid ||
+                      !choice ||
+                      !sel ||
+                      (sel.requiresCounsellor && (!telecallerFreshTransferCounsellor[lid] || counsellors.length === 0)) ||
+                      (sel.requiresAppointmentDate && !telecallerTransferAppointmentDate[lid]?.trim())
+                    );
+                  })()}
+                  onClick={() => {
+                    void (async () => {
+                      const ok = await applyTelecallerFreshTransfer(lid);
+                      if (ok) close();
+                    })();
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-white bg-gray-900 hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors"
+                >
+                  {telecallerFreshTransferUpdatingId === lid ? "Updating…" : "Apply transfer"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Add Lead Modal */}
       {showForm && (

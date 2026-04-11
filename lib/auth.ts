@@ -321,17 +321,20 @@ export const authOptions: NextAuthOptions = {
     signIn: "/login",
   },
   session: { strategy: "jwt" },
+  // NextAuth attaches Expires / Max-Age to the session cookie; GET/POST wrappers below strip them so the cookie is browser-session-only (cleared when the user quits the browser — not when closing a single tab).
   secret: process.env.NEXTAUTH_SECRET,
 };
 
-/** NextAuth always sets Expires on the JWT cookie (~30d). Strip it so the cookie is session-only (cleared when the browser closes). */
+/** NextAuth may set Max-Age/Expires on the JWT cookie. Strip them so the cookie is session-only (cleared when the browser closes). */
 function isNextAuthSessionCookieName(cookieName: string): boolean {
   const n = cookieName.trim();
   return (
     n === "next-auth.session-token" ||
     n.startsWith("next-auth.session-token.") ||
     n === "__Secure-next-auth.session-token" ||
-    n.startsWith("__Secure-next-auth.session-token.")
+    n.startsWith("__Secure-next-auth.session-token.") ||
+    n === "authjs.session-token" ||
+    n.startsWith("authjs.session-token.")
   );
 }
 
@@ -347,7 +350,8 @@ function sessionCookieValueLooksSet(setCookieHeader: string): boolean {
 function stripPersistentAttrsFromSetCookie(setCookieHeader: string): string {
   return setCookieHeader
     .replace(/;\s*Expires=[^;]*/gi, "")
-    .replace(/;\s*Max-Age=\d+/gi, "");
+    .replace(/;\s*Max-Age=\s*\d+/gi, "")
+    .replace(/;\s*max-age=\s*\d+/gi, "");
 }
 
 function getSetCookieList(headers: Headers): string[] {

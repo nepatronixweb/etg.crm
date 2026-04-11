@@ -67,14 +67,17 @@ export async function createTenantAppSettings(
  */
 export async function createFreshTrialTenantAppSettings(
   organizationId: mongoose.Types.ObjectId,
-  displayName: string
+  displayName: string,
+  options?: { session?: mongoose.ClientSession | null }
 ): Promise<AppSettingsDoc> {
   await connectDB();
-  const exists = await AppSettings.findOne({ organization: organizationId });
+  const q = AppSettings.findOne({ organization: organizationId });
+  if (options?.session) q.session(options.session);
+  const exists = await q;
   if (exists) return exists;
   const base = displayName.replace(/[^a-zA-Z0-9]/g, "").slice(0, 5).toUpperCase();
   const shortCode = base.length >= 2 ? base : "ORG";
-  return AppSettings.create({
+  const row = {
     organization: organizationId,
     companyName: displayName.trim() || "Organization",
     shortCode,
@@ -119,7 +122,12 @@ export async function createFreshTrialTenantAppSettings(
     telecallerTransferOutcomes: [],
     dashboardWidgets: {},
     dashboardWidgetOrder: {},
-  });
+  };
+  if (options?.session) {
+    const [created] = await AppSettings.create([row], { session: options.session });
+    return created;
+  }
+  return AppSettings.create(row);
 }
 
 /**

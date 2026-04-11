@@ -195,7 +195,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 }
 
-export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth();
     if (!session || !canManageUsers(session)) {
@@ -203,6 +203,32 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
     }
     const { id } = await params;
     await connectDB();
+
+    if (id === session.user.id) {
+      return NextResponse.json({ error: "You cannot remove or deactivate your own account" }, { status: 400 });
+    }
+
+    const permanent = new URL(req.url).searchParams.get("permanent") === "1";
+
+    if (permanent) {
+      if (session.user.role !== "super_admin") {
+        return NextResponse.json({ error: "Only super admins can permanently delete users" }, { status: 403 });
+      }
+      const existing = await User.findById(id).select("name email").lean();
+      if (!existing) return NextResponse.json({ error: "User not found" }, { status: 404 });
+      await User.findByIdAndDelete(id);
+      await ActivityLog.create({
+        user: session.user.id,
+        userName: session.user.name,
+        userRole: session.user.role,
+        action: "DELETE",
+        module: "Users",
+        targetId: id,
+        targetName: existing.name,
+        details: `Permanently deleted user ${existing.email}`,
+      });
+      return NextResponse.json({ message: "User removed", permanent: true });
+    }
 
     if (session.user.role !== "super_admin") {
       if (!session.user.organizationId) {

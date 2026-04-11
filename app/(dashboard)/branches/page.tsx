@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { Plus, Building2, X } from "lucide-react";
+import { Plus, Building2, X, Trash2 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
 interface Branch { _id: string; name: string; location: string; phone?: string; email?: string; isActive: boolean; createdAt: string; organization?: string; }
@@ -34,6 +34,9 @@ export default function BranchesPage() {
   const [branchOrgMode, setBranchOrgMode] = useState<"existing" | "new">("existing");
   const [selectedOrgId, setSelectedOrgId] = useState("");
   const [newOrganizationName, setNewOrganizationName] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<Branch | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const fetchBranches = async () => {
     setLoading(true);
@@ -87,6 +90,38 @@ export default function BranchesPage() {
     isSuperAdmin ||
     (session?.user?.permissions ?? []).includes("branches");
 
+  const confirmDeleteBranch = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/api/branches/${deleteTarget._id}`, { method: "DELETE" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        let msg = typeof d?.error === "string" ? d.error : "Could not delete branch.";
+        const c = d?.counts as
+          | { userCount?: number; leadCount?: number; studentCount?: number; enquiryCount?: number }
+          | undefined;
+        if (c && typeof c.userCount === "number") {
+          const parts: string[] = [];
+          if (c.userCount > 0) parts.push(`${c.userCount} user${c.userCount !== 1 ? "s" : ""}`);
+          if (c.leadCount && c.leadCount > 0) parts.push(`${c.leadCount} lead${c.leadCount !== 1 ? "s" : ""}`);
+          if (c.studentCount && c.studentCount > 0) parts.push(`${c.studentCount} student${c.studentCount !== 1 ? "s" : ""}`);
+          if (c.enquiryCount && c.enquiryCount > 0) {
+            parts.push(`${c.enquiryCount} ${c.enquiryCount !== 1 ? "enquiries" : "enquiry"}`);
+          }
+          if (parts.length > 0) msg += ` Still linked: ${parts.join(", ")}.`;
+        }
+        setDeleteError(msg);
+        return;
+      }
+      setDeleteTarget(null);
+      fetchBranches();
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -105,10 +140,10 @@ export default function BranchesPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {loading && <p className="text-gray-400 text-sm col-span-3 text-center py-8">Loading...</p>}
         {branches.map((b) => (
-          <div key={b._id} className="bg-white rounded-xl border border-gray-100 p-5 hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between mb-3">
+          <div key={b._id} className="bg-white rounded-xl border border-gray-100 p-5 hover:shadow-md transition-shadow flex flex-col">
+            <div className="flex items-start justify-between mb-3 gap-2">
               <div className="p-2 bg-blue-50 rounded-lg"><Building2 size={20} className="text-blue-600" /></div>
-              <span className={`text-xs px-2 py-0.5 rounded-full ${b.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+              <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${b.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
                 {b.isActive ? "Active" : "Inactive"}
               </span>
             </div>
@@ -116,10 +151,80 @@ export default function BranchesPage() {
             <p className="text-sm text-gray-500 mb-3">{b.location}</p>
             {b.phone && <p className="text-xs text-gray-400">📞 {b.phone}</p>}
             {b.email && <p className="text-xs text-gray-400">✉️ {b.email}</p>}
-            <p className="text-xs text-gray-300 mt-2">Added {formatDate(b.createdAt)}</p>
+            <div className="mt-auto pt-3 flex items-center justify-between gap-2 border-t border-gray-50">
+              <p className="text-xs text-gray-300">Added {formatDate(b.createdAt)}</p>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteError(null);
+                    setDeleteTarget(b);
+                  }}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 px-2.5 py-1.5 rounded-lg transition-colors"
+                >
+                  <Trash2 size={14} aria-hidden />
+                  Delete
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>
+
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-[2px]"
+          role="presentation"
+          onClick={() => {
+            if (!deleting) {
+              setDeleteTarget(null);
+              setDeleteError(null);
+            }
+          }}
+        >
+          <div
+            className="bg-white text-gray-900 rounded-2xl shadow-xl border border-gray-200 w-full max-w-md p-6 [color-scheme:light]"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-labelledby="branch-delete-title"
+          >
+            <h2 id="branch-delete-title" className="text-lg font-semibold text-gray-900">
+              Delete branch?
+            </h2>
+            <p className="text-sm text-gray-600 mt-2 leading-relaxed">
+              <span className="font-medium text-gray-800">{deleteTarget.name}</span> will be removed permanently. This
+              is only allowed when no users, leads, students, or enquiries are linked to this branch.
+            </p>
+            {deleteError && (
+              <p className="text-sm text-red-600 mt-3" role="alert">
+                {deleteError}
+              </p>
+            )}
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => {
+                  setDeleteTarget(null);
+                  setDeleteError(null);
+                }}
+                className="px-4 py-2.5 text-sm font-medium text-gray-700 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => void confirmDeleteBranch()}
+                className="px-4 py-2.5 text-sm font-medium text-white rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 inline-flex items-center gap-2"
+              >
+                <Trash2 size={16} aria-hidden />
+                {deleting ? "Deleting…" : "Delete branch"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div
