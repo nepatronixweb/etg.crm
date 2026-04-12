@@ -17,7 +17,11 @@ import Link from "next/link";
 import { Search, UserCheck, Plus, X, ChevronDown, MessageSquare, MoreVertical, Phone, Mail, FileSpreadsheet, Trash2 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useBranding } from "@/app/branding-context";
-import { normalizeUniversitiesArray, universityEntryNames } from "@/lib/countryUniversities";
+import {
+  admissionEntryMatchesUniversityFilter,
+  buildUniversityFilterOptionsFromCountries,
+  type UniversityListFilterOption,
+} from "@/lib/countryUniversities";
 import CounselledTimeInline from "@/components/CounselledTimeInline";
 
 const SOURCES = [
@@ -72,7 +76,7 @@ export default function StudentsPage() {
   const [filterLeadStage, setFilterLeadStage] = useState("");
   const [filterIntake, setFilterIntake] = useState("");
   const [filterUniversity, setFilterUniversity] = useState("");
-  const [allUniversities, setAllUniversities] = useState<string[]>([]);
+  const [universityFilterOptions, setUniversityFilterOptions] = useState<UniversityListFilterOption[]>([]);
   const [appLeadStages, setAppLeadStages] = useState(LEAD_STAGES);
   const [appStageGroups, setAppStageGroups] = useState(LEAD_STAGE_GROUPS);
   const [appRemarkOptions, setAppRemarkOptions] = useState<string[]>([]);
@@ -177,13 +181,7 @@ export default function StudentsPage() {
           setAppStandings(d.leadStandings);
         }
         if (Array.isArray(d?.countries)) {
-          const unis: string[] = [];
-          for (const c of d.countries) {
-            if (c && typeof c === "object" && Array.isArray(c.universities)) {
-              unis.push(...universityEntryNames(normalizeUniversitiesArray(c.universities)));
-            }
-          }
-          setAllUniversities([...new Set(unis)].sort());
+          setUniversityFilterOptions(buildUniversityFilterOptionsFromCountries(d.countries));
         }
       })
       .catch(() => {});
@@ -500,9 +498,9 @@ export default function StudentsPage() {
     const matchesIntake = !filterIntake || s.admissionDetails?.some((ad) =>
       ad.courses?.some((c) => c.intakeQuarter === filterIntake)
     ) || false;
-    const matchesUniversity = !filterUniversity || s.admissionDetails?.some((ad) =>
-      ad.universityName === filterUniversity
-    ) || false;
+    const matchesUniversity =
+      !filterUniversity ||
+      (s.admissionDetails?.some((ad) => admissionEntryMatchesUniversityFilter(filterUniversity, ad)) ?? false);
     return matchesSearch && matchesService && matchesIntake && matchesUniversity;
   });
 
@@ -680,7 +678,7 @@ export default function StudentsPage() {
           </div>
 
           {/* University */}
-          {allUniversities.length > 0 && (
+          {universityFilterOptions.length > 0 && (
             <div className="flex-1 min-w-44 relative">
               <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">University</label>
               <select
@@ -689,7 +687,11 @@ export default function StudentsPage() {
                 onChange={(e) => setFilterUniversity(e.target.value)}
                 className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8">
                 <option value="">All Universities</option>
-                {allUniversities.map((u) => <option key={u} value={u}>{u}</option>)}
+                {universityFilterOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
               </select>
               <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
@@ -718,7 +720,12 @@ export default function StudentsPage() {
             {filterCounsellor && <span className="flex items-center gap-1 text-xs bg-amber-50 text-amber-700 border border-amber-100 px-2.5 py-0.5 rounded-full font-medium">{counsellors.find((c) => c._id === filterCounsellor)?.name ?? "Counsellor"}<button onClick={() => setFilterCounsellor("")}><X size={10} /></button></span>}
             {filterLeadStage && <span className={`flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-medium ${getLeadStageColor(filterLeadStage)}`}>{appLeadStages.find((s) => s.value === filterLeadStage)?.label ?? filterLeadStage}<button onClick={() => setFilterLeadStage("")}><X size={10} /></button></span>}
             {filterIntake && <span className="flex items-center gap-1 text-xs bg-sky-50 text-sky-700 border border-sky-100 px-2.5 py-0.5 rounded-full font-medium">{filterIntake}<button onClick={() => setFilterIntake("")}><X size={10} /></button></span>}
-            {filterUniversity && <span className="flex items-center gap-1 text-xs bg-rose-50 text-rose-700 border border-rose-100 px-2.5 py-0.5 rounded-full font-medium max-w-48 truncate">{filterUniversity}<button onClick={() => setFilterUniversity("")}><X size={10} /></button></span>}
+            {filterUniversity && (
+              <span className="flex items-center gap-1 text-xs bg-rose-50 text-rose-700 border border-rose-100 px-2.5 py-0.5 rounded-full font-medium max-w-48 truncate">
+                {universityFilterOptions.find((o) => o.value === filterUniversity)?.label ?? filterUniversity}
+                <button onClick={() => setFilterUniversity("")}><X size={10} /></button>
+              </span>
+            )}
             <button onClick={() => { setFilterStage(""); setFilterSource(""); setFilterService(""); setFilterCounsellor(""); setFilterLeadStage(""); setFilterIntake(""); setFilterUniversity(""); }} className="ml-auto text-xs text-red-500 hover:text-red-700 font-semibold flex items-center gap-1"><X size={11} /> Clear all</button>
           </div>
         )}
