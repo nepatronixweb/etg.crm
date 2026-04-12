@@ -29,6 +29,7 @@ import {
   Clock,
 } from "lucide-react";
 import { formatDateTime } from "@/lib/utils";
+import { dateOnlyToAnalyticsFromIso, dateOnlyToAnalyticsToIso } from "@/lib/dateTimeRangeFilterDefaults";
 import { useFdStatusOptions } from "@/lib/useFdStatusOptions";
 import { resolveFdStatusPresentation } from "@/lib/fdStatusOptions";
 
@@ -101,8 +102,8 @@ interface AnalyticsData {
 function toISORange(fromYmd: string, toYmd: string): { from?: string; to?: string } {
   if (!fromYmd && !toYmd) return {};
   return {
-    from: fromYmd ? new Date(fromYmd + "T00:00:00").toISOString() : undefined,
-    to: toYmd ? new Date(toYmd + "T23:59:59").toISOString() : undefined,
+    from: fromYmd ? dateOnlyToAnalyticsFromIso(fromYmd) : undefined,
+    to: toYmd ? dateOnlyToAnalyticsToIso(toYmd) : undefined,
   };
 }
 

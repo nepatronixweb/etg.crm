@@ -13,6 +13,7 @@ import {
   FileSpreadsheet, Table2, Globe2, GripVertical, LayoutGrid,
 } from "lucide-react";
 import { formatDateTime, getStatusColor, hasPermission } from "@/lib/utils";
+import { dateOnlyToAnalyticsFromIso, dateOnlyToAnalyticsToIso } from "@/lib/dateTimeRangeFilterDefaults";
 import { useFdStatusOptions } from "@/lib/useFdStatusOptions";
 import { resolveFdStatusPresentation } from "@/lib/fdStatusOptions";
 import {
@@ -524,7 +525,10 @@ export default function DashboardPage() {
     if (isAdmin) {
       const customRange = filterDateFrom || filterDateTo;
       const { from, to } = customRange
-        ? { from: filterDateFrom ? new Date(filterDateFrom).toISOString() : undefined, to: filterDateTo ? new Date(filterDateTo + "T23:59:59").toISOString() : undefined }
+        ? {
+            from: filterDateFrom ? dateOnlyToAnalyticsFromIso(filterDateFrom) : undefined,
+            to: filterDateTo ? dateOnlyToAnalyticsToIso(filterDateTo) : undefined,
+          }
         : getDateRange(filterPeriod);
       const params = new URLSearchParams();
       if (from) params.set("from", from);

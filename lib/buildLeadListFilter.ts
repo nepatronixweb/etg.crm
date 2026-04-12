@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import type { Session } from "next-auth";
+import { parseCreatedAtDateOnlyBound } from "@/lib/dateTimeRangeFilterDefaults";
 import { mergeTelecallerFreshLeadFilter, TELECALLER_FRESH_BUCKET } from "@/lib/telecallerFreshLeads";
 import {
   isTelecallerOverviewDashboardBucket,
@@ -19,13 +20,12 @@ export type LeadFacetKey =
   | "applyLevel"
   | "search";
 
-/** ?from / ?to - datetime-local / ISO, or legacy YYYY-MM-DD (UTC day start / end). */
+/** ?from / ?to - datetime-local / ISO, or legacy YYYY-MM-DD (1:00 / 23:00 local, same as filter UI). */
 export function parseLeadCreatedAtBound(raw: string, bound: "from" | "to"): Date {
   const s = raw.trim();
   if (!s) return new Date(NaN);
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    if (bound === "from") return new Date(`${s}T00:00:00.000Z`);
-    return new Date(`${s}T23:59:59.999Z`);
+    return parseCreatedAtDateOnlyBound(s, bound);
   }
   return new Date(s);
 }

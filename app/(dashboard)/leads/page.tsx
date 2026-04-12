@@ -33,6 +33,10 @@ import {
 } from "@/lib/telecallerTransferConfig";
 import type { TelecallerTransferOutcome } from "@/types/telecallerTransfer";
 import CounselledTimeInline from "@/components/CounselledTimeInline";
+import {
+  withLeadFilterDefaultFromTime,
+  withLeadFilterDefaultToTime,
+} from "@/lib/dateTimeRangeFilterDefaults";
 import { fdWorkflowChoicesForPicker } from "@/lib/fdStatusOptions";
 import { useFdStatusOptions } from "@/lib/useFdStatusOptions";
 import { subscribeAppSettingsChanged } from "@/lib/appSettingsSync";
@@ -946,9 +950,14 @@ function LeadsPageContent() {
   };
 
   /** Display value from filter string (YYYY-MM-DD or datetime-local) in the chip row. */
-  const formatDateFilterChip = (v: string) => {
+  const formatDateFilterChip = (v: string, bound: "from" | "to") => {
     if (!v) return "";
-    const parsed = v.length <= 10 && !v.includes("T") ? `${v}T00:00:00` : v;
+    const parsed =
+      v.length <= 10 && !v.includes("T")
+        ? bound === "from"
+          ? `${v}T01:00:00`
+          : `${v}T23:00:00`
+        : v;
     const dt = new Date(parsed);
     if (Number.isNaN(dt.getTime())) return v;
     return formatLeadDateTime(dt);
@@ -1287,13 +1296,13 @@ function LeadsPageContent() {
             {filterAssignedTo && <span className="flex items-center gap-1 text-xs bg-amber-50 text-amber-700 border border-amber-100 px-2.5 py-0.5 rounded-full font-medium">{counsellors.find((c) => c._id === filterAssignedTo)?.name ?? "Assigned"}<button onClick={() => setFilterAssignedTo("")}><X size={10} /></button></span>}
             {filterDateFrom && (
               <span className="flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full font-medium max-w-[min(100%,14rem)] truncate" title={filterDateFrom}>
-                From: {formatDateFilterChip(filterDateFrom)}
+                From: {formatDateFilterChip(filterDateFrom, "from")}
                 <button type="button" onClick={() => setFilterDateFrom("")}><X size={10} /></button>
               </span>
             )}
             {filterDateTo && (
               <span className="flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full font-medium max-w-[min(100%,14rem)] truncate" title={filterDateTo}>
-                To: {formatDateFilterChip(filterDateTo)}
+                To: {formatDateFilterChip(filterDateTo, "to")}
                 <button type="button" onClick={() => setFilterDateTo("")}><X size={10} /></button>
               </span>
             )}
@@ -2611,7 +2620,7 @@ function LeadsPageContent() {
                 type="datetime-local"
                 step={60}
                 value={filterDateFrom}
-                onChange={(e) => setFilterDateFrom(e.target.value)}
+                onChange={(e) => setFilterDateFrom(withLeadFilterDefaultFromTime(e.target.value))}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-colors"
               />
             </div>
@@ -2621,13 +2630,17 @@ function LeadsPageContent() {
                 type="datetime-local"
                 step={60}
                 value={filterDateTo}
-                onChange={(e) => setFilterDateTo(e.target.value)}
+                onChange={(e) => setFilterDateTo(withLeadFilterDefaultToTime(e.target.value))}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-colors"
               />
             </div>
             <div className="flex items-center gap-2 pt-1">
               <button
-                onClick={() => setShowDatePicker(false)}
+                onClick={() => {
+                  setFilterDateFrom((f) => (f ? withLeadFilterDefaultFromTime(f) : ""));
+                  setFilterDateTo((t) => (t ? withLeadFilterDefaultToTime(t) : ""));
+                  setShowDatePicker(false);
+                }}
                 className="flex-1 py-2 rounded-lg bg-gray-900 text-white text-xs font-semibold hover:bg-gray-700 transition-colors"
               >
                 Apply

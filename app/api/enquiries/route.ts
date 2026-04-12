@@ -15,13 +15,13 @@ import {
   isTelecallerOverviewDashboardBucket,
   mergeTelecallerOverviewBucketFilter,
 } from "@/lib/telecallerLeadOverviewBuckets";
+import { parseCreatedAtDateOnlyBound } from "@/lib/dateTimeRangeFilterDefaults";
 
 function parseEnquiryCreatedAtBound(raw: string, bound: "from" | "to"): Date {
   const s = raw.trim();
   if (!s) return new Date(NaN);
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    if (bound === "from") return new Date(`${s}T00:00:00.000Z`);
-    return new Date(`${s}T23:59:59.999Z`);
+    return parseCreatedAtDateOnlyBound(s, bound);
   }
   return new Date(s);
 }
