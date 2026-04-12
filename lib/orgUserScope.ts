@@ -4,7 +4,8 @@ import User from "@/models/User";
 
 export async function getBranchIdsInOrganization(orgId: string): Promise<mongoose.Types.ObjectId[]> {
   if (!mongoose.Types.ObjectId.isValid(orgId)) return [];
-  const ids = await Branch.find({ organization: orgId }).distinct("_id");
+  const oid = new mongoose.Types.ObjectId(orgId);
+  const ids = await Branch.find({ organization: oid }).distinct("_id");
   return ids as mongoose.Types.ObjectId[];
 }
 

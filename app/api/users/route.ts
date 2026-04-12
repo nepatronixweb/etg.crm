@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import mongoose from "mongoose";
 import connectDB from "@/lib/mongodb";
 import User from "@/models/User";
 import ActivityLog from "@/models/ActivityLog";
@@ -55,10 +56,49 @@ export async function GET(req: NextRequest) {
         return NextResponse.json(counsellors);
       }
       const orgId = session.user.organizationId;
-      if (!orgId) {
+      if (!orgId || !mongoose.Types.ObjectId.isValid(orgId)) {
         return NextResponse.json([]);
       }
+      const orgOid = new mongoose.Types.ObjectId(orgId);
       const branchIds = await getBranchIdsInOrganization(orgId);
+
+      // Never use branch: { $in: [] } — it matches no documents. If the org branch
+      // index is empty (legacy data), resolve counsellors via Branch.organization on lookup.
+      if (branchIds.length === 0) {
+        const viaOrg = await User.aggregate([
+          { $match: { role: "counsellor", isActive: true, branch: { $exists: true, $ne: null } } },
+          {
+            $lookup: {
+              from: "branches",
+              localField: "branch",
+              foreignField: "_id",
+              as: "br",
+            },
+          },
+          { $unwind: "$br" },
+          { $match: { "br.organization": orgOid } },
+          { $sort: { name: 1 } },
+          { $project: { _id: 1, name: 1, email: 1, role: 1, branch: 1 } },
+        ]);
+        if (viaOrg.length > 0) {
+          return NextResponse.json(viaOrg);
+        }
+        const viewerBranch = session.user.branch;
+        if (viewerBranch && mongoose.Types.ObjectId.isValid(viewerBranch)) {
+          const fallback = await User.find({
+            role: "counsellor",
+            isActive: true,
+            branch: new mongoose.Types.ObjectId(viewerBranch),
+          })
+            .populate("branch", "name")
+            .select("_id name email role branch")
+            .sort({ name: 1 })
+            .lean();
+          return NextResponse.json(fallback);
+        }
+        return NextResponse.json([]);
+      }
+
       const counsellors = await User.find({
         role: "counsellor",
         isActive: true,

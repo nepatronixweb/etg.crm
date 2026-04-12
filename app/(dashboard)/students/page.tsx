@@ -60,7 +60,7 @@ const DOT_TO_BADGE: Record<string, string> = {
 };
 
 export default function StudentsPage() {
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
   const branding = useBranding();
   const [students, setStudents] = useState<IStudent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,11 +123,24 @@ export default function StudentsPage() {
   useEffect(() => { fetchStudents(1); }, [filterStage, filterSource, filterCounsellor, filterLeadStage, session?.user?.role]);
 
   useEffect(() => {
-    fetch("/api/branches").then((r) => r.json()).then((br) => setBranches(Array.isArray(br) ? br : []));
-    fetch("/api/users").then((r) => r.json()).then((u) =>
-      setCounsellors(Array.isArray(u) ? u.filter((x: { role: string }) => x.role === "counsellor") : [])
-    );
-  }, []);
+    if (sessionStatus !== "authenticated") return;
+    fetch("/api/branches")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((br) => setBranches(Array.isArray(br) ? br : []));
+    // Dedicated endpoint: works for admission/application/visa (no "users" module required).
+    fetch("/api/users?role=counsellor", { cache: "no-store", credentials: "same-origin" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((u) =>
+        setCounsellors(
+          Array.isArray(u)
+            ? u.map((x: { _id: unknown; name?: string }) => ({
+                _id: typeof x._id === "string" ? x._id : String(x._id),
+                name: String(x.name ?? ""),
+              }))
+            : [],
+        ),
+      );
+  }, [sessionStatus]);
 
   const loadStudentsPageSettings = useCallback(() => {
     fetch("/api/settings/app", { cache: "no-store" })

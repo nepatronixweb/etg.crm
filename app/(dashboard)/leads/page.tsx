@@ -78,7 +78,7 @@ function localDateTimeInputToUtcIsoParam(v: string): string {
 }
 
 function LeadsPageContent() {
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
   const router = useRouter();
   const pathname = usePathname() ?? "";
   const isEnquiriesRoute = pathname.startsWith("/enquiries");
@@ -249,12 +249,24 @@ function LeadsPageContent() {
   const fetchLeadsRef = useRef(fetchLeads);
   fetchLeadsRef.current = fetchLeads;
 
-  // Mount-only: load settings, branches, users
+  // After session is ready: load settings, branches, counsellors (API scopes by org)
   useEffect(() => {
-    fetch("/api/branches").then((r) => r.json()).then(setBranches);
-    fetch("/api/users?role=counsellor").then((r) => r.json()).then((u) =>
-      setCounsellors(Array.isArray(u) ? u : [])
-    );
+    if (sessionStatus !== "authenticated") return;
+    fetch("/api/branches")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((br) => setBranches(Array.isArray(br) ? br : []));
+    fetch("/api/users?role=counsellor", { cache: "no-store", credentials: "same-origin" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((u) =>
+        setCounsellors(
+          Array.isArray(u)
+            ? u.map((x: { _id: unknown; name?: string }) => ({
+                _id: typeof x._id === "string" ? x._id : String(x._id),
+                name: String(x.name ?? ""),
+              }))
+            : [],
+        ),
+      );
     fetch("/api/settings/app").then((r) => r.json()).then((d) => {
       // Load dynamic lead config
       if (d?.leadSources?.length) {
@@ -295,7 +307,7 @@ function LeadsPageContent() {
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [sessionStatus]);
 
   // Refetch leads whenever any filter changes (also fires on initial mount)
   useEffect(() => {
