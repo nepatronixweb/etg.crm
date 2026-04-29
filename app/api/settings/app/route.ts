@@ -35,46 +35,19 @@ export async function GET() {
       "Master of Business Analyst",
       "Master of Business Administration",
     ];
+    const DEFAULT_LEAD_SOURCES = [
+      "Walk-in",
+      "Capture Visit",
+      "Facebook",
+      "WhatsApp",
+      "Instagram",
+      "Website",
+      "Referral",
+      "Other",
+    ];
+    const MANDATORY_FD_STATUSES = ["Phone Counselling", "Online Counselling"];
 
-    // Backfill remarkOptions for documents created before the field existed
-    if (!settings.remarkOptions?.length) {
-      settings.remarkOptions = DEFAULT_REMARK_OPTIONS;
-      await settings.save();
-    }
-
-    const baseRemarks = settings.remarkOptions?.length ? settings.remarkOptions : DEFAULT_REMARK_OPTIONS;
-    let deptRemarksTouched = false;
-    if (!settings.remarkOptionsApplication?.length) {
-      settings.remarkOptionsApplication = [...baseRemarks];
-      deptRemarksTouched = true;
-    }
-    if (!settings.remarkOptionsAdmission?.length) {
-      settings.remarkOptionsAdmission = [...baseRemarks];
-      deptRemarksTouched = true;
-    }
-    if (!settings.remarkOptionsVisa?.length) {
-      settings.remarkOptionsVisa = [...baseRemarks];
-      deptRemarksTouched = true;
-    }
-    if (deptRemarksTouched) {
-      await settings.save();
-    }
-
-    // Backfill courses if missing
-    if (!settings.courses?.length) {
-      settings.courses = DEFAULT_COURSES;
-      await settings.save();
-    }
-
-    // Backfill educationLevels if missing
-    if (!settings.educationLevels?.length) {
-      settings.educationLevels = ["Diploma", "Bachelor", "Master"];
-      await settings.save();
-    }
-
-    // Backfill countryStages if missing - the schema default only applies on document creation
-    if (!settings.countryStages || Object.keys(settings.countryStages).length === 0) {
-      settings.countryStages = {
+    const defaultCountryStages = {
         "United Kingdom": [
           { value: "offer_applied",         label: "Offer Applied",         pipeline: "Offer" },
           { value: "conditional_offer",      label: "Conditional Offer",     pipeline: "Offer" },
@@ -157,9 +130,6 @@ export async function GET() {
           { value: "visa_reapply",           label: "Visa Reapply",          pipeline: "Visa"  },
         ],
       };
-      settings.markModified("countryStages");
-      await settings.save();
-    }
 
     // Use lean() for the JSON response to bypass Mongoose schema projection.
     // This ensures fields added after the model was first compiled (e.g. after a
@@ -172,6 +142,15 @@ export async function GET() {
     }
     if (!Array.isArray(json.courses) || json.courses.length === 0) {
       json.courses = DEFAULT_COURSES;
+    }
+    if (!Array.isArray(json.leadSources) || json.leadSources.length === 0) {
+      json.leadSources = DEFAULT_LEAD_SOURCES;
+    } else {
+      const mergedLeadSources = [...json.leadSources];
+      for (const src of DEFAULT_LEAD_SOURCES) {
+        if (!mergedLeadSources.includes(src)) mergedLeadSources.push(src);
+      }
+      json.leadSources = mergedLeadSources;
     }
     if (!Array.isArray(json.educationLevels) || json.educationLevels.length === 0) {
       json.educationLevels = ["Diploma", "Bachelor", "Master"];
@@ -192,18 +171,14 @@ export async function GET() {
     }
 
     if (!Array.isArray(json.applicationRoles) || json.applicationRoles.length === 0) {
-      settings.applicationRoles = DEFAULT_APPLICATION_ROLES.map((r) => ({
+      json.applicationRoles = DEFAULT_APPLICATION_ROLES.map((r) => ({
         slug: r.slug,
         label: r.label,
         defaultPermissions: [...r.defaultPermissions],
       }));
-      await settings.save();
-      json.applicationRoles = settings.applicationRoles;
     }
     if (!Array.isArray(json.telecallerTransferOutcomes) || json.telecallerTransferOutcomes.length === 0) {
-      settings.telecallerTransferOutcomes = DEFAULT_TELECALLER_TRANSFER_OUTCOMES.map((o) => ({ ...o }));
-      await settings.save();
-      json.telecallerTransferOutcomes = settings.telecallerTransferOutcomes;
+      json.telecallerTransferOutcomes = DEFAULT_TELECALLER_TRANSFER_OUTCOMES.map((o) => ({ ...o }));
     }
     json.applicationRoles = normalizeApplicationRoles(json.applicationRoles);
     json.telecallerTransferOutcomes = normalizeTelecallerTransferOutcomes(json.telecallerTransferOutcomes);
@@ -223,33 +198,23 @@ export async function GET() {
     }
 
     if (!json.commissionPercentByCountry || typeof json.commissionPercentByCountry !== "object") {
-      settings.commissionPercentByCountry = {};
-      await settings.save();
-      json.commissionPercentByCountry = settings.commissionPercentByCountry ?? {};
+      json.commissionPercentByCountry = {};
     }
     const mods = Array.isArray(json.enabledModules) ? [...json.enabledModules] : [];
     if (!mods.includes("commission")) {
       mods.push("commission");
-      settings.enabledModules = mods;
-      await settings.save();
       json.enabledModules = mods;
     }
     if (!mods.includes("inventory")) {
       mods.push("inventory");
-      settings.enabledModules = mods;
-      await settings.save();
       json.enabledModules = mods;
     }
     if (!mods.includes("hr")) {
       mods.push("hr");
-      settings.enabledModules = mods;
-      await settings.save();
       json.enabledModules = mods;
     }
     if (!mods.includes("chat")) {
       mods.push("chat");
-      settings.enabledModules = mods;
-      await settings.save();
       json.enabledModules = mods;
     }
 
@@ -259,18 +224,40 @@ export async function GET() {
       if (docArr.length > 0) {
         json.fdStatuses = docArr;
       } else if (isPlatform) {
-        const defaults = FD_STATUSES.map((s) => s.value);
-        settings.fdStatuses = defaults;
-        settings.markModified("fdStatuses");
-        await settings.save();
-        json.fdStatuses = defaults;
+        json.fdStatuses = FD_STATUSES.map((s) => s.value);
       } else {
-        const minimal = ["Open/Unassigned"];
-        settings.fdStatuses = minimal;
-        settings.markModified("fdStatuses");
-        await settings.save();
-        json.fdStatuses = minimal;
+        json.fdStatuses = ["Open/Unassigned"];
       }
+    }
+    if (Array.isArray(json.fdStatuses)) {
+      const merged = [...json.fdStatuses];
+      for (const status of MANDATORY_FD_STATUSES) {
+        if (!merged.includes(status)) merged.push(status);
+      }
+      json.fdStatuses = merged;
+    }
+
+    if (!Array.isArray(json.remarkOptions) || json.remarkOptions.length === 0) {
+      json.remarkOptions = DEFAULT_REMARK_OPTIONS;
+    }
+    const baseRemarks = json.remarkOptions;
+    if (!Array.isArray(json.remarkOptionsApplication) || json.remarkOptionsApplication.length === 0) {
+      json.remarkOptionsApplication = [...baseRemarks];
+    }
+    if (!Array.isArray(json.remarkOptionsAdmission) || json.remarkOptionsAdmission.length === 0) {
+      json.remarkOptionsAdmission = [...baseRemarks];
+    }
+    if (!Array.isArray(json.remarkOptionsVisa) || json.remarkOptionsVisa.length === 0) {
+      json.remarkOptionsVisa = [...baseRemarks];
+    }
+    if (!Array.isArray(json.courses) || json.courses.length === 0) {
+      json.courses = DEFAULT_COURSES;
+    }
+    if (!Array.isArray(json.educationLevels) || json.educationLevels.length === 0) {
+      json.educationLevels = ["Diploma", "Bachelor", "Master"];
+    }
+    if (!json.countryStages || Object.keys(json.countryStages).length === 0) {
+      json.countryStages = defaultCountryStages;
     }
 
     return NextResponse.json(json);

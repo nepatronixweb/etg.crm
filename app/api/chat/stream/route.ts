@@ -49,8 +49,14 @@ export async function GET(req: NextRequest) {
         send({ type: "chat_init", unreadCount: 0 });
       }
 
-      // Poll every 8 seconds - reuse cached convIds (refresh every 60s)
-      const interval = setInterval(async () => {
+      const basePollMs = Number(process.env.CHAT_SSE_POLL_MS ?? 8_000);
+      const maxPollMs = Number(process.env.CHAT_SSE_MAX_POLL_MS ?? 25_000);
+      let currentPollMs = basePollMs;
+      let stopped = false;
+      let timeout: ReturnType<typeof setTimeout> | null = null;
+
+      const tick = async () => {
+        if (stopped) return;
         try {
           if (Date.now() - lastConvRefresh > 60_000) await refreshConvIds();
 
@@ -76,16 +82,22 @@ export async function GET(req: NextRequest) {
 
           if (newMessages.length > 0) {
             send({ type: "chat_new", messages: newMessages, unreadCount: unread });
+            currentPollMs = basePollMs;
           } else {
-            send({ type: "chat_heartbeat", unreadCount: unread });
+            send({ type: "chat_heartbeat", unreadCount: unread, pollMs: currentPollMs });
+            currentPollMs = Math.min(maxPollMs, Math.floor(currentPollMs * 1.4));
           }
         } catch {
           send({ type: "chat_heartbeat", unreadCount: 0 });
+          currentPollMs = Math.min(maxPollMs, Math.floor(currentPollMs * 1.4));
         }
-      }, 8000);
+        timeout = setTimeout(tick, currentPollMs);
+      };
+      timeout = setTimeout(tick, currentPollMs);
 
       req.signal.addEventListener("abort", () => {
-        clearInterval(interval);
+        stopped = true;
+        if (timeout) clearTimeout(timeout);
         try { controller.close(); } catch { /* already closed */ }
       });
     },

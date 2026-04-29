@@ -140,6 +140,7 @@ export const FD_STATUSES: { value: string; label: string; color: string }[] = [
   { value: "In-Progress",                  label: "In-Progress",                     color: "bg-green-400 text-white" },
   { value: "Not Genuine",                  label: "Not Genuine",                     color: "bg-black text-white" },
   { value: "Phone Counselling",            label: "Phone Counselling",               color: "bg-indigo-400 text-white" },
+  { value: "Online Counselling",           label: "Online Counselling",              color: "bg-cyan-500 text-white" },
   { value: "Qualified Lead",               label: "Qualified Lead",                  color: "bg-blue-600 text-white" },
   { value: "Registered/Completed",         label: "Registered/Completed",            color: "bg-gray-500 text-white" },
   { value: "Interested",                   label: "Interested",                      color: "bg-teal-300 text-white" },

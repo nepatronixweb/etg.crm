@@ -5,6 +5,17 @@ import { auth } from "@/lib/auth";
 
 // Chunk size for client uploads (4MB to stay within Vercel's 4.5MB body limit)
 const CHUNK_SIZE = 4 * 1024 * 1024;
+const TEMP_UPLOAD_TTL_MS = 24 * 60 * 60 * 1000;
+
+async function ensureUploadTempIndexes(db: mongoose.mongo.Db): Promise<void> {
+  const tempCollection = db.collection("_pendingUploads");
+  const chunkCollection = db.collection("_uploadChunks");
+  await Promise.all([
+    tempCollection.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
+    chunkCollection.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
+    chunkCollection.createIndex({ uploadId: 1, index: 1 }, { unique: true }),
+  ]);
+}
 
 // Initialize a chunked upload - returns an uploadId to append chunks to
 export async function POST(req: NextRequest) {
@@ -19,14 +30,17 @@ export async function POST(req: NextRequest) {
 
     const db = mongoose.connection.db;
     if (!db) return NextResponse.json({ error: "DB not connected" }, { status: 500 });
+    await ensureUploadTempIndexes(db);
 
     const tempCollection = db.collection("_pendingUploads");
+    const expiresAt = new Date(Date.now() + TEMP_UPLOAD_TTL_MS);
     const result = await tempCollection.insertOne({
       fileName,
       fileType: fileType || "application/octet-stream",
       fileSize: fileSize || 0,
       uploadedBy: session.user.id,
       createdAt: new Date(),
+      expiresAt,
     });
 
     return NextResponse.json({
@@ -57,6 +71,7 @@ export async function PUT(req: NextRequest) {
 
     const db = mongoose.connection.db;
     if (!db) return NextResponse.json({ error: "DB not connected" }, { status: 500 });
+    await ensureUploadTempIndexes(db);
 
     const body = await req.arrayBuffer();
     const buffer = Buffer.from(body);
@@ -69,11 +84,16 @@ export async function PUT(req: NextRequest) {
 
     // Store chunk data
     const chunkCollection = db.collection("_uploadChunks");
-    await chunkCollection.insertOne({
-      uploadId: new mongoose.Types.ObjectId(uploadId),
-      index: parseInt(chunkIndex),
-      data: buffer,
-    });
+    const expiresAt = new Date(Date.now() + TEMP_UPLOAD_TTL_MS);
+    await chunkCollection.updateOne(
+      { uploadId: new mongoose.Types.ObjectId(uploadId), index: parseInt(chunkIndex) },
+      { $set: { data: buffer, expiresAt } },
+      { upsert: true }
+    );
+    await tempCollection.updateOne(
+      { _id: new mongoose.Types.ObjectId(uploadId) },
+      { $set: { expiresAt } }
+    );
 
     const currentIdx = parseInt(chunkIndex);
     const total = parseInt(totalChunks);

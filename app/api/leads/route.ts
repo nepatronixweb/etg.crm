@@ -12,6 +12,14 @@ import { hasModuleAction } from "@/lib/utils";
 import { createNotifications, getSuperAdminIds } from "@/lib/notifications";
 import { buildLeadListFilter, castObjectIdsForAggregateMatch } from "@/lib/buildLeadListFilter";
 
+function normalizeLeadSource(raw: unknown): string {
+  return String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+}
+
 export async function GET(req: NextRequest) {
   try {
     const session = await auth();
@@ -97,9 +105,27 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { assignmentMethod, ...leadData } = body;
 
+    leadData.name = typeof leadData.name === "string" ? leadData.name.trim() : "";
+    leadData.phone = typeof leadData.phone === "string" ? leadData.phone.trim() : "";
+    leadData.source = normalizeLeadSource(leadData.source);
+    leadData.branch = typeof leadData.branch === "string" ? leadData.branch.trim() : leadData.branch;
+
+    if (!leadData.name) {
+      return NextResponse.json({ error: "Full name is required" }, { status: 400 });
+    }
+    if (!leadData.phone) {
+      return NextResponse.json({ error: "Phone number is required" }, { status: 400 });
+    }
+    if (!leadData.source) {
+      return NextResponse.json({ error: "Lead source is required" }, { status: 400 });
+    }
+
     // Auto-set branch from user's session if not provided or empty
     if (!leadData.branch && session.user.branch) {
       leadData.branch = session.user.branch;
+    }
+    if (!leadData.branch) {
+      return NextResponse.json({ error: "Branch is required" }, { status: 400 });
     }
 
     // Enforce role-based field restrictions

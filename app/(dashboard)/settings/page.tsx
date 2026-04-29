@@ -215,7 +215,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   email: "",
   website: "",
   leadStatuses: ["new","contacted","qualified","application","admission","visa","completed","rejected"],
-  leadSources: ["Walk-in","Referral","Social Media","Website","Partner","Phone Call","Email","Exhibition","Other"],
+  leadSources: ["Walk-in","Capture Visit","Facebook","WhatsApp","Instagram","Website","Referral","Social Media","Partner","Phone Call","Email","Exhibition","Other"],
   leadStandings: ["heated", "hot", "warm", "out_of_contact"],
   fdStatuses: [
     "FD-Junk","AP-Call Not Received","AP-Call Back Later","AP-Not Interested",
@@ -224,7 +224,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     "Counselling","Counselled","AP-Interested","Negotiation",
     "Open/Unassigned","Future Prospect","FD-Interested","Dead/Junk Lead",
     "Not Answering","Assigned","In-Progress","Not Genuine",
-    "Phone Counselling","Qualified Lead","Registered/Completed",
+    "Phone Counselling","Online Counselling","Qualified Lead","Registered/Completed",
     "Interested","Closed Lost",
   ],
   leadStageGroups: ["Application", "Offer", "GS", "COE", "Visa"],

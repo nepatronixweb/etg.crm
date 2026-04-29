@@ -127,7 +127,7 @@ const AppSettingsSchema = new Schema<IAppSettings>(
     },
     leadSources: {
       type: [String],
-      default: ["Walk-in", "Referral", "Social Media", "Website", "Partner", "Phone Call", "Email", "Exhibition", "Other"],
+      default: ["Walk-in", "Capture Visit", "Referral", "Social Media", "Website", "Partner", "Phone Call", "Email", "Exhibition", "Other"],
     },
     leadStandings: {
       type: [String],
@@ -142,7 +142,7 @@ const AppSettingsSchema = new Schema<IAppSettings>(
         "Counselling", "Counselled", "AP-Interested", "Negotiation",
         "Open/Unassigned", "Future Prospect", "FD-Interested", "Dead/Junk Lead",
         "Not Answering", "Assigned", "In-Progress", "Not Genuine",
-        "Phone Counselling", "Qualified Lead", "Registered/Completed",
+        "Phone Counselling", "Online Counselling", "Qualified Lead", "Registered/Completed",
         "Interested", "Closed Lost",
       ],
     },

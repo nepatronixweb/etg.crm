@@ -35,7 +35,7 @@ export const TELECALLER_OVERVIEW_BUCKET_LABEL: Record<TelecallerOverviewBucket, 
 };
 
 const TRANSFERRED_STATUSES = ["Assigned", "Counselling", "Counselled", "Qualified Lead"];
-const PHONE_COUNSELLING_STATUSES = ["Phone Counselling", "Counselled"];
+const PHONE_COUNSELLING_STATUSES = ["Phone Counselling", "Online Counselling", "Counselled"];
 const COLD_STATUSES = [
   "AP-Not Interested",
   "Not Interested",
@@ -68,7 +68,7 @@ export function mergeTelecallerOverviewBucketFilter(
       bucketClause = { status: { $in: PHONE_COUNSELLING_STATUSES } };
       break;
     case TELECALLER_OVERVIEW_ONLINE_ENROLLMENT:
-      bucketClause = { status: "Registered/Completed" };
+      bucketClause = { status: { $in: ["Online Counselling", "Registered/Completed"] } };
       break;
     case TELECALLER_OVERVIEW_COLD:
       bucketClause = {

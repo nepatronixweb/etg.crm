@@ -44,6 +44,7 @@ import { roleCanEditLeadFdStatus } from "@/lib/leadWorkflowStatusRoles";
 
 const DEFAULT_SOURCES: { value: string; label: string }[] = [
   { value: "walk_in", label: "Walk-in" },
+  { value: "capture_visit", label: "Capture Visit" },
   { value: "facebook", label: "Facebook" },
   { value: "whatsapp", label: "WhatsApp" },
   { value: "instagram", label: "Instagram" },
@@ -76,6 +77,7 @@ const FIELD_CLASS =
   "w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-colors";
 
 const LABEL_CLASS = "block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide";
+const REQUIRED_FORM_KEYS = new Set(["name", "phone", "source", "branch"]);
 
 /** datetime-local value (no TZ) → UTC ISO for API (Mongo createdAt is UTC). */
 function localDateTimeInputToUtcIsoParam(v: string): string {
@@ -173,6 +175,7 @@ function LeadsPageContent() {
     examPaymentMethod: "", examEstimatedDate: "",
     gender: "", maritalStatus: "", nationality: "", passportNumber: "", visaExpiryDate: "",
     senderName: "",
+    visitCaptured: false, visitedAt: "", visitPurpose: "",
     academicYear: "", applyLevel: "", course: "", intakeYear: "", intakeQuarter: "",
   });
 
@@ -280,10 +283,17 @@ function LeadsPageContent() {
       if (d?.error) return;
       // Load dynamic lead config
       if (d?.leadSources?.length) {
-        setAppSources(d.leadSources.map((s: string) => ({
+        const normalized = d.leadSources.map((s: string) => ({
           value: s.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, ""),
           label: s,
-        })));
+        }));
+        const merged = [...DEFAULT_SOURCES];
+        for (const src of normalized) {
+          if (!merged.some((m) => m.value === src.value)) merged.push(src);
+        }
+        setAppSources(merged);
+      } else {
+        setAppSources(DEFAULT_SOURCES);
       }
       if (d?.leadStandings?.length) setAppStandings(d.leadStandings);
       if (d?.countries?.length) {
@@ -419,6 +429,7 @@ function LeadsPageContent() {
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const modalSessionRef = useRef(0);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -445,6 +456,7 @@ function LeadsPageContent() {
       examPaymentMethod: "", examEstimatedDate: "",
       gender: "", maritalStatus: "", nationality: "", passportNumber: "", visaExpiryDate: "",
       senderName: "",
+      visitCaptured: false, visitedAt: "", visitPurpose: "",
       academicYear: "", applyLevel: "", course: "", intakeYear: "", intakeQuarter: "",
     });
     setAttachedFiles([]);
@@ -452,7 +464,24 @@ function LeadsPageContent() {
     setEditingLead(null);
   };
 
+  const closeLeadModalInternal = (force: boolean) => {
+    if (submitting && !force) return;
+    modalSessionRef.current += 1;
+    setShowForm(false);
+    resetForm();
+  };
+  const closeLeadModal = () => closeLeadModalInternal(false);
+
+  const openCreateLeadModal = () => {
+    if (submitting) return;
+    modalSessionRef.current += 1;
+    resetForm();
+    setShowForm(true);
+  };
+
   const openEditForm = (lead: ILead) => {
+    if (submitting) return;
+    modalSessionRef.current += 1;
     const toDate = (v: unknown) =>
       v ? new Date(v as string).toISOString().slice(0, 10) : "";
     const branchId =
@@ -499,6 +528,9 @@ function LeadsPageContent() {
       passportNumber: lead.passportNumber || "",
       visaExpiryDate: toDate(lead.visaExpiryDate),
       senderName: lead.senderName || "",
+      visitCaptured: Boolean((lead as unknown as { visitCaptured?: boolean }).visitCaptured),
+      visitedAt: toDate((lead as unknown as { visitedAt?: string }).visitedAt),
+      visitPurpose: (lead as unknown as { visitPurpose?: string }).visitPurpose || "",
       academicYear: lead.academicYear || "",
       applyLevel: lead.applyLevel || "",
       course: lead.course || "",
@@ -513,10 +545,32 @@ function LeadsPageContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setSubmitting(true);
     setSubmitError("");
+    const submitSession = modalSessionRef.current;
+
+    const trimmedName = form.name.trim();
+    const trimmedPhone = form.phone.trim();
+    const normalizedSource = String(form.source || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "_")
+      .replace(/[^a-z0-9_]/g, "");
+    const trimmedBranch = String(form.branch || "").trim();
+    if (!trimmedName || !trimmedPhone || !normalizedSource || !trimmedBranch) {
+      setSubmitError("Please fill all required fields: Full Name, Phone Number, Source, and Branch.");
+      setSubmitting(false);
+      return;
+    }
 
     const payload: Record<string, unknown> = { ...form };
+    payload.name = trimmedName;
+    payload.phone = trimmedPhone;
+    payload.source = normalizedSource;
+    payload.branch = trimmedBranch;
+    payload.visitPurpose = form.visitCaptured ? String(form.visitPurpose || "").trim() : "";
+    payload.visitedAt = form.visitCaptured && form.visitedAt ? new Date(form.visitedAt).toISOString() : "";
     if (!payload.assignedTo) delete payload.assignedTo;
     if (!editingLead) {
       delete payload.status;
@@ -541,6 +595,7 @@ function LeadsPageContent() {
         });
       }
       const data = await res.json();
+      if (submitSession !== modalSessionRef.current) return;
       if (res.ok) {
         const leadId = editingLead ? editingLead._id : (data._id || data.lead?._id);
         // Upload attached files one by one via chunked GridFS upload
@@ -576,17 +631,19 @@ function LeadsPageContent() {
           );
         }
         const nextPage = editingLead ? currentPage : 1;
-        setShowForm(false);
+        closeLeadModalInternal(true);
         fetchLeads(nextPage);
-        resetForm();
       } else {
         setSubmitError(data?.error || (editingLead ? "Failed to update lead." : "Failed to create lead. Please try again."));
       }
     } catch (error) {
+      if (submitSession !== modalSessionRef.current) return;
       console.error("Form submission error:", error);
       setSubmitError(error instanceof Error ? error.message : "Network error. Please try again.");
     } finally {
-      setSubmitting(false);
+      if (submitSession === modalSessionRef.current) {
+        setSubmitting(false);
+      }
     }
   };
 
@@ -1058,7 +1115,7 @@ function LeadsPageContent() {
         <div className="flex items-center gap-2">
           {canCreate && (
             <button
-              onClick={() => setShowForm(true)}
+              onClick={openCreateLeadModal}
               className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-700 text-white px-4 py-2.5 rounded-md text-sm font-medium transition-colors"
             >
               <Plus size={15} />
@@ -1912,7 +1969,7 @@ function LeadsPageContent() {
                 <p className="text-xs text-gray-500 mt-0.5">{editingLead ? "Update the lead details below" : "Fill in the details to register a new lead"}</p>
               </div>
               <button
-                onClick={() => setShowForm(false)}
+                onClick={closeLeadModal}
                 className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
               >
                 <X size={18} />
@@ -1933,13 +1990,14 @@ function LeadsPageContent() {
                   ].map(({ label, key, type }) => (
                     <div key={key}>
                       <label className={LABEL_CLASS}>
-                        {label}
+                        {label}{REQUIRED_FORM_KEYS.has(key) ? " *" : ""}
                       </label>
                       <input
                         type={type}
-                        value={(form as Record<string, string>)[key]}
+                        value={String((form as Record<string, unknown>)[key] ?? "")}
                         onChange={(e) => setForm({ ...form, [key]: e.target.value })}
                         className={FIELD_CLASS}
+                        required={REQUIRED_FORM_KEYS.has(key)}
                       />
                     </div>
                   ))}
@@ -2013,11 +2071,12 @@ function LeadsPageContent() {
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Interest Details</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className={LABEL_CLASS}>Source</label>
+                    <label className={LABEL_CLASS}>Source *</label>
                     <select
                       value={form.source}
                       onChange={(e) => setForm({ ...form, source: e.target.value as LeadSource })}
                       className={FIELD_CLASS}
+                      required
                     >
                       {appSources.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                     </select>
@@ -2032,6 +2091,33 @@ function LeadsPageContent() {
                       onChange={(e) => setForm({ ...form, senderName: e.target.value })}
                       placeholder="Name of person who sent this lead"
                       className={FIELD_CLASS}
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 rounded-md border border-gray-200 bg-gray-50">
+                    <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 sm:col-span-1">
+                      <input
+                        type="checkbox"
+                        checked={form.visitCaptured}
+                        onChange={(e) => setForm({ ...form, visitCaptured: e.target.checked })}
+                        className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-500"
+                      />
+                      Capture Visit
+                    </label>
+                    <input
+                      type="date"
+                      value={form.visitedAt}
+                      onChange={(e) => setForm({ ...form, visitedAt: e.target.value })}
+                      className={FIELD_CLASS}
+                      disabled={!form.visitCaptured}
+                    />
+                    <input
+                      type="text"
+                      value={form.visitPurpose}
+                      onChange={(e) => setForm({ ...form, visitPurpose: e.target.value })}
+                      placeholder="Visit purpose"
+                      className={FIELD_CLASS}
+                      disabled={!form.visitCaptured}
                     />
                   </div>
 
@@ -2183,11 +2269,12 @@ function LeadsPageContent() {
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Assignment</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className={LABEL_CLASS}>Branch</label>
+                    <label className={LABEL_CLASS}>Branch *</label>
                     <select
                       value={form.branch}
                       onChange={(e) => setForm({ ...form, branch: e.target.value })}
                       className={FIELD_CLASS}
+                      required
                     >
                       <option value="">Select branch</option>
                       {branches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
@@ -2492,7 +2579,7 @@ function LeadsPageContent() {
               <div className="flex justify-end gap-3 pt-1">
                 <button
                   type="button"
-                  onClick={() => { setShowForm(false); resetForm(); }}
+                  onClick={closeLeadModal}
                   className="px-4 py-2.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   Cancel

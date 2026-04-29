@@ -29,7 +29,6 @@ import { formatStandingLabel, standingInlineStyle, standingOptionPrefix } from "
 
 const DEFAULT_COUNTRIES = COUNTRIES;
 import Link from "next/link";
-import { useBranding } from "@/app/branding-context";
 import { getCounselledEvent } from "@/lib/counselledAt";
 import CounselledClockCard from "@/components/CounselledClockCard";
 
@@ -172,7 +171,6 @@ const EMPTY_ADMISSION_FORM = {
 export default function StudentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data: session } = useSession();
-  const branding = useBranding();
   const [student, setStudent] = useState<StudentDetail | null>(null);
   const [docs, setDocs] = useState<Document[]>([]);
   const [note, setNote] = useState("");
@@ -287,13 +285,6 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     loadB2bNames();
   }, [loadB2bNames]);
 
-  useEffect(() => {
-    const onVis = () => {
-      if (document.visibilityState === "visible") loadB2bNames();
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
-  }, [loadB2bNames]);
 
   const loadDashboardSettings = useCallback(() => {
     fetch("/api/settings/app", { cache: "no-store" })
@@ -351,13 +342,6 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     loadDashboardSettings();
   }, [loadDashboardSettings]);
 
-  useEffect(() => {
-    const onVis = () => {
-      if (document.visibilityState === "visible") loadDashboardSettings();
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
-  }, [loadDashboardSettings]);
 
   const addNote = async () => {
     if (!note.trim()) return;
@@ -371,18 +355,6 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
 
     setNote("");
     fetchData();
-
-    if (student?.phone) {
-      const waPhone = student.phone.replace(/[^\d]/g, "");
-      const waMsg = encodeURIComponent(`Hi ${student.name},\n\n${noteContent}\n\n- ${branding.shortCode} Team`);
-      window.open(`https://wa.me/${waPhone}?text=${waMsg}`, "_blank");
-    }
-
-    if (student?.email) {
-      const subject = encodeURIComponent(`Update from ${branding.shortCode} - ${student.name}`);
-      const body = encodeURIComponent(`Hi ${student.name},\n\n${noteContent}\n\nBest regards,\n${branding.shortCode} Team`);
-      window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(student.email)}&su=${subject}&body=${body}`, "_blank");
-    }
   };
 
   const updateStage = async (stage: string) => {

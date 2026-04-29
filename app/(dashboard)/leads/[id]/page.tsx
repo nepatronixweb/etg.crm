@@ -212,17 +212,6 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     setNote("");
     setAddingNote(false);
     fetchLead();
-    // Auto-send via WhatsApp and Gmail
-    if (lead?.phone) {
-      const waPhone = lead.phone.replace(/[^\d]/g, "");
-      const waMsg = encodeURIComponent(`Hi ${lead.name},\n\n${noteContent}\n\n- ${branding.shortCode} Team`);
-      window.open(`https://wa.me/${waPhone}?text=${waMsg}`, "_blank");
-    }
-    if (lead?.email) {
-      const subject = encodeURIComponent(`Update from ${branding.shortCode} \u2013 ${lead.name}`);
-      const body = encodeURIComponent(`Hi ${lead.name},\n\n${noteContent}\n\nBest regards,\n${branding.shortCode} Team`);
-      window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(lead.email)}&su=${subject}&body=${body}`, "_blank");
-    }
   };
 
   const updateStatus = async (status: string) => {

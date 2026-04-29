@@ -65,6 +65,7 @@ export type LeadStatus =
   | "In-Progress"
   | "Not Genuine"
   | "Phone Counselling"
+  | "Online Counselling"
   | "Qualified Lead"
   | "Registered/Completed"
   | "Interested"
@@ -74,6 +75,7 @@ export type StudentStage = string;
 
 export type LeadSource =
   | "walk_in"
+  | "capture_visit"
   | "facebook"
   | "whatsapp"
   | "instagram"
@@ -175,6 +177,9 @@ export interface ILead {
   intakeQuarter?: string;
   // General comments / notes at creation
   comments?: string;
+  visitCaptured?: boolean;
+  visitedAt?: string;
+  visitPurpose?: string;
   createdAt: Date;
   updatedAt: Date;
 }

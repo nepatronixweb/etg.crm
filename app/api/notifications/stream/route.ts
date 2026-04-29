@@ -47,8 +47,14 @@ export async function GET(req: NextRequest) {
         send({ type: "init", unreadCount: 0, notifications: [] });
       }
 
-      // Poll every 10 seconds - single aggregation per tick
-      const interval = setInterval(async () => {
+      const basePollMs = Number(process.env.NOTIFICATIONS_SSE_POLL_MS ?? 10_000);
+      const maxPollMs = Number(process.env.NOTIFICATIONS_SSE_MAX_POLL_MS ?? 30_000);
+      let currentPollMs = basePollMs;
+      let stopped = false;
+      let timeout: ReturnType<typeof setTimeout> | null = null;
+
+      const tick = async () => {
+        if (stopped) return;
         try {
           const since = lastCheck;
           lastCheck = new Date();
@@ -71,17 +77,23 @@ export async function GET(req: NextRequest) {
 
           if (newNotifs.length > 0) {
             send({ type: "new", notifications: newNotifs, unreadCount });
+            currentPollMs = basePollMs;
           } else {
-            send({ type: "heartbeat", unreadCount });
+            send({ type: "heartbeat", unreadCount, pollMs: currentPollMs });
+            currentPollMs = Math.min(maxPollMs, Math.floor(currentPollMs * 1.5));
           }
         } catch {
           send({ type: "heartbeat", unreadCount: 0 });
+          currentPollMs = Math.min(maxPollMs, Math.floor(currentPollMs * 1.5));
         }
-      }, 10000);
+        timeout = setTimeout(tick, currentPollMs);
+      };
+      timeout = setTimeout(tick, currentPollMs);
 
       // Cleanup when client disconnects
       req.signal.addEventListener("abort", () => {
-        clearInterval(interval);
+        stopped = true;
+        if (timeout) clearTimeout(timeout);
         try { controller.close(); } catch { /* already closed */ }
       });
     },

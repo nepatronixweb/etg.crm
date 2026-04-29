@@ -31,7 +31,7 @@ export const DEFAULT_TELECALLER_TRANSFER_OUTCOMES: TelecallerTransferOutcome[] =
     id: "online_enrollment",
     label: "Online enrollment",
     effect: "set_status",
-    fdStatus: "Registered/Completed",
+    fdStatus: "Online Counselling",
     requiresCounsellor: false,
     requiresAppointmentDate: false,
   },
@@ -75,6 +75,14 @@ export function normalizeTelecallerTransferOutcomes(raw: unknown): TelecallerTra
       requiresAppointmentDate: Boolean(r.requiresAppointmentDate),
     };
     if (o.effect === "assign_counsellor" && !o.fdStatus) o.fdStatus = "Assigned";
+    // Backward-compat: old configs used "Registered/Completed" for online enrollment.
+    if (
+      o.id === "online_enrollment" &&
+      o.effect === "set_status" &&
+      (!o.fdStatus || o.fdStatus === "Registered/Completed")
+    ) {
+      o.fdStatus = "Online Counselling";
+    }
     if (o.effect === "set_status" && !o.fdStatus) continue;
     if (o.effect === "set_standing" && !o.standing) continue;
     out.push(o);

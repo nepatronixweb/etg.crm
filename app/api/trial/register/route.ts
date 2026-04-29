@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   try {
     if (!shouldSkipTrialRateLimit()) {
       const ip = clientIp(req);
-      if (!checkRateLimit(`trial-register:${ip}`, 5, 3_600_000)) {
+      if (!(await checkRateLimit(`trial-register:${ip}`, 5, 3_600_000))) {
         return NextResponse.json(
           { error: "Too many trial signups from this network. Try again later." },
           { status: 429 }

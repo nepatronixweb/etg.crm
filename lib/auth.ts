@@ -106,7 +106,7 @@ async function resolveOrgSubscriptionForUser(params: {
     };
   }
 
-  let org = await ensureBranchLinkedToOrganization(params.branchId);
+  const org = await ensureBranchLinkedToOrganization(params.branchId);
   if (!org) {
     return {
       organizationId: null,
@@ -160,9 +160,9 @@ export const authOptions: NextAuthOptions = {
           if (!credentials?.email || !credentials?.password) return null;
           const emailInput = credentials.email.trim();
           const emailKey = `login:${emailInput.toLowerCase()}`;
-          const enforceLoginRateLimit = () => {
+          const enforceLoginRateLimit = async () => {
             if (shouldSkipLoginRateLimit()) return;
-            if (!checkRateLimit(emailKey, 10, 60_000)) {
+            if (!(await checkRateLimit(emailKey, 10, 60_000))) {
               throw new Error("Too many login attempts. Please wait a minute and try again.");
             }
           };
@@ -173,20 +173,20 @@ export const authOptions: NextAuthOptions = {
             isActive: true,
           }).populate("branch");
           if (!user) {
-            enforceLoginRateLimit();
+            await enforceLoginRateLimit();
             return null;
           }
           if (typeof user.password !== "string" || !user.password) {
-            enforceLoginRateLimit();
+            await enforceLoginRateLimit();
             return null;
           }
           const isValid = await bcrypt.compare(credentials.password as string, user.password);
           if (!isValid) {
-            enforceLoginRateLimit();
+            await enforceLoginRateLimit();
             return null;
           }
 
-          clearRateLimit(emailKey);
+          await clearRateLimit(emailKey);
           const hrRoleRaw = (user as { hrRole?: string }).hrRole;
           const hrRole =
             hrRoleRaw === "admin" || hrRoleRaw === "employee" ? hrRoleRaw : "employee";

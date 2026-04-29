@@ -31,6 +31,27 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     await connectDB();
     const body = await req.json();
 
+    if ("name" in body && typeof body.name === "string" && body.name.trim() === "") {
+      return NextResponse.json({ error: "Full name is required" }, { status: 400 });
+    }
+    if ("phone" in body && typeof body.phone === "string" && body.phone.trim() === "") {
+      return NextResponse.json({ error: "Phone number is required" }, { status: 400 });
+    }
+    if ("source" in body) {
+      const normalizedSource = String(body.source ?? "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "_")
+        .replace(/[^a-z0-9_]/g, "");
+      if (!normalizedSource) {
+        return NextResponse.json({ error: "Lead source is required" }, { status: 400 });
+      }
+      body.source = normalizedSource;
+    }
+    if ("branch" in body && typeof body.branch === "string" && body.branch.trim() === "") {
+      return NextResponse.json({ error: "Branch is required" }, { status: 400 });
+    }
+
     if (session.user.role === "front_desk" && body.stage) {
       return NextResponse.json({ error: "Front desk users cannot update stage" }, { status: 403 });
     }

@@ -1,11 +1,15 @@
 const DATE_PREFIX = /^(\d{4}-\d{2}-\d{2})/;
+const DATE_TIME_PREFIX = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/;
 
 /**
  * Leads / enquiries `datetime-local` "From": after a date is chosen, use 1:00 AM local on that day.
  */
 export function withLeadFilterDefaultFromTime(value: string): string {
   if (!value?.trim()) return "";
-  const m = value.trim().match(DATE_PREFIX);
+  const t = value.trim();
+  const explicitTime = t.match(DATE_TIME_PREFIX);
+  if (explicitTime) return `${explicitTime[1]}T${explicitTime[2]}`;
+  const m = t.match(DATE_PREFIX);
   if (!m) return value.trim();
   return `${m[1]}T01:00`;
 }
@@ -15,7 +19,10 @@ export function withLeadFilterDefaultFromTime(value: string): string {
  */
 export function withLeadFilterDefaultToTime(value: string): string {
   if (!value?.trim()) return "";
-  const m = value.trim().match(DATE_PREFIX);
+  const t = value.trim();
+  const explicitTime = t.match(DATE_TIME_PREFIX);
+  if (explicitTime) return `${explicitTime[1]}T${explicitTime[2]}`;
+  const m = t.match(DATE_PREFIX);
   if (!m) return value.trim();
   return `${m[1]}T23:00`;
 }

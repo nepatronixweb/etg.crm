@@ -68,6 +68,9 @@ export interface ILeadDocument extends Document {
   intakeQuarter?: string;
   // General comments / notes at creation
   comments?: string;
+  visitCaptured?: boolean;
+  visitedAt?: Date;
+  visitPurpose?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -139,6 +142,9 @@ const LeadSchema = new Schema<ILeadDocument>(
     intakeQuarter: { type: String, default: "" },
     // General comments / notes at creation
     comments: { type: String, trim: true },
+    visitCaptured: { type: Boolean, default: false },
+    visitedAt: { type: Date },
+    visitPurpose: { type: String, trim: true, default: "" },
     // Import metadata
     campaign: { type: String, trim: true, default: "" },
     importDate: { type: Date },
