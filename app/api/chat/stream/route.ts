@@ -4,6 +4,7 @@ import { userHasChatAccess } from "@/lib/chatPermissions";
 import connectDB from "@/lib/mongodb";
 import Message from "@/models/Message";
 import Conversation from "@/models/Conversation";
+import mongoose from "mongoose";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
       };
 
       // Cache conversation IDs - refreshed every 60s to pick up new convs
-      let convIds: unknown[] = [];
+      let convIds: mongoose.Types.ObjectId[] = [];
       let lastConvRefresh = 0;
 
       const refreshConvIds = async () => {
@@ -70,6 +71,11 @@ export async function GET(req: NextRequest) {
               createdAt: { $gt: since },
             })
               .populate("sender", "name email role")
+              .populate({
+                path: "replyTo",
+                populate: { path: "sender", select: "name email role" },
+                select: "text sender createdAt",
+              })
               .sort({ createdAt: -1 })
               .limit(10)
               .lean(),

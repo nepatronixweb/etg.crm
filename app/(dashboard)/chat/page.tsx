@@ -47,6 +47,13 @@ interface IMessage {
   conversation: string;
   sender: IUser;
   text: string;
+  replyTo?: {
+    _id: string;
+    text: string;
+    sender?: IUser;
+    createdAt: string;
+  };
+  reactions?: { emoji: "👍🏻" | "❌"; user: string }[];
   readBy: string[];
   createdAt: string;
 }
@@ -67,6 +74,14 @@ function timeAgo(dateStr: string) {
 
 function formatMsgTime(dateStr: string) {
   return new Date(dateStr).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+}
+
+function formatMsgDate(dateStr: string) {
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 export default function ChatPage() {
@@ -90,6 +105,9 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [messageSearch, setMessageSearch] = useState("");
+  const [searchingMessages, setSearchingMessages] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<IMessage | null>(null);
 
   // New chat modal
   const [showNewChat, setShowNewChat] = useState(false);
@@ -180,10 +198,15 @@ export default function ChatPage() {
   }, [session, enabledModules]);
 
   // Fetch messages for active conversation
-  const fetchMessages = useCallback(async (convId: string) => {
+  const fetchMessages = useCallback(async (convId: string, query?: string) => {
     setLoadingMsgs(true);
+    setSearchingMessages(Boolean(query?.trim()));
     try {
-      const res = await fetch(`/api/chat/conversations/${convId}/messages`);
+      const q = query?.trim();
+      const url = q
+        ? `/api/chat/conversations/${convId}/messages?q=${encodeURIComponent(q)}&limit=100`
+        : `/api/chat/conversations/${convId}/messages`;
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setMessages(data);
@@ -195,6 +218,7 @@ export default function ChatPage() {
       setApiBanner("Could not load messages. Check your connection and try again.");
     }
     setLoadingMsgs(false);
+    setSearchingMessages(false);
   }, []);
 
   // Mark conversation as read
@@ -207,7 +231,9 @@ export default function ChatPage() {
   // Select conversation
   const selectConversation = useCallback((conv: IConversation) => {
     setActiveConv(conv);
-    fetchMessages(conv._id);
+    setMessageSearch("");
+    setReplyingTo(null);
+    fetchMessages(conv._id, "");
     markRead(conv._id);
     // Update unread locally
     setConversations((prev) =>
@@ -223,12 +249,16 @@ export default function ChatPage() {
       const res = await fetch(`/api/chat/conversations/${activeConv._id}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: msgText.trim() }),
+        body: JSON.stringify({
+          text: msgText.trim(),
+          replyToMessageId: replyingTo?._id,
+        }),
       });
       if (res.ok) {
         const msg = await res.json();
         setMessages((prev) => [...prev, msg]);
         setMsgText("");
+        setReplyingTo(null);
         setApiBanner(null);
         // Update conversation last message locally
         setConversations((prev) =>
@@ -246,6 +276,26 @@ export default function ChatPage() {
     }
     setSending(false);
     inputRef.current?.focus();
+  };
+
+  const toggleReaction = async (messageId: string, emoji: "👍🏻" | "❌") => {
+    if (!activeConv) return;
+    try {
+      const res = await fetch(`/api/chat/conversations/${activeConv._id}/messages`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId, emoji }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setMessages((prev) => prev.map((m) => (m._id === updated._id ? updated : m)));
+        setApiBanner(null);
+      } else {
+        setApiBanner(await parseChatError(res));
+      }
+    } catch {
+      setApiBanner("Could not update reaction. Check your connection and try again.");
+    }
   };
 
   // SSE for real-time messages
@@ -322,6 +372,14 @@ export default function ChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (!activeConv) return;
+    const timeout = setTimeout(() => {
+      fetchMessages(activeConv._id, messageSearch);
+    }, 250);
+    return () => clearTimeout(timeout);
+  }, [activeConv, messageSearch, fetchMessages]);
 
   // New chat helpers
   const openNewChat = async () => {
@@ -485,15 +543,28 @@ export default function ChatPage() {
               <Plus size={16} />
             </button>
           </div>
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search conversations..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-300"
-            />
+          <div className="space-y-1.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Search chats</p>
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search by name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-9 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                  aria-label="Clear chat search"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -578,17 +649,46 @@ export default function ChatPage() {
                 <p className="text-sm font-semibold text-gray-900 truncate">{getConvName(activeConv)}</p>
                 <p className="text-xs text-gray-400">{getConvRole(activeConv)}</p>
               </div>
+              <div className="ml-auto w-64 max-w-[52%]">
+                <div className="relative">
+                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search messages..."
+                    value={messageSearch}
+                    onChange={(e) => setMessageSearch(e.target.value)}
+                    className="w-full pl-8 pr-8 py-2 bg-white border border-gray-300 rounded-lg text-xs text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors"
+                  />
+                  {messageSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setMessageSearch("")}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                      aria-label="Clear message search"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+                {messageSearch && (
+                  <p className="mt-1 text-[10px] text-gray-500">
+                    Filtering messages for: <span className="font-medium text-gray-700">{messageSearch}</span>
+                  </p>
+                )}
+              </div>
             </div>
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-gray-50">
-              {loadingMsgs ? (
+              {loadingMsgs || searchingMessages ? (
                 <div className="flex items-center justify-center py-8">
                   <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
                 </div>
               ) : messages.length === 0 ? (
                 <div className="text-center py-12">
-                  <p className="text-sm text-gray-400">No messages yet. Say hello!</p>
+                  <p className="text-sm text-gray-400">
+                    {messageSearch ? "No messages match your search." : "No messages yet. Say hello!"}
+                  </p>
                 </div>
               ) : (
                 messages.map((msg, idx) => {
@@ -614,11 +714,54 @@ export default function ChatPage() {
                             ? "bg-blue-600 text-white rounded-br-md"
                             : "bg-white border border-gray-200 text-gray-800 rounded-bl-md"
                         }`}>
+                          {msg.replyTo && (
+                            <div className={`mb-1.5 rounded-md border px-2 py-1 text-xs ${
+                              isMe ? "border-blue-200/70 bg-blue-500/40 text-blue-50" : "border-gray-200 bg-gray-50 text-gray-600"
+                            }`}>
+                              <p className="font-semibold">
+                                Reply to {msg.replyTo.sender?.name || "message"}
+                              </p>
+                              <p className="truncate">{msg.replyTo.text}</p>
+                            </div>
+                          )}
                           {msg.text}
                         </div>
-                        <p className={`text-[10px] mt-0.5 px-1 ${isMe ? "text-right text-gray-400" : "text-gray-400"}`}>
-                          {formatMsgTime(msg.createdAt)}
-                        </p>
+                        <div className={`mt-0.5 px-1 flex items-center gap-2 ${isMe ? "justify-end" : "justify-start"}`}>
+                          <p className="text-[10px] text-gray-400">
+                            {formatMsgDate(msg.createdAt)} · {formatMsgTime(msg.createdAt)}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setReplyingTo(msg)}
+                            className="text-[10px] text-gray-500 hover:text-gray-800"
+                          >
+                            Reply
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => toggleReaction(msg._id, "👍🏻")}
+                            className={`text-[11px] rounded px-1 ${
+                              msg.reactions?.some((r) => r.emoji === "👍🏻" && String(r.user) === String(myId))
+                                ? "bg-blue-100 text-blue-700"
+                                : "text-gray-500 hover:bg-gray-100"
+                            }`}
+                            aria-label="React with thumbs up"
+                          >
+                            👍🏻 {msg.reactions?.filter((r) => r.emoji === "👍🏻").length || ""}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => toggleReaction(msg._id, "❌")}
+                            className={`text-[11px] rounded px-1 ${
+                              msg.reactions?.some((r) => r.emoji === "❌" && String(r.user) === String(myId))
+                                ? "bg-red-100 text-red-700"
+                                : "text-gray-500 hover:bg-gray-100"
+                            }`}
+                            aria-label="React with cross"
+                          >
+                            ❌ {msg.reactions?.filter((r) => r.emoji === "❌").length || ""}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -629,6 +772,24 @@ export default function ChatPage() {
 
             {/* Input */}
             <div className="px-4 py-3 border-t border-gray-200 bg-white">
+              {replyingTo && (
+                <div className="mb-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold text-gray-600">
+                      Replying to {replyingTo.sender?.name || "message"}
+                    </p>
+                    <p className="text-xs text-gray-500 truncate">{replyingTo.text}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="text-gray-400 hover:text-gray-700"
+                    onClick={() => setReplyingTo(null)}
+                    aria-label="Cancel reply"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
               <form
                 onSubmit={(e) => { e.preventDefault(); sendMessage(); }}
                 className="flex items-center gap-2"

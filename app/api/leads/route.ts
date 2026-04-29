@@ -20,6 +20,28 @@ function normalizeLeadSource(raw: unknown): string {
     .replace(/[^a-z0-9_]/g, "");
 }
 
+type CaptureVisitEntry = {
+  visitedAt: Date;
+  visitPurpose?: string;
+  capturedBy?: string;
+};
+
+function parseCaptureVisitEntry(raw: unknown, userId: string): CaptureVisitEntry | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const atRaw = r.visitedAt;
+  if (typeof atRaw !== "string" || !atRaw.trim()) return null;
+  const visitedAt = new Date(atRaw.trim());
+  if (Number.isNaN(visitedAt.getTime())) return null;
+  const visitPurpose = typeof r.visitPurpose === "string" ? r.visitPurpose.trim() : "";
+  return { visitedAt, visitPurpose, capturedBy: userId };
+}
+
+function parseCaptureVisitEntries(raw: unknown, userId: string): CaptureVisitEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((r) => parseCaptureVisitEntry(r, userId)).filter((v): v is CaptureVisitEntry => v != null);
+}
+
 export async function GET(req: NextRequest) {
   try {
     const session = await auth();
@@ -104,6 +126,11 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { assignmentMethod, ...leadData } = body;
+    const captureVisitEntry = parseCaptureVisitEntry(leadData.captureVisitEntry, session.user.id);
+    const captureVisitEntries = parseCaptureVisitEntries(leadData.captureVisitEntries, session.user.id);
+    const allCaptureVisits = [...captureVisitEntries, ...(captureVisitEntry ? [captureVisitEntry] : [])];
+    delete leadData.captureVisitEntry;
+    delete leadData.captureVisitEntries;
 
     leadData.name = typeof leadData.name === "string" ? leadData.name.trim() : "";
     leadData.phone = typeof leadData.phone === "string" ? leadData.phone.trim() : "";
@@ -159,6 +186,23 @@ export async function POST(req: NextRequest) {
     }
 
     const lead = await Lead.create(leadData);
+    let persistedLead = lead;
+    if (allCaptureVisits.length > 0) {
+      const latestCaptureVisit = allCaptureVisits[allCaptureVisits.length - 1];
+      const updated = await Lead.findByIdAndUpdate(
+        lead._id,
+        {
+          $set: {
+            visitCaptured: true,
+            visitedAt: latestCaptureVisit.visitedAt,
+            visitPurpose: latestCaptureVisit.visitPurpose ?? "",
+          },
+          $push: { captureVisits: { $each: allCaptureVisits } },
+        },
+        { new: true }
+      );
+      if (updated) persistedLead = updated;
+    }
 
     await ActivityLog.create({
       user: session.user.id,
@@ -167,8 +211,8 @@ export async function POST(req: NextRequest) {
       action: "CREATE",
       module: "Leads",
       targetId: lead._id.toString(),
-      targetName: lead.name,
-      details: `Lead created from ${lead.source}`,
+      targetName: persistedLead.name,
+      details: `Lead created from ${persistedLead.source}`,
     });
 
     // Fire notifications when a counsellor is assigned
@@ -186,7 +230,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    return NextResponse.json({ message: "Lead created", lead }, { status: 201 });
+    return NextResponse.json({ message: "Lead created", lead: persistedLead }, { status: 201 });
   } catch (error) {
     console.error("Create lead error:", error);
     const message = error instanceof Error ? error.message : "Failed to create lead";

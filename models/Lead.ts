@@ -71,6 +71,7 @@ export interface ILeadDocument extends Document {
   visitCaptured?: boolean;
   visitedAt?: Date;
   visitPurpose?: string;
+  captureVisits?: { visitedAt: Date; visitPurpose?: string; capturedBy?: string }[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -145,6 +146,16 @@ const LeadSchema = new Schema<ILeadDocument>(
     visitCaptured: { type: Boolean, default: false },
     visitedAt: { type: Date },
     visitPurpose: { type: String, trim: true, default: "" },
+    captureVisits: {
+      type: [
+        {
+          visitedAt: { type: Date, required: true },
+          visitPurpose: { type: String, trim: true, default: "" },
+          capturedBy: { type: String, default: "" },
+        },
+      ],
+      default: [],
+    },
     // Import metadata
     campaign: { type: String, trim: true, default: "" },
     importDate: { type: Date },

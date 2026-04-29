@@ -6,6 +6,28 @@ import { auth } from "@/lib/auth";
 import { createNotifications, getSuperAdminIds } from "@/lib/notifications";
 import { LEAD_PATCH_FD_STATUS_AND_STAGE_ROLES } from "@/lib/leadWorkflowStatusRoles";
 
+type CaptureVisitEntry = {
+  visitedAt: Date;
+  visitPurpose?: string;
+  capturedBy?: string;
+};
+
+function parseCaptureVisitEntry(raw: unknown, userId: string): CaptureVisitEntry | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const atRaw = r.visitedAt;
+  if (typeof atRaw !== "string" || !atRaw.trim()) return null;
+  const visitedAt = new Date(atRaw.trim());
+  if (Number.isNaN(visitedAt.getTime())) return null;
+  const visitPurpose = typeof r.visitPurpose === "string" ? r.visitPurpose.trim() : "";
+  return { visitedAt, visitPurpose, capturedBy: userId };
+}
+
+function parseCaptureVisitEntries(raw: unknown, userId: string): CaptureVisitEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((r) => parseCaptureVisitEntry(r, userId)).filter((v): v is CaptureVisitEntry => v != null);
+}
+
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth();
@@ -30,6 +52,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const { id } = await params;
     await connectDB();
     const body = await req.json();
+    const captureVisitEntry = parseCaptureVisitEntry(body.captureVisitEntry, session.user.id);
+    const captureVisitEntries = parseCaptureVisitEntries(body.captureVisitEntries, session.user.id);
+    const allCaptureVisits = [...captureVisitEntries, ...(captureVisitEntry ? [captureVisitEntry] : [])];
+    delete body.captureVisitEntry;
+    delete body.captureVisitEntries;
 
     if ("name" in body && typeof body.name === "string" && body.name.trim() === "") {
       return NextResponse.json({ error: "Full name is required" }, { status: 400 });
@@ -67,7 +94,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!setFields.assignedTo) delete setFields.assignedTo;
     if (!setFields.branch) delete setFields.branch;
 
-    const lead = await Lead.findByIdAndUpdate(id, { $set: setFields }, { new: true, runValidators: false });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updateOps: Record<string, any> = { $set: setFields };
+    if (allCaptureVisits.length > 0) {
+      const latestCaptureVisit = allCaptureVisits[allCaptureVisits.length - 1];
+      updateOps.$set.visitCaptured = true;
+      updateOps.$set.visitedAt = latestCaptureVisit.visitedAt;
+      updateOps.$set.visitPurpose = latestCaptureVisit.visitPurpose ?? "";
+      updateOps.$push = { captureVisits: { $each: allCaptureVisits } };
+    }
+
+    const lead = await Lead.findByIdAndUpdate(id, updateOps, { new: true, runValidators: false });
     if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
 
     await ActivityLog.create({

@@ -176,6 +176,8 @@ function LeadsPageContent() {
     gender: "", maritalStatus: "", nationality: "", passportNumber: "", visaExpiryDate: "",
     senderName: "",
     visitCaptured: false, visitedAt: "", visitPurpose: "",
+    captureVisitEntries: [{ visitedAt: "", visitPurpose: "" }],
+    appendCaptureVisit: false,
     academicYear: "", applyLevel: "", course: "", intakeYear: "", intakeQuarter: "",
   });
 
@@ -457,6 +459,8 @@ function LeadsPageContent() {
       gender: "", maritalStatus: "", nationality: "", passportNumber: "", visaExpiryDate: "",
       senderName: "",
       visitCaptured: false, visitedAt: "", visitPurpose: "",
+      captureVisitEntries: [{ visitedAt: "", visitPurpose: "" }],
+      appendCaptureVisit: false,
       academicYear: "", applyLevel: "", course: "", intakeYear: "", intakeQuarter: "",
     });
     setAttachedFiles([]);
@@ -493,6 +497,20 @@ function LeadsPageContent() {
         ? (lead.assignedTo as { _id: string })._id
         : (lead.assignedTo as string) || "";
     const ext = lead as unknown as { status?: string; stage?: string };
+    const existingCaptureVisits = ((lead as unknown as { captureVisits?: Array<{ visitedAt?: string; visitPurpose?: string }> }).captureVisits ?? [])
+      .map((v) => ({
+        visitedAt: toDate(v.visitedAt),
+        visitPurpose: v.visitPurpose || "",
+      }))
+      .filter((v) => v.visitedAt || v.visitPurpose);
+    const fallbackSingleVisit = {
+      visitedAt: toDate((lead as unknown as { visitedAt?: string }).visitedAt),
+      visitPurpose: (lead as unknown as { visitPurpose?: string }).visitPurpose || "",
+    };
+    const captureVisitEntries = existingCaptureVisits.length > 0
+      ? existingCaptureVisits
+      : (fallbackSingleVisit.visitedAt || fallbackSingleVisit.visitPurpose ? [fallbackSingleVisit] : [{ visitedAt: "", visitPurpose: "" }]);
+
     setForm({
       name: lead.name || "",
       phone: lead.phone || "",
@@ -531,6 +549,8 @@ function LeadsPageContent() {
       visitCaptured: Boolean((lead as unknown as { visitCaptured?: boolean }).visitCaptured),
       visitedAt: toDate((lead as unknown as { visitedAt?: string }).visitedAt),
       visitPurpose: (lead as unknown as { visitPurpose?: string }).visitPurpose || "",
+      captureVisitEntries,
+      appendCaptureVisit: false,
       academicYear: lead.academicYear || "",
       applyLevel: lead.applyLevel || "",
       course: lead.course || "",
@@ -541,6 +561,19 @@ function LeadsPageContent() {
     setSubmitError("");
     setEditingLead(lead);
     setShowForm(true);
+  };
+
+  const openCaptureVisitForLead = (lead: ILead) => {
+    if (submitting) return;
+    openEditForm(lead);
+    setForm((prev) => ({
+      ...prev,
+      source: "capture_visit",
+      visitCaptured: true,
+      visitedAt: prev.visitedAt || new Date().toISOString().slice(0, 10),
+      captureVisitEntries: [...(prev.captureVisitEntries || []), { visitedAt: new Date().toISOString().slice(0, 10), visitPurpose: "" }],
+      appendCaptureVisit: true,
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -569,8 +602,24 @@ function LeadsPageContent() {
     payload.phone = trimmedPhone;
     payload.source = normalizedSource;
     payload.branch = trimmedBranch;
-    payload.visitPurpose = form.visitCaptured ? String(form.visitPurpose || "").trim() : "";
-    payload.visitedAt = form.visitCaptured && form.visitedAt ? new Date(form.visitedAt).toISOString() : "";
+    const captureVisitEntries = form.visitCaptured
+      ? (form.captureVisitEntries || [])
+          .map((v) => ({
+            visitedAt: String(v.visitedAt || "").trim(),
+            visitPurpose: String(v.visitPurpose || "").trim(),
+          }))
+          .filter((v) => v.visitedAt)
+      : [];
+    const latestCaptureVisit = captureVisitEntries[captureVisitEntries.length - 1];
+    payload.visitPurpose = latestCaptureVisit?.visitPurpose || "";
+    payload.visitedAt = latestCaptureVisit?.visitedAt ? new Date(latestCaptureVisit.visitedAt).toISOString() : "";
+    if (captureVisitEntries.length > 0) {
+      payload.captureVisitEntries = captureVisitEntries.map((v) => ({
+        visitedAt: new Date(v.visitedAt).toISOString(),
+        visitPurpose: v.visitPurpose,
+      }));
+    }
+    delete payload.appendCaptureVisit;
     if (!payload.assignedTo) delete payload.assignedTo;
     if (!editingLead) {
       delete payload.status;
@@ -1684,6 +1733,17 @@ function LeadsPageContent() {
                                 )}
                                 {canCreate && (
                                   <button
+                                    onClick={() => {
+                                      setMenuOpenId(null);
+                                      openCaptureVisitForLead(lead);
+                                    }}
+                                    className="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 font-medium"
+                                  >
+                                    Capture Visit
+                                  </button>
+                                )}
+                                {canCreate && (
+                                  <button
                                     onClick={() => { setMenuOpenId(null); openEditForm(lead); }}
                                     className="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 font-medium"
                                   >Edit Lead</button>
@@ -2094,31 +2154,93 @@ function LeadsPageContent() {
                     />
                   </div>
 
-                  <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 rounded-md border border-gray-200 bg-gray-50">
+                  <div className="sm:col-span-2 p-3 rounded-md border border-gray-200 bg-gray-50 space-y-3">
                     <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 sm:col-span-1">
                       <input
                         type="checkbox"
                         checked={form.visitCaptured}
-                        onChange={(e) => setForm({ ...form, visitCaptured: e.target.checked })}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            visitCaptured: e.target.checked,
+                            captureVisitEntries:
+                              e.target.checked && (!form.captureVisitEntries || form.captureVisitEntries.length === 0)
+                                ? [{ visitedAt: new Date().toISOString().slice(0, 10), visitPurpose: "" }]
+                                : form.captureVisitEntries,
+                          })
+                        }
                         className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-500"
                       />
                       Capture Visit
                     </label>
-                    <input
-                      type="date"
-                      value={form.visitedAt}
-                      onChange={(e) => setForm({ ...form, visitedAt: e.target.value })}
-                      className={FIELD_CLASS}
-                      disabled={!form.visitCaptured}
-                    />
-                    <input
-                      type="text"
-                      value={form.visitPurpose}
-                      onChange={(e) => setForm({ ...form, visitPurpose: e.target.value })}
-                      placeholder="Visit purpose"
-                      className={FIELD_CLASS}
-                      disabled={!form.visitCaptured}
-                    />
+                    {form.visitCaptured && (
+                      <>
+                        {(form.captureVisitEntries || []).map((entry, idx) => (
+                          <div key={idx} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <input
+                              type="date"
+                              value={entry.visitedAt}
+                              onChange={(e) =>
+                                setForm({
+                                  ...form,
+                                  captureVisitEntries: (form.captureVisitEntries || []).map((x, i) =>
+                                    i === idx ? { ...x, visitedAt: e.target.value } : x
+                                  ),
+                                })
+                              }
+                              className={FIELD_CLASS}
+                            />
+                            <input
+                              type="text"
+                              value={entry.visitPurpose}
+                              onChange={(e) =>
+                                setForm({
+                                  ...form,
+                                  captureVisitEntries: (form.captureVisitEntries || []).map((x, i) =>
+                                    i === idx ? { ...x, visitPurpose: e.target.value } : x
+                                  ),
+                                })
+                              }
+                              placeholder="Visit purpose"
+                              className={FIELD_CLASS}
+                            />
+                            <div className="flex items-center gap-2">
+                              {(form.captureVisitEntries || []).length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setForm({
+                                      ...form,
+                                      captureVisitEntries: (form.captureVisitEntries || []).filter((_, i) => i !== idx),
+                                    })
+                                  }
+                                  className="px-3 py-2 text-xs font-semibold rounded-md border border-red-200 hover:bg-red-50 text-red-600"
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                        <div className="flex justify-start">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setForm({
+                                ...form,
+                                captureVisitEntries: [
+                                  ...(form.captureVisitEntries || []),
+                                  { visitedAt: new Date().toISOString().slice(0, 10), visitPurpose: "" },
+                                ],
+                              })
+                            }
+                            className="px-3 py-2 text-xs font-semibold rounded-md border border-gray-300 hover:bg-gray-100 text-gray-700"
+                          >
+                            Add Capture Visit
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   <div>

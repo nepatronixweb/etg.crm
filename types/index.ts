@@ -180,6 +180,7 @@ export interface ILead {
   visitCaptured?: boolean;
   visitedAt?: string;
   visitPurpose?: string;
+  captureVisits?: { visitedAt: string; visitPurpose?: string; capturedBy?: string }[];
   createdAt: Date;
   updatedAt: Date;
 }

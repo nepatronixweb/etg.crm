@@ -19,6 +19,7 @@ import { UserRole } from "@/types";
 import Image from "next/image";
 import { useBranding } from "@/app/branding-context";
 import HeaderAttendance from "@/components/hr/HeaderAttendance";
+import DashboardBreadcrumbs from "@/components/navigation/DashboardBreadcrumbs";
 
 interface INotif {
   _id: string;
@@ -47,7 +48,6 @@ const navItems = [
   { href: "/commission", label: "Commission", icon: Banknote, module: "commission" },
   { href: "/inventory", label: "Inventory", icon: Package, module: "inventory" },
   { href: "/visa", label: "Visa", icon: Plane, module: "visa" },
-  { href: "/chat", label: "Chat", icon: MessageCircle, module: "chat" },
   { href: "/reports", label: "Analytics", icon: BarChart3, module: "analytics" },
   { href: "/branches", label: "Branches", icon: Building2, module: "branches" },
   { href: "/users", label: "Users", icon: Users, module: "users" },
@@ -276,6 +276,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const canViewHrManagement =
     hasPermission(userPermissions, "hr", role) &&
     (!enabledModules || enabledModules.includes("hr") || isOrgWideAdmin(role));
+  const canViewChat =
+    hasPermission(userPermissions, "chat", role) &&
+    (!enabledModules || enabledModules.includes("chat") || isOrgWideAdmin(role));
 
   const visibleNav = useMemo(() => {
     let items = navItems.filter((item) => {
@@ -500,18 +503,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Briefcase size={18} />
             </Link>
           )}
-          {/* Chat Icon */}
-          {hasPermission(userPermissions, "chat", role) && (!enabledModules || enabledModules.includes("chat") || isOrgWideAdmin(role)) && (
-            <Link href="/chat" className="relative p-2 rounded-md text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors">
-              <MessageCircle size={18} />
-              {chatUnreadCount > 0 && (
-                <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-green-500 text-white text-[9px] font-bold flex items-center justify-center leading-none animate-pulse">
-                  {chatUnreadCount > 9 ? "9+" : chatUnreadCount}
-                </span>
-              )}
-            </Link>
-          )}
-
           {/* Notification Bell */}
           <div ref={bellRef} className="relative">
             <button
@@ -607,6 +598,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
+          <DashboardBreadcrumbs />
           {session?.user?.role !== "super_admin" &&
             session?.user?.orgSubscriptionStatus === "trialing" &&
             session?.user?.orgTrialEndsAt &&
@@ -629,6 +621,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {children}
         </main>
       </div>
+
+      {/* Floating chat launcher */}
+      {canViewChat && !pathname.startsWith("/chat") && (
+        <Link
+          href="/chat"
+          className="no-print fixed bottom-5 right-5 z-50 h-12 w-12 rounded-full bg-blue-600 text-white shadow-lg ring-4 ring-blue-100 transition-all hover:bg-blue-700 hover:scale-105 flex items-center justify-center"
+          title="Open chat"
+          aria-label="Open chat"
+        >
+          <MessageCircle size={20} />
+          {chatUnreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[22px] h-[22px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none flex items-center justify-center animate-pulse border-2 border-white">
+              +{chatUnreadCount > 9 ? "9" : chatUnreadCount}
+            </span>
+          )}
+        </Link>
+      )}
 
     </div>
   );
