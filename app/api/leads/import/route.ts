@@ -5,6 +5,7 @@ import Branch from "@/models/Branch";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
 import { hasModuleAction } from "@/lib/utils";
+import { upsertEnquiryFromLead } from "@/lib/leadEnquirySync";
 
 interface ImportedRow {
   name: string;
@@ -90,6 +91,14 @@ export async function POST(req: NextRequest) {
     }
 
     const inserted = await Lead.insertMany(docs, { ordered: false });
+
+    for (const doc of inserted) {
+      try {
+        await upsertEnquiryFromLead(doc._id, doc);
+      } catch (syncErr) {
+        console.error("Lead import→Enquiry sync failed:", syncErr);
+      }
+    }
 
     await ActivityLog.create({
       user:     userId,

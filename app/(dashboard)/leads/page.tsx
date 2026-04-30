@@ -754,8 +754,8 @@ function LeadsPageContent() {
 
   const userPermissions = (session?.user?.permissions ?? []) as string[];
   const userRole = session?.user?.role;
-  const canCreateLeadByRole = ["super_admin", "org_admin", "telecaller", "front_desk", "counsellor"].includes(userRole || "");
-  const canCreate = canCreateLeadByRole && hasModuleAction(userPermissions, userRole, "leads", "add");
+  /** Same rule as POST /api/leads: any role may add when module + optional granular `leads_add` allow it. */
+  const canCreate = hasModuleAction(userPermissions, userRole, "leads", "add");
   const canAssign = ["super_admin", "org_admin", "telecaller", "front_desk"].includes(session?.user?.role || "");
   const canUpdateStatus = ["super_admin", "org_admin", "counsellor", "telecaller", "front_desk", "application_team", "admission_team", "visa_team"].includes(session?.user?.role || "");
   // counsellors no longer need access to stage controls

@@ -26,7 +26,7 @@ function parseEnquiryCreatedAtBound(raw: string, bound: "from" | "to"): Date {
   return new Date(s);
 }
 
-const ENQUIRY_MATCH_OBJECT_ID_KEYS = new Set(["branch", "assignedTo", "assignedBy"]);
+const ENQUIRY_MATCH_OBJECT_ID_KEYS = new Set(["branch", "assignedTo", "assignedBy", "linkedLeadId"]);
 
 function castObjectIdsForAggregateMatch(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -79,9 +79,6 @@ export async function GET(req: NextRequest) {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const filter: Record<string, any> = {};
-
-    if (session.user.role === "telecaller") filter.source = { $ne: "walk_in" };
-    // super_admin: no extra row-level filter
 
     if (branch) filter.branch = branch;
     if (standing) filter.standing = standing;
@@ -143,6 +140,22 @@ export async function GET(req: NextRequest) {
       mergeTelecallerFreshLeadFilter(filter, searchOrClause);
     } else if (bucketParam && isTelecallerOverviewDashboardBucket(bucketParam)) {
       mergeTelecallerOverviewBucketFilter(filter, bucketParam, searchOrClause);
+    }
+
+    if (session.user.role === "telecaller") {
+      const poolClause = {
+        $or: [
+          { source: { $ne: "walk_in" } },
+          { linkedLeadId: { $exists: true, $ne: null } },
+        ],
+      };
+      if (Array.isArray(filter.$and)) {
+        filter.$and.push(poolClause);
+      } else if (filter.$and) {
+        filter.$and = [filter.$and, poolClause];
+      } else {
+        filter.$and = [poolClause];
+      }
     }
 
     const skip = (page - 1) * limit;

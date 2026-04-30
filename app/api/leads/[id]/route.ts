@@ -5,6 +5,7 @@ import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
 import { createNotifications, getSuperAdminIds } from "@/lib/notifications";
 import { LEAD_PATCH_FD_STATUS_AND_STAGE_ROLES } from "@/lib/leadWorkflowStatusRoles";
+import { deleteEnquiryByLinkedLead, upsertEnquiryFromLead } from "@/lib/leadEnquirySync";
 
 type CaptureVisitEntry = {
   visitedAt: Date;
@@ -117,6 +118,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       targetName: lead.name,
       details: `Updated lead: ${JSON.stringify(body)}`,
     });
+
+    try {
+      await upsertEnquiryFromLead(lead._id, lead);
+    } catch (syncErr) {
+      console.error("Lead→Enquiry sync failed:", syncErr);
+    }
 
     // Fire notification if counsellor assignment changed
     const newAssignedTo = body.assignedTo?.toString();
@@ -235,6 +242,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
     }
 
+    try {
+      await upsertEnquiryFromLead(lead._id, lead);
+    } catch (syncErr) {
+      console.error("Lead→Enquiry sync failed:", syncErr);
+    }
+
     return NextResponse.json(lead);
   } catch (error) {
     console.error("Patch lead error:", error);
@@ -251,6 +264,7 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
     }
     const { id } = await params;
     await connectDB();
+    await deleteEnquiryByLinkedLead(id);
     await Lead.findByIdAndDelete(id);
     return NextResponse.json({ message: "Lead deleted" });
   } catch {

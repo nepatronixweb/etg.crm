@@ -5,12 +5,14 @@ import connectDB from "@/lib/mongodb";
 /** Leads list must never be served from cache - bucket/status filters must apply per request. */
 export const dynamic = "force-dynamic";
 import Lead from "@/models/Lead";
+import Enquiry from "@/models/Enquiry";
 import User from "@/models/User";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
 import { hasModuleAction } from "@/lib/utils";
 import { createNotifications, getSuperAdminIds } from "@/lib/notifications";
 import { buildLeadListFilter, castObjectIdsForAggregateMatch } from "@/lib/buildLeadListFilter";
+import { upsertEnquiryFromLead } from "@/lib/leadEnquirySync";
 
 function normalizeLeadSource(raw: unknown): string {
   return String(raw ?? "")
@@ -215,6 +217,12 @@ export async function POST(req: NextRequest) {
       details: `Lead created from ${persistedLead.source}`,
     });
 
+    try {
+      await upsertEnquiryFromLead(persistedLead._id, persistedLead);
+    } catch (syncErr) {
+      console.error("Lead→Enquiry sync failed:", syncErr);
+    }
+
     // Fire notifications when a counsellor is assigned
     if (leadData.assignedTo) {
       const assignedToId = leadData.assignedTo.toString();
@@ -250,7 +258,13 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "No lead IDs provided" }, { status: 400 });
     }
     await connectDB();
-    const result = await Lead.deleteMany({ _id: { $in: ids } });
+    const objectIds = ids
+      .filter((id: string) => mongoose.Types.ObjectId.isValid(id))
+      .map((id: string) => new mongoose.Types.ObjectId(id));
+    if (objectIds.length > 0) {
+      await Enquiry.deleteMany({ linkedLeadId: { $in: objectIds } });
+    }
+    const result = await Lead.deleteMany({ _id: { $in: objectIds } });
     await ActivityLog.create({
       user: session.user.id,
       userName: session.user.name,

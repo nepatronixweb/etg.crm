@@ -64,6 +64,8 @@ export interface IEnquiryDocument extends Document {
   intakeYear?: string;
   intakeQuarter?: string;
   comments?: string;
+  /** When set, this enquiry mirrors a Lead (admission / front desk / import) for the telecaller pool. */
+  linkedLeadId?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -121,6 +123,7 @@ const EnquirySchema = new Schema<IEnquiryDocument>(
     comments: { type: String, trim: true },
     campaign: { type: String, trim: true, default: "" },
     importDate: { type: Date },
+    linkedLeadId: { type: Schema.Types.ObjectId, ref: "Lead", default: undefined },
   },
   { timestamps: true }
 );
@@ -138,5 +141,6 @@ EnquirySchema.index({ stage: 1 });
 EnquirySchema.index({ academicYear: 1 });
 EnquirySchema.index({ applyLevel: 1 });
 EnquirySchema.index({ branch: 1, createdAt: -1 });
+EnquirySchema.index({ linkedLeadId: 1 }, { unique: true, sparse: true });
 
 export default mongoose.models.Enquiry || mongoose.model<IEnquiryDocument>("Enquiry", EnquirySchema, "enquiries");
