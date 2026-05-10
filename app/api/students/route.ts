@@ -8,6 +8,7 @@ import User from "@/models/User";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
 import { hasModuleAction } from "@/lib/utils";
+import { normalizeMatchIdsForAggregate } from "@/lib/mongoAggregateMatch";
 
 export async function GET(req: NextRequest) {
   try {
@@ -101,12 +102,14 @@ export async function GET(req: NextRequest) {
 
     const skip = (page - 1) * limit;
 
+    const aggBreakdownMatch = normalizeMatchIdsForAggregate(breakdownFilter);
+
     let stageBreakdown: Record<string, number> | undefined;
     const breakdownAggPromise:
       Promise<Array<{ _id: unknown; n: unknown }>>
     = wantStageBreakdown
         ? Student.aggregate([
-            { $match: breakdownFilter },
+            { $match: aggBreakdownMatch },
             {
               $group: {
                 _id: {

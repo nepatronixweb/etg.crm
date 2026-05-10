@@ -8,6 +8,7 @@ import Application from "@/models/Application";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
 import { getBranchIdsInOrganization } from "@/lib/orgUserScope";
+import { normalizeMatchIdsForAggregate } from "@/lib/mongoAggregateMatch";
 
 /** Merge aggregate buckets (e.g. Application + Student countries) by string key */
 function mergeCountBuckets(
@@ -124,6 +125,11 @@ export async function GET(req: NextRequest) {
     const structuralLeadFilter = { ...leadFilter };
     delete structuralLeadFilter.createdAt;
 
+    const aggLeadMatch = normalizeMatchIdsForAggregate({ ...leadFilter });
+    const aggStudentMatch = normalizeMatchIdsForAggregate({ ...studentFilter });
+    const aggApplicationMatch = normalizeMatchIdsForAggregate({ ...applicationFilter });
+    const aggStructuralLeadMatch = normalizeMatchIdsForAggregate({ ...structuralLeadFilter });
+
     const [
       totalLeads,
       totalStudents,
@@ -149,21 +155,21 @@ export async function GET(req: NextRequest) {
       Student.countDocuments(studentFilter),
       Application.countDocuments(applicationFilter),
       Lead.countDocuments({ ...leadFilter, convertedToStudent: true }),
-      Lead.aggregate([{ $match: leadFilter }, { $group: { _id: "$source", count: { $sum: 1 } } }]),
-      Lead.aggregate([{ $match: leadFilter }, { $group: { _id: "$standing", count: { $sum: 1 } } }]),
-      Student.aggregate([{ $match: studentFilter }, { $group: { _id: "$currentStage", count: { $sum: 1 } } }]),
-      Application.aggregate([{ $match: applicationFilter }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
-      Application.aggregate([{ $match: applicationFilter }, { $group: { _id: "$country", count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+      Lead.aggregate([{ $match: aggLeadMatch }, { $group: { _id: "$source", count: { $sum: 1 } } }]),
+      Lead.aggregate([{ $match: aggLeadMatch }, { $group: { _id: "$standing", count: { $sum: 1 } } }]),
+      Student.aggregate([{ $match: aggStudentMatch }, { $group: { _id: "$currentStage", count: { $sum: 1 } } }]),
+      Application.aggregate([{ $match: aggApplicationMatch }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
+      Application.aggregate([{ $match: aggApplicationMatch }, { $group: { _id: "$country", count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
       /* Per-country rows on students (where most CRM application data lives) */
       Student.aggregate([
-        { $match: studentFilter },
+        { $match: aggStudentMatch },
         { $unwind: "$countries" },
         { $group: { _id: "$countries.country", count: { $sum: 1 } } },
         { $sort: { count: -1 } },
       ]),
       /* Prefer applicationStatus when set; else pipeline status on the country row */
       Student.aggregate([
-        { $match: studentFilter },
+        { $match: aggStudentMatch },
         { $unwind: "$countries" },
         {
           $addFields: {
@@ -193,7 +199,7 @@ export async function GET(req: NextRequest) {
       Student.countDocuments({ ...studentFilter, "countries.applicationStatus": "coe_received" }),
       Student.countDocuments({ ...studentFilter, stage: "gs_applied" }),
       Lead.aggregate<{ n: number }>([
-        { $match: structuralLeadFilter },
+        { $match: aggStructuralLeadMatch },
         {
           $addFields: {
             _sd: { $ifNull: ["$statusDates", {}] },
