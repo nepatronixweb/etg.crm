@@ -31,30 +31,30 @@ export async function GET(req: NextRequest) {
       searchParams.get("visaGrantedOnly") === "1" || searchParams.get("visaGrantedOnly") === "true";
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
     const limit = Math.min(500, Math.max(1, parseInt(searchParams.get("limit") || "50", 10)));
+    const wantStageBreakdown = searchParams.get("stageBreakdown") === "1";
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const parts: Record<string, any>[] = [];
+    const baseParts: Record<string, any>[] = [];
 
     if (leadId) {
-      parts.push({ lead: leadId });
+      baseParts.push({ lead: leadId });
     } else if (enquiryId) {
-      parts.push({ enquiry: enquiryId });
+      baseParts.push({ enquiry: enquiryId });
     } else {
-      if (session.user.role === "counsellor") parts.push({ counsellor: session.user.id });
-      else if (session.user.role !== "super_admin") parts.push({ branch: session.user.branch });
-      if (branch) parts.push({ branch });
+      if (session.user.role === "counsellor") baseParts.push({ counsellor: session.user.id });
+      else if (session.user.role !== "super_admin") baseParts.push({ branch: session.user.branch });
+      if (branch) baseParts.push({ branch });
     }
 
-    if (stage) parts.push({ currentStage: stage });
-    if (counsellor) parts.push({ counsellor });
-    if (country) parts.push({ "countries.country": country });
-    if (standing) parts.push({ standing });
-    if (enrolled === "true") parts.push({ enrolled: true });
-    if (source) parts.push({ source });
-    if (crmStage) parts.push({ stage: crmStage });
+    if (counsellor) baseParts.push({ counsellor });
+    if (country) baseParts.push({ "countries.country": country });
+    if (standing) baseParts.push({ standing });
+    if (enrolled === "true") baseParts.push({ enrolled: true });
+    if (source) baseParts.push({ source });
+    if (crmStage) baseParts.push({ stage: crmStage });
 
     if (visaGrantedOnly) {
-      parts.push({
+      baseParts.push({
         $or: [
           { stage: "visa_grant" },
           { "admissionDetails.stage": "visa_grant" },
@@ -67,12 +67,23 @@ export async function GET(req: NextRequest) {
     if (search) {
       const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const regex = new RegExp(escaped, "i");
-      parts.push({ $or: [{ name: regex }, { phone: regex }, { email: regex }] });
+      baseParts.push({ $or: [{ name: regex }, { phone: regex }, { email: regex }] });
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const listParts: Record<string, any>[] = [...baseParts];
+    if (stage) {
+      const esc = stage.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      listParts.push({ currentStage: { $regex: new RegExp(`^${esc}$`, "i") } });
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const filter: Record<string, any> =
-      parts.length === 0 ? {} : parts.length === 1 ? parts[0] : { $and: parts };
+      listParts.length === 0 ? {} : listParts.length === 1 ? listParts[0] : { $and: listParts };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const breakdownFilter: Record<string, any> =
+      baseParts.length === 0 ? {} : baseParts.length === 1 ? baseParts[0] : { $and: baseParts };
 
     const needsLead = !enrolled && !stage;
     const originSelect =
@@ -89,7 +100,27 @@ export async function GET(req: NextRequest) {
         ];
 
     const skip = (page - 1) * limit;
-    const [students, total] = await Promise.all([
+
+    let stageBreakdown: Record<string, number> | undefined;
+    const breakdownAggPromise:
+      Promise<Array<{ _id: unknown; n: unknown }>>
+    = wantStageBreakdown
+        ? Student.aggregate([
+            { $match: breakdownFilter },
+            {
+              $group: {
+                _id: {
+                  $toLower: {
+                    $trim: { input: { $ifNull: ["$currentStage", ""] } },
+                  },
+                },
+                n: { $sum: 1 },
+              },
+            },
+          ]).exec()
+        : Promise.resolve([]);
+
+    const [students, total, breakdownAgg] = await Promise.all([
       Student.find(filter)
         .populate("branch", "name")
         .populate("counsellor", "name email")
@@ -99,8 +130,37 @@ export async function GET(req: NextRequest) {
         .limit(limit)
         .lean(),
       Student.countDocuments(filter),
+      breakdownAggPromise,
     ]);
-    return NextResponse.json({ students, total, page, pages: Math.ceil(total / limit) });
+
+    if (wantStageBreakdown) {
+      stageBreakdown = {};
+      for (const row of breakdownAgg) {
+        const k = row._id == null ? "" : String(row._id);
+        let n = 0;
+        const raw = row.n;
+        if (typeof raw === "number" && !Number.isNaN(raw)) {
+          n = raw;
+        } else if (typeof raw === "bigint") {
+          n = Number(raw);
+        } else if (raw != null && typeof raw === "object" && "toString" in raw && typeof (raw as { toString: () => string }).toString === "function") {
+          const x = Number(String(raw));
+          if (Number.isFinite(x)) n = x;
+        } else {
+          const x = Number(raw);
+          if (Number.isFinite(x)) n = x;
+        }
+        stageBreakdown[k] = (stageBreakdown[k] ?? 0) + n;
+      }
+    }
+
+    return NextResponse.json({
+      students,
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+      ...(stageBreakdown ? { stageBreakdown } : {}),
+    });
   } catch {
     return NextResponse.json({ error: "Failed to fetch students" }, { status: 500 });
   }

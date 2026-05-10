@@ -89,6 +89,8 @@ export default function StudentsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalStudents, setTotalStudents] = useState(0);
+  const [stageBreakdown, setStageBreakdown] = useState<Record<string, number>>({});
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   const defaultForm = {
     name: "", phone: "", email: "", dateOfBirth: "",
@@ -99,32 +101,67 @@ export default function StudentsPage() {
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
-  const fetchStudents = async (page = 1) => {
-    setLoading(true);
-    const params = new URLSearchParams();
-    if (filterStage) params.set("stage", filterStage);
-    if (filterSource) params.set("source", filterSource);
-    if (filterCounsellor) params.set("counsellor", filterCounsellor);
-    if (filterLeadStage) params.set("crmStage", filterLeadStage);
-    const role = session?.user?.role ?? "";
-    if (role === "admission_team" || role === "visa_team") params.set("enrolled", "true");
-    params.set("page", page.toString());
-    params.set("limit", "50");
-    const res = await fetch(`/api/students?${params}`);
-    const data = await res.json();
-    if (data && data.students) {
-      setStudents(data.students);
-      setTotalPages(data.pages ?? 1);
-      setTotalStudents(data.total ?? 0);
-      setCurrentPage(page);
-    } else {
-      setStudents(Array.isArray(data) ? data : []);
-    }
-    setLoading(false);
-  };
+  useEffect(() => {
+    const trimmed = search.trim();
+    const delay = trimmed === "" ? 0 : 350;
+    const id = window.setTimeout(() => setDebouncedSearch(trimmed), delay);
+    return () => window.clearTimeout(id);
+  }, [search]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { fetchStudents(1); }, [filterStage, filterSource, filterCounsellor, filterLeadStage, session?.user?.role]);
+  const fetchStudents = useCallback(
+    async (page = 1, opts?: { quiet?: boolean }) => {
+      const quiet = opts?.quiet === true;
+      try {
+        if (!quiet) setLoading(true);
+        const params = new URLSearchParams();
+        if (filterStage) params.set("stage", filterStage);
+        if (filterSource) params.set("source", filterSource);
+        if (filterCounsellor) params.set("counsellor", filterCounsellor);
+        if (filterLeadStage) params.set("crmStage", filterLeadStage);
+        const role = session?.user?.role ?? "";
+        if (role === "admission_team" || role === "visa_team") params.set("enrolled", "true");
+        params.set("page", page.toString());
+        params.set("limit", "50");
+        params.set("stageBreakdown", "1");
+        if (debouncedSearch) params.set("search", debouncedSearch);
+        const res = await fetch(`/api/students?${params}`, { credentials: "same-origin" });
+        const data = (await res.json()) as Record<string, unknown>;
+
+        if (res.ok && Array.isArray(data.students)) {
+          setStudents(data.students as IStudent[]);
+          setTotalPages(typeof data.pages === "number" ? data.pages : 1);
+          setTotalStudents(typeof data.total === "number" ? data.total : data.students.length);
+          setCurrentPage(page);
+          if (data.stageBreakdown != null && typeof data.stageBreakdown === "object" && !Array.isArray(data.stageBreakdown)) {
+            setStageBreakdown(data.stageBreakdown as Record<string, number>);
+          } else {
+            setStageBreakdown({});
+          }
+        } else {
+          setStudents([]);
+          setTotalPages(1);
+          setTotalStudents(0);
+          setStageBreakdown({});
+        }
+      } catch {
+        setStudents([]);
+        setTotalStudents(0);
+        setStageBreakdown({});
+      } finally {
+        if (!quiet) setLoading(false);
+      }
+    },
+    [debouncedSearch, filterStage, filterSource, filterCounsellor, filterLeadStage, session?.user?.role],
+  );
+
+  useEffect(() => {
+    if (sessionStatus === "loading") return;
+    if (sessionStatus !== "authenticated") {
+      setLoading(false);
+      return;
+    }
+    void fetchStudents(1);
+  }, [fetchStudents, sessionStatus]);
 
   useEffect(() => {
     if (sessionStatus !== "authenticated") return;
@@ -262,12 +299,17 @@ export default function StudentsPage() {
     // Calculate vertical position: try below first, if not enough space, go above
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
-    
+
     const positionBelow = rect.bottom + window.scrollY + minBuffer;
     const positionAbove = rect.top + window.scrollY - popoverHeight - minBuffer;
-    
-    // Use below if there's enough space, otherwise use above
-    const top = spaceBelow >= popoverHeight + minBuffer ? positionBelow : positionAbove;
+
+    // Prefer below unless there is not enough room and above fits better.
+    const top =
+      spaceBelow >= popoverHeight + minBuffer
+        ? positionBelow
+        : spaceAbove >= popoverHeight + minBuffer || spaceAbove > spaceBelow
+          ? positionAbove
+          : positionBelow;
     
     return { insetBlockStart: top, insetInlineStart: left };
   };
@@ -284,6 +326,9 @@ export default function StudentsPage() {
 
   const openStandingPortal = (e: React.MouseEvent, studentId: string) => {
     if (standingDropdownId === studentId) { setStandingDropdownId(null); return; }
+    setCrmStageDropdownId(null);
+    setStageDropdownId(null);
+    setRemarksDropdownId(null);
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const popoverWidth = 192;
     const popoverHeight = 200; // Standing has ~4 options
@@ -312,6 +357,9 @@ export default function StudentsPage() {
 
   const openRemarksPortal = (e: React.MouseEvent, studentId: string) => {
     if (remarksDropdownId === studentId) { setRemarksDropdownId(null); return; }
+    setStandingDropdownId(null);
+    setCrmStageDropdownId(null);
+    setStageDropdownId(null);
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const popoverWidth = 240;
     const popoverHeight = 300; // Remarks has max-h-60 + header
@@ -337,11 +385,15 @@ export default function StudentsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ currentStage: newStage }),
     });
+    void fetchStudents(currentPage, { quiet: true });
   };
 
   const openCrmStagePortal = (e: React.MouseEvent, studentId: string) => {
     if (crmStageDropdownId === studentId) { setCrmStageDropdownId(null); return; }
     setCrmStageSearch("");
+    setStandingDropdownId(null);
+    setStageDropdownId(null);
+    setRemarksDropdownId(null);
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const popoverWidth = 320;
     const popoverHeight = 400; // CRM Stage has max-h-[50vh]
@@ -351,6 +403,9 @@ export default function StudentsPage() {
 
   const openPipelinePortal = (e: React.MouseEvent, studentId: string) => {
     if (stageDropdownId === studentId) { setStageDropdownId(null); return; }
+    setStandingDropdownId(null);
+    setCrmStageDropdownId(null);
+    setRemarksDropdownId(null);
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const popoverWidth = 192;
     const popoverHeight = 220; // Pipeline has 6 options
@@ -460,8 +515,8 @@ export default function StudentsPage() {
   };
 
   const filtered = students.filter((s) => {
-    // Stage, source, counsellor, crmStage handled server-side; keep text + complex client filters here
-    const q = search.toLowerCase();
+    // Stage, source, counsellor, crmStage + name/phone/email search handled server-side (debounced). Client refines extras only.
+    const q = debouncedSearch.trim().toLowerCase();
     const counsellorName = (s.counsellor as unknown as { name: string } | undefined)?.name ?? "";
     const destinationMatches = s.countries?.some((c) =>
       [c.country, c.universityName]
@@ -556,7 +611,11 @@ export default function StudentsPage() {
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Students</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {loading ? "Loading…" : `${filtered.length} of ${students.length} students`}
+            {loading
+              ? "Loading…"
+              : totalStudents > students.length
+                ? `${filtered.length} on this page · ${totalStudents} matching`
+                : `${filtered.length} student${filtered.length !== 1 ? "s" : ""}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -586,7 +645,7 @@ export default function StudentsPage() {
       {/* Stage Pipeline */}
       <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
         {appStageGroups.map((group) => {
-          const count = students.filter((s) => s.currentStage?.toLowerCase() === group.label.toLowerCase()).length;
+          const count = stageBreakdown[group.label.toLowerCase()] ?? 0;
           const isActive = filterStage.toLowerCase() === group.label.toLowerCase();
           return (
             <button
@@ -857,21 +916,30 @@ export default function StudentsPage() {
                         <p className="text-[10px] text-gray-400 mt-1 tabular-nums">{formatDate(student.createdAt)}</p>
                       </td>
 
-                      {/* STAGE column */}
+                      {/* STAGE column (CRM granular stage) */}
                       <td className="px-2.5 py-2 min-w-40">
-                        {(() => {
-                          const crmStage = (student as unknown as { stage?: string }).stage;
-                          const stageInfo = appLeadStages.find((s) => s.value === crmStage);
-                          const dotColor = crmStage ? getLeadStageDotColor(crmStage) : "";
-                          return stageInfo ? (
-                            <span className={`inline-flex items-center gap-2 pl-2.5 pr-2.5 py-1.5 rounded-lg text-xs font-semibold border border-transparent shadow-sm ${stageInfo.color}`}>
-                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} opacity-70`} />
-                              <span className="max-w-32 truncate">{stageInfo.label}</span>
-                            </span>
-                          ) : (
-                            <span className="text-gray-300 text-xs">-</span>
-                          );
-                        })()}
+                        <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+                          {(() => {
+                            const crmStage = (student as unknown as { stage?: string }).stage;
+                            const stageInfo = appLeadStages.find((s) => s.value === crmStage);
+                            const dotColor = crmStage ? getLeadStageDotColor(crmStage) : "";
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => openCrmStagePortal(e, student._id)}
+                                className={`inline-flex items-center gap-2 pl-2.5 pr-2 py-1.5 rounded-lg text-xs font-semibold border border-transparent shadow-sm cursor-pointer hover:opacity-90 transition-opacity ${
+                                  stageInfo?.color ?? "bg-gray-50 text-gray-400 border-gray-200"
+                                }`}
+                              >
+                                {stageInfo && dotColor ? (
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} opacity-70`} />
+                                ) : null}
+                                <span className="max-w-28 truncate">{stageInfo?.label ?? "Set stage"}</span>
+                                <ChevronDown size={10} className={`shrink-0 opacity-50 ${crmStageDropdownId === student._id ? "rotate-180" : ""}`} />
+                              </button>
+                            );
+                          })()}
+                        </div>
                       </td>
 
                       {/* REMARKS column - editable here only until Admission Details has at least one entry */}
@@ -909,22 +977,27 @@ export default function StudentsPage() {
 
                       {/* STANDING column */}
                       <td className="px-2.5 py-2 min-w-28">
-                        {(() => {
-                          const standing = (student as unknown as { standing?: string }).standing;
-                          const standingColor =
-                            standing === "heated" ? "bg-red-50 text-red-700 border-red-200" :
-                            standing === "warm" ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
-                            standing === "cold" ? "bg-blue-50 text-blue-700 border-blue-200" :
-                            standing === "missed" ? "bg-gray-100 text-gray-700 border-gray-200" :
-                            "bg-gray-50 text-gray-400 border-gray-200";
-                          return standing ? (
-                            <span className={`inline-flex items-center px-3 py-1.5 rounded-md text-xs font-semibold border ${standingColor}`}>
-                              <span className="capitalize max-w-24 truncate">{standing.replace("_", " ")}</span>
-                            </span>
-                          ) : (
-                            <span className="text-gray-300 text-xs">-</span>
-                          );
-                        })()}
+                        <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+                          <button type="button" onClick={(e) => openStandingPortal(e, student._id)}>
+                            {(() => {
+                              const standing = (student as unknown as { standing?: string }).standing;
+                              const standingColor =
+                                standing === "heated" ? "bg-red-50 text-red-700 border-red-200" :
+                                standing === "warm" ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
+                                standing === "cold" ? "bg-blue-50 text-blue-700 border-blue-200" :
+                                standing === "missed" ? "bg-gray-100 text-gray-700 border-gray-200" :
+                                "bg-gray-50 text-gray-400 border-gray-200";
+                              return (
+                                <span
+                                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border cursor-pointer hover:opacity-90 transition-opacity ${standingColor}`}
+                                >
+                                  <span className="capitalize max-w-20 truncate">{standing ? standing.replace("_", " ") : "Set"}</span>
+                                  <ChevronDown size={11} className={`shrink-0 opacity-50 ${standingDropdownId === student._id ? "rotate-180" : ""}`} />
+                                </span>
+                              );
+                            })()}
+                          </button>
+                        </div>
                       </td>
 
                       {/* COUNSELLING elapsed from linked lead or enquiry statusDates */}
@@ -939,17 +1012,24 @@ export default function StudentsPage() {
 
                       {/* PIPELINE (currentStage) column */}
                       <td className="px-2.5 py-2 min-w-32">
-                        {(() => {
-                          const sg = appStageGroups.find(g => g.label.toLowerCase() === student.currentStage?.toLowerCase());
-                          const badgeCls = sg ? (DOT_TO_BADGE[sg.dot] ?? "bg-gray-100 text-gray-800") : getStatusColor(student.currentStage);
-                          return student.currentStage ? (
-                            <span className={`inline-flex items-center px-3 py-1.5 rounded-md text-xs font-semibold ${badgeCls}`}>
-                              <span className="capitalize max-w-24 truncate">{student.currentStage}</span>
-                            </span>
-                          ) : (
-                            <span className="text-gray-300 text-xs">-</span>
-                          );
-                        })()}
+                        <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+                          <button type="button" onClick={(e) => openPipelinePortal(e, student._id)}>
+                            {(() => {
+                              const sg = appStageGroups.find(
+                                (g) => g.label.toLowerCase() === student.currentStage?.toLowerCase(),
+                              );
+                              const badgeCls = sg ? (DOT_TO_BADGE[sg.dot] ?? "bg-gray-100 text-gray-800") : getStatusColor(student.currentStage);
+                              return (
+                                <span
+                                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold cursor-pointer hover:opacity-90 transition-opacity ${badgeCls}`}
+                                >
+                                  <span className="capitalize max-w-18 truncate">{student.currentStage || "Set"}</span>
+                                  <ChevronDown size={11} className={`shrink-0 opacity-50 ${stageDropdownId === student._id ? "rotate-180" : ""}`} />
+                                </span>
+                              );
+                            })()}
+                          </button>
+                        </div>
                       </td>
 
                       {/* FOLLOW-UP column */}
