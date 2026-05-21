@@ -26,14 +26,35 @@ interface OrgRow {
   _id: string;
   name: string;
   subscriptionStatus: string;
+  plan: string;
+  planLabel: string;
   trialEndsAt: string | null;
   paidThrough: string | null;
   billingNote: string;
   branchCount: number;
+  userCount: number;
+  leadCount: number;
+  studentCount: number;
+  enquiryCount: number;
   createdAt: string | null;
 }
 
+interface OrgSummary {
+  total: number;
+  trialing: number;
+  active: number;
+  expired: number;
+  suspended: number;
+}
+
 const STATUSES = ["trialing", "active", "expired", "suspended"] as const;
+
+const PLAN_OPTIONS = [
+  { value: "trial", label: "Free trial" },
+  { value: "starter", label: "Starter" },
+  { value: "pro", label: "Pro" },
+  { value: "enterprise", label: "Enterprise" },
+] as const;
 
 const STATUS_OPTIONS: { value: (typeof STATUSES)[number]; label: string; hint: string }[] = [
   { value: "trialing", label: "Free trial", hint: "Access until the trial end date." },
@@ -56,6 +77,8 @@ export default function OrganizationsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [rows, setRows] = useState<OrgRow[]>([]);
+  const [summary, setSummary] = useState<OrgSummary | null>(null);
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [edit, setEdit] = useState<OrgRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<OrgRow | null>(null);
@@ -75,8 +98,19 @@ export default function OrganizationsPage() {
     setLoading(true);
     fetch("/api/organizations")
       .then((r) => r.json())
-      .then((d) => setRows(Array.isArray(d) ? d : []))
-      .catch(() => setRows([]))
+      .then((d) => {
+        if (Array.isArray(d)) {
+          setRows(d);
+          setSummary(null);
+        } else {
+          setRows(Array.isArray(d.organizations) ? d.organizations : []);
+          setSummary(d.summary ?? null);
+        }
+      })
+      .catch(() => {
+        setRows([]);
+        setSummary(null);
+      })
       .finally(() => setLoading(false));
   };
 
@@ -100,6 +134,7 @@ export default function OrganizationsPage() {
         billingNote: String(fd.get("billingNote") || ""),
         paidThrough: String(fd.get("paidThrough") || "").trim() || null,
         trialEndsAt: String(fd.get("trialEndsAt") || "").trim() || null,
+        plan: String(fd.get("plan") || "").trim() || undefined,
       };
       const res = await fetch(`/api/organizations/${edit._id}`, {
         method: "PATCH",
@@ -172,6 +207,12 @@ export default function OrganizationsPage() {
     }
   };
 
+  const filteredRows = rows.filter((r) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return r.name.toLowerCase().includes(q) || r.subscriptionStatus.toLowerCase().includes(q);
+  });
+
   if (status === "loading" || session?.user?.role !== "super_admin") {
     return (
       <div className="flex items-center justify-center py-24 text-gray-500 text-sm">
@@ -211,11 +252,41 @@ export default function OrganizationsPage() {
         </div>
       )}
 
+      {summary && (
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {[
+            { label: "Total tenants", value: summary.total, className: "bg-slate-50 text-slate-800 border-slate-200" },
+            { label: "Trialing", value: summary.trialing, className: "bg-amber-50 text-amber-900 border-amber-200" },
+            { label: "Active", value: summary.active, className: "bg-emerald-50 text-emerald-900 border-emerald-200" },
+            { label: "Expired", value: summary.expired, className: "bg-gray-50 text-gray-800 border-gray-200" },
+            { label: "Suspended", value: summary.suspended, className: "bg-orange-50 text-orange-900 border-orange-200" },
+          ].map((card) => (
+            <div key={card.label} className={`rounded-xl border px-4 py-3 ${card.className}`}>
+              <p className="text-xs font-medium opacity-80">{card.label}</p>
+              <p className="text-2xl font-bold mt-1">{card.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name or status…"
+          className="w-full sm:max-w-xs px-3 py-2 border border-gray-200 rounded-lg text-sm"
+        />
+        <p className="text-xs text-gray-500">
+          Showing {filteredRows.length} of {rows.length} organizations
+        </p>
+      </div>
+
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
         {loading ? (
           <p className="p-8 text-center text-gray-400 text-sm">Loading…</p>
-        ) : rows.length === 0 ? (
-          <p className="p-8 text-center text-gray-400 text-sm">No organizations yet.</p>
+        ) : filteredRows.length === 0 ? (
+          <p className="p-8 text-center text-gray-400 text-sm">No organizations match your search.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -223,6 +294,8 @@ export default function OrganizationsPage() {
                 <tr>
                   <th className="px-4 py-3 font-medium">Name</th>
                   <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Plan</th>
+                  <th className="px-4 py-3 font-medium">Usage</th>
                   <th className="px-4 py-3 font-medium">Branches</th>
                   <th className="px-4 py-3 font-medium">Trial ends</th>
                   <th className="px-4 py-3 font-medium">Paid through</th>
@@ -230,7 +303,7 @@ export default function OrganizationsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {rows.map((r) => (
+                {filteredRows.map((r) => (
                   <tr key={r._id} className="hover:bg-gray-50/80">
                     <td className="px-4 py-3 font-medium text-gray-900">{r.name}</td>
                     <td className="px-4 py-3">
@@ -247,6 +320,14 @@ export default function OrganizationsPage() {
                       >
                         {STATUS_OPTIONS.find((o) => o.value === r.subscriptionStatus)?.label ?? r.subscriptionStatus}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 text-xs">{r.planLabel ?? r.plan ?? "trial"}</td>
+                    <td className="px-4 py-3 text-gray-600 text-xs">
+                      <span title="Users">{r.userCount} users</span>
+                      <span className="mx-1 text-gray-300">·</span>
+                      <span title="Leads">{r.leadCount} leads</span>
+                      <span className="mx-1 text-gray-300">·</span>
+                      <span title="Students">{r.studentCount} students</span>
                     </td>
                     <td className="px-4 py-3 text-gray-600">{r.branchCount}</td>
                     <td className="px-4 py-3 text-gray-600 text-xs">
@@ -439,6 +520,31 @@ export default function OrganizationsPage() {
                     </select>
                     <p className="text-xs text-gray-600 mt-2 leading-relaxed">
                       {STATUS_OPTIONS.find((o) => o.value === statusPreview)?.hint}
+                    </p>
+                  </div>
+                  <div>
+                    <label htmlFor="org-plan" className="block text-sm font-semibold text-gray-900 mb-1.5">
+                      Plan
+                    </label>
+                    <select
+                      id="org-plan"
+                      name="plan"
+                      defaultValue={edit.plan || "trial"}
+                      className={orgFieldClassSelect}
+                      style={{
+                        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
+                        backgroundPosition: "right 0.75rem center",
+                        backgroundSize: "1rem",
+                      }}
+                    >
+                      {PLAN_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value} className="text-gray-900 bg-white">
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-600 mt-2 leading-relaxed">
+                      Controls max users, branches, and leads for this tenant.
                     </p>
                   </div>
                 </section>

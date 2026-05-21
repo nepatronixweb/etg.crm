@@ -7,7 +7,7 @@ import User from "@/models/User";
 import Application from "@/models/Application";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
-import { getBranchIdsInOrganization } from "@/lib/orgUserScope";
+import { getBranchIdsInOrganization, TENANT_SCOPE_EMPTY_MATCH } from "@/lib/orgUserScope";
 import { normalizeMatchIdsForAggregate } from "@/lib/mongoAggregateMatch";
 
 /** Merge aggregate buckets (e.g. Application + Student countries) by string key */
@@ -120,6 +120,12 @@ export async function GET(req: NextRequest) {
         branch: noBranches ? { $in: [] } : { $in: tenantBranchIds },
       }).distinct("_id");
       activityLogFilter = { ...activityLogFilter, user: { $in: orgUserIds } };
+    } else if (!isSuperAdmin) {
+      leadFilter.branch = { $in: [] };
+      studentFilter.branch = { $in: [] };
+      applicationFilter.student = { $in: [] };
+      counsellorQuery = { ...counsellorQuery, branch: { $in: [] } };
+      activityLogFilter = { ...activityLogFilter, user: { $in: [] } };
     }
 
     const structuralLeadFilter = { ...leadFilter };

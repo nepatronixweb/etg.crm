@@ -42,6 +42,7 @@ export async function createTrialOrganization(
   const payload = {
     name: name.trim() || "New organization",
     subscriptionStatus: "trialing" as const,
+    plan: "trial" as const,
     trialEndsAt: trialEndsAtFromNow(),
   };
   const org = options?.session

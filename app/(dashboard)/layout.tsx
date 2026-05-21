@@ -1,10 +1,10 @@
 "use client";
 import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { hasPermission, getRoleLabel, formatDateTime } from "@/lib/utils";
 import { isOrgWideAdmin } from "@/lib/roleGuards";
-import { differenceInCalendarDays } from "date-fns";
+import { resolveUserRoles } from "@/lib/userRoles";
 import {
   LayoutDashboard, Users, UserCheck, FileText, FolderOpen,
   GraduationCap, Plane, BarChart3, Settings, Building2,
@@ -14,12 +14,14 @@ import {
   Briefcase,
   Landmark,
 } from "lucide-react";
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import { UserRole } from "@/types";
 import Image from "next/image";
 import { useBranding } from "@/app/branding-context";
 import HeaderAttendance from "@/components/hr/HeaderAttendance";
 import DashboardBreadcrumbs from "@/components/navigation/DashboardBreadcrumbs";
+import TrialBanner from "@/components/TrialBanner";
+import { dispatchChatStream, type ChatStreamPayload } from "@/lib/chatEvents";
 
 interface INotif {
   _id: string;
@@ -47,6 +49,7 @@ const navItems = [
   { href: "/admissions", label: "Admissions", icon: GraduationCap, module: "admissions" },
   { href: "/commission", label: "Commission", icon: Banknote, module: "commission" },
   { href: "/inventory", label: "Inventory", icon: Package, module: "inventory" },
+  { href: "/chat", label: "Chat", icon: MessageCircle, module: "chat" },
   { href: "/visa", label: "Visa", icon: Plane, module: "visa" },
   { href: "/reports", label: "Analytics", icon: BarChart3, module: "analytics" },
   { href: "/branches", label: "Branches", icon: Building2, module: "branches" },
@@ -57,11 +60,18 @@ const navItems = [
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { data: session, update } = useSession();
   const pathname = usePathname();
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const role = ((session?.user as { activeRole?: string; role?: string } | undefined)?.activeRole || session?.user?.role) as UserRole;
-  const userRoles = Array.isArray((session?.user as { roles?: string[] } | undefined)?.roles)
-    ? (((session?.user as { roles?: string[] }).roles) as string[])
-    : [session?.user?.role].filter(Boolean) as string[];
+  const userRoles = useMemo(() => {
+    if (!session?.user) return [] as string[];
+    const merged = resolveUserRoles({
+      role: session.user.role,
+      roles: session.user.roles,
+      activeRole: session.user.activeRole,
+    });
+    return merged.length > 0 ? merged : [session.user.role].filter(Boolean) as string[];
+  }, [session?.user]);
   const [switchingRole, setSwitchingRole] = useState(false);
   const branding = useBranding();
 
@@ -76,6 +86,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       })
       .catch(() => {});
   }, []);
+
+  // Org admins must finish first-run setup before using the dashboard
+  useEffect(() => {
+    if (!session?.user) return;
+    if (!isOrgWideAdmin(session.user.role)) return;
+    if (session.user.orgOnboardingCompleted) return;
+    if (pathname.startsWith("/onboarding")) return;
+    router.replace("/onboarding");
+  }, [session, pathname, router]);
 
   // Notifications
   const [notifs, setNotifs] = useState<INotif[]>([]);
@@ -226,15 +245,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       chatEsRef.current = es;
       es.onmessage = (e) => {
         try {
-          const payload = JSON.parse(e.data);
+          const payload = JSON.parse(e.data) as ChatStreamPayload;
+          dispatchChatStream(payload);
           const incoming = payload.unreadCount ?? 0;
           if (payload.type === "chat_init") {
             setChatUnreadCount(incoming);
             prevChatUnreadRef.current = incoming;
-          } else if (payload.type === "chat_new" || payload.type === "chat_heartbeat") {
+          } else if (payload.type === "chat_new") {
             if (incoming > prevChatUnreadRef.current && !pathname.startsWith("/chat")) {
               chatAudioRef.current?.play().catch(() => {});
             }
+            setChatUnreadCount(incoming);
+            prevChatUnreadRef.current = incoming;
+          } else if (payload.type === "chat_update" || payload.type === "chat_heartbeat") {
             setChatUnreadCount(incoming);
             prevChatUnreadRef.current = incoming;
           }
@@ -327,24 +350,48 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return items;
   }, [enabledModules, role, userPermissions]);
 
+  const sidebarNavStyle = (active: boolean): CSSProperties =>
+    active
+      ? { backgroundColor: branding.brandColor, color: "var(--brand-on-primary)" }
+      : { color: "var(--brand-sidebar-muted)" };
+
+  const sidebarNavHoverHandlers = (active: boolean) => ({
+    onMouseEnter: (e: ReactMouseEvent<HTMLElement>) => {
+      if (!active) {
+        e.currentTarget.style.backgroundColor = "var(--brand-sidebar-hover)";
+        e.currentTarget.style.color = "#fff";
+      }
+    },
+    onMouseLeave: (e: ReactMouseEvent<HTMLElement>) => {
+      if (!active) {
+        e.currentTarget.style.backgroundColor = "";
+        e.currentTarget.style.color = "var(--brand-sidebar-muted)";
+      }
+    },
+  });
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
-      <aside className={`no-print fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 flex flex-col transform transition-transform duration-300 ease-in-out
+      <aside
+        className={`no-print fixed inset-y-0 left-0 z-50 w-64 flex flex-col transform transition-transform duration-300 ease-in-out
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
+        style={{ backgroundColor: "var(--brand-sidebar-bg)" }}
       >
-        <div className="flex items-center justify-between h-16 px-4 border-b border-gray-700">
+        <div
+          className="flex items-center justify-between h-16 px-4 border-b"
+          style={{ borderColor: "var(--brand-sidebar-border)" }}
+        >
           <div className="flex items-center gap-2">
             <div
               className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0"
-              style={{ backgroundColor: branding.brandColor }}
+              style={{ backgroundColor: branding.brandSecondaryColor || branding.brandColor }}
             >
               {branding.logoPath ? (
-                <Image
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
                   src={branding.logoPath}
                   alt={branding.shortCode}
-                  width={32}
-                  height={32}
                   className="w-full h-full object-contain p-0.5"
                 />
               ) : (
@@ -355,7 +402,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               {branding.companyName.split(" ").slice(0, 2).join(" ")}
             </span>
           </div>
-          <button onClick={() => setSidebarOpen(false)} className="text-gray-400 hover:text-white">
+          <button onClick={() => setSidebarOpen(false)} className="hover:text-white transition-colors" style={{ color: "var(--brand-sidebar-muted)" }}>
             <X size={20} />
           </button>
         </div>
@@ -364,15 +411,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {visibleNav.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+            const showChatBadge = item.href === "/chat" && chatUnreadCount > 0;
             return (
               <Link key={item.href} href={item.href}
                 onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors
-                  ${isActive ? "text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}
-                style={isActive ? { backgroundColor: branding.brandColor } : undefined}
+                className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors"
+                style={sidebarNavStyle(isActive)}
+                {...sidebarNavHoverHandlers(isActive)}
               >
                 <Icon size={18} />
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {showChatBadge && (
+                  <span className="min-w-[1.25rem] h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                    {chatUnreadCount > 9 ? "9+" : chatUnreadCount}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -380,9 +433,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Link
               href="/university-requirements"
               onClick={() => setSidebarOpen(false)}
-              className={`flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors mt-2 border-t border-gray-700/60 pt-3
-                ${pathname === "/university-requirements" ? "text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}
-              style={pathname === "/university-requirements" ? { backgroundColor: branding.brandColor } : undefined}
+              className="flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors mt-2 border-t pt-3"
+              style={{
+                ...sidebarNavStyle(pathname === "/university-requirements"),
+                borderColor: "var(--brand-sidebar-border)",
+              }}
+              {...sidebarNavHoverHandlers(pathname === "/university-requirements")}
             >
               <ClipboardList size={18} />
               University / colleges
@@ -392,13 +448,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Link
               href="/hr"
               onClick={() => setSidebarOpen(false)}
-              className={`flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors
-                ${pathname === "/hr" || pathname.startsWith("/hr/") ? "text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}
-              style={
-                pathname === "/hr" || pathname.startsWith("/hr/")
-                  ? { backgroundColor: branding.brandColor }
-                  : undefined
-              }
+              className="flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors"
+              style={sidebarNavStyle(pathname === "/hr" || pathname.startsWith("/hr/"))}
+              {...sidebarNavHoverHandlers(pathname === "/hr" || pathname.startsWith("/hr/"))}
             >
               <Briefcase size={18} />
               HR management
@@ -408,9 +460,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Link
               href="/organizations"
               onClick={() => setSidebarOpen(false)}
-              className={`flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors
-                ${pathname === "/organizations" ? "text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}
-              style={pathname === "/organizations" ? { backgroundColor: branding.brandColor } : undefined}
+              className="flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors"
+              style={sidebarNavStyle(pathname === "/organizations")}
+              {...sidebarNavHoverHandlers(pathname === "/organizations")}
             >
               <Landmark size={18} />
               Organizations
@@ -420,13 +472,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Link
               href="/settings"
               onClick={() => setSidebarOpen(false)}
-              className={`flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors mt-2 border-t border-gray-700/60 pt-3
-                ${pathname === "/settings" || pathname.startsWith("/settings/") ? "text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}
-              style={
-                pathname === "/settings" || pathname.startsWith("/settings/")
-                  ? { backgroundColor: branding.brandColor }
-                  : undefined
-              }
+              className="flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors mt-2 border-t pt-3"
+              style={{
+                ...sidebarNavStyle(pathname === "/settings" || pathname.startsWith("/settings/")),
+                borderColor: "var(--brand-sidebar-border)",
+              }}
+              {...sidebarNavHoverHandlers(pathname === "/settings" || pathname.startsWith("/settings/"))}
             >
               <Settings size={18} />
               Settings
@@ -434,19 +485,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           )}
         </nav>
 
-        <div className="p-3 border-t border-gray-700">
+        <div className="p-3 border-t" style={{ borderColor: "var(--brand-sidebar-border)" }}>
           <div className="flex items-center gap-3 px-3 py-2 mb-2">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: branding.brandColor }}>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" style={{ backgroundColor: branding.brandColor, color: "var(--brand-on-primary)" }}>
               {session?.user?.name?.[0]?.toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-white text-xs font-medium truncate">{session?.user?.name}</p>
-              <p className="text-gray-400 text-xs truncate">{getRoleLabel(role)}</p>
-              <p className="text-gray-500 text-[10px] truncate">{session?.user?.email}</p>
+              <p className="text-xs truncate" style={{ color: "var(--brand-sidebar-muted)" }}>{getRoleLabel(role)}</p>
+              <p className="text-[10px] truncate opacity-70" style={{ color: "var(--brand-sidebar-muted)" }}>{session?.user?.email}</p>
             </div>
           </div>
           <button onClick={() => signOut({ callbackUrl: "/login" })}
-            className="flex items-center gap-2 w-full px-3 py-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg text-sm transition-colors"
+            className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm transition-colors hover:text-white"
+            style={{ color: "var(--brand-sidebar-muted)" }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "var(--brand-sidebar-hover)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "";
+            }}
           >
             <LogOut size={16} />
             Sign Out
@@ -641,21 +699,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {session?.user?.role !== "super_admin" &&
             session?.user?.orgSubscriptionStatus === "trialing" &&
             session?.user?.orgTrialEndsAt &&
-            session?.user?.orgAccessAllowed && (
-              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                <strong>Free trial.</strong>{" "}
-                {(() => {
-                  const end = new Date(session.user.orgTrialEndsAt);
-                  const days = differenceInCalendarDays(end, new Date());
-                  const label = days < 0 ? "ended" : days === 0 ? "ends today" : `${days} day${days === 1 ? "" : "s"} left`;
-                  return (
-                    <>
-                      {label} ({end.toLocaleDateString(undefined, { dateStyle: "medium" })}). Contact us to keep full
-                      access after trial.
-                    </>
-                  );
-                })()}
-              </div>
+            session?.user?.orgAccessAllowed &&
+            !pathname.startsWith("/onboarding") && (
+              <TrialBanner
+                trialEndsAt={session.user.orgTrialEndsAt}
+                organizationName={session.user.organizationName}
+              />
             )}
           {children}
         </main>
@@ -665,7 +714,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {canViewChat && !pathname.startsWith("/chat") && (
         <Link
           href="/chat"
-          className="no-print fixed bottom-5 right-5 z-50 h-12 w-12 rounded-full bg-blue-600 text-white shadow-lg ring-4 ring-blue-100 transition-all hover:bg-blue-700 hover:scale-105 flex items-center justify-center"
+          className="no-print fixed bottom-5 right-5 z-50 h-12 w-12 rounded-full text-white shadow-lg transition-all hover:scale-105 flex items-center justify-center"
+          style={{ backgroundColor: branding.brandColor, boxShadow: `0 0 0 4px ${branding.brandColor}22` }}
           title="Open chat"
           aria-label="Open chat"
         >

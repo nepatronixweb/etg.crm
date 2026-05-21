@@ -2,9 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import Link from "next/link";
 import { Laptop, Loader2, Package } from "lucide-react";
-import { useBranding } from "@/app/branding-context";
 
 type AssetRow = {
   _id: string;
@@ -14,12 +12,11 @@ type AssetRow = {
   serialNumber?: string;
   condition: string;
   location?: string;
-  purchaseDate?: string;
+  branch?: { name?: string } | null;
 };
 
 export default function MyAssetsPage() {
-  const { data: session, status } = useSession();
-  const branding = useBranding();
+  const { status } = useSession();
   const [assets, setAssets] = useState<AssetRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -50,29 +47,15 @@ export default function MyAssetsPage() {
 
   if (status === "loading") {
     return (
-      <div className="flex justify-center py-24">
+      <div className="flex justify-center py-16">
         <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
       </div>
     );
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 pb-12">
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-          <Laptop className="w-6 h-6 text-blue-600" />
-          My assets
-        </h1>
-        <p className="text-sm text-gray-500 mt-0.5">Equipment currently assigned to you</p>
-      </div>
-
-      <Link
-        href="/inventory"
-        className="inline-flex items-center gap-1 text-sm font-medium hover:underline"
-        style={{ color: branding.brandColor }}
-      >
-        ← Inventory home
-      </Link>
+    <div className="space-y-4">
+      <p className="text-sm text-gray-500">Equipment currently assigned to {status === "authenticated" ? "you" : "your account"}</p>
 
       {err && <p className="text-sm text-red-600">{err}</p>}
 
@@ -91,21 +74,19 @@ export default function MyAssetsPage() {
           {assets.map((a) => (
             <li
               key={a._id}
-              className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3"
+              className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
             >
-              <div>
-                <p className="font-mono text-xs font-bold text-blue-600">{a.assetTag}</p>
-                <p className="text-base font-semibold text-gray-900 mt-1">{a.name}</p>
-                <p className="text-xs text-gray-500 mt-1 capitalize">
-                  {a.category} · Condition: {a.condition}
-                </p>
-                {a.location ? (
-                  <p className="text-xs text-gray-500 mt-1">Location: {a.location}</p>
-                ) : null}
-                {a.serialNumber ? (
-                  <p className="text-xs text-gray-400 mt-1 font-mono">S/N: {a.serialNumber}</p>
-                ) : null}
-              </div>
+              <p className="font-mono text-xs font-bold text-blue-600">{a.assetTag}</p>
+              <p className="text-base font-semibold text-gray-900 mt-1 flex items-center gap-2">
+                <Laptop className="w-4 h-4 text-gray-400" />
+                {a.name}
+              </p>
+              <p className="text-xs text-gray-500 mt-2 capitalize">
+                {a.category.replace(/_/g, " ")} · Condition: {a.condition}
+              </p>
+              {a.branch?.name && <p className="text-xs text-gray-500 mt-1">Branch: {a.branch.name}</p>}
+              {a.location && <p className="text-xs text-gray-500 mt-1">Location: {a.location}</p>}
+              {a.serialNumber && <p className="text-xs text-gray-400 mt-1 font-mono">S/N: {a.serialNumber}</p>}
             </li>
           ))}
         </ul>

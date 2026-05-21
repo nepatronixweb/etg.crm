@@ -1,19 +1,35 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { userHasChatAccess } from "@/lib/chatPermissions";
+import { chatAccessDeniedResponse } from "@/lib/chatPermissions";
 import connectDB from "@/lib/mongodb";
 import Message from "@/models/Message";
 import Conversation from "@/models/Conversation";
+import "@/models/User";
 import mongoose from "mongoose";
 
 export const dynamic = "force-dynamic";
 
+const MESSAGE_SELECT =
+  "conversation sender text replyTo reactions readBy editedAt isDeleted createdAt updatedAt";
+
+async function populateMessages(docs: unknown[]) {
+  return Message.populate(docs, [
+    { path: "sender", select: "name email role" },
+    {
+      path: "replyTo",
+      populate: { path: "sender", select: "name email role" },
+      select: "text sender createdAt isDeleted",
+    },
+    { path: "reactions.user", select: "name" },
+  ]);
+}
+
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (!session) return new Response("Unauthorized", { status: 401 });
-  if (!userHasChatAccess(session)) return new Response("Forbidden", { status: 403 });
+  const denied = await chatAccessDeniedResponse(session);
+  if (denied) return denied;
 
-  const userId = session.user.id;
+  const userId = session!.user.id;
   const encoder = new TextEncoder();
   let lastCheck = new Date();
 
@@ -24,10 +40,11 @@ export async function GET(req: NextRequest) {
       const send = (payload: unknown) => {
         try {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
-        } catch { /* client disconnected */ }
+        } catch {
+          /* client disconnected */
+        }
       };
 
-      // Cache conversation IDs - refreshed every 60s to pick up new convs
       let convIds: mongoose.Types.ObjectId[] = [];
       let lastConvRefresh = 0;
 
@@ -37,21 +54,21 @@ export async function GET(req: NextRequest) {
         lastConvRefresh = Date.now();
       };
 
-      // Initial: load convIds + unread count
       try {
         await refreshConvIds();
         const unread = await Message.countDocuments({
           conversation: { $in: convIds },
           sender: { $ne: userId },
           readBy: { $ne: userId },
+          isDeleted: { $ne: true },
         });
         send({ type: "chat_init", unreadCount: unread });
       } catch {
         send({ type: "chat_init", unreadCount: 0 });
       }
 
-      const basePollMs = Number(process.env.CHAT_SSE_POLL_MS ?? 8_000);
-      const maxPollMs = Number(process.env.CHAT_SSE_MAX_POLL_MS ?? 25_000);
+      const basePollMs = Number(process.env.CHAT_SSE_POLL_MS ?? 3_000);
+      const maxPollMs = Number(process.env.CHAT_SSE_MAX_POLL_MS ?? 12_000);
       let currentPollMs = basePollMs;
       let stopped = false;
       let timeout: ReturnType<typeof setTimeout> | null = null;
@@ -64,38 +81,59 @@ export async function GET(req: NextRequest) {
           const since = lastCheck;
           lastCheck = new Date();
 
-          const [newMessages, unread] = await Promise.all([
-            Message.find({
-              conversation: { $in: convIds },
-              sender: { $ne: userId },
-              createdAt: { $gt: since },
-            })
-              .populate("sender", "name email role")
-              .populate({
-                path: "replyTo",
-                populate: { path: "sender", select: "name email role" },
-                select: "text sender createdAt",
-              })
-              .sort({ createdAt: -1 })
-              .limit(10)
+          const activityFilter = {
+            conversation: { $in: convIds },
+            $or: [{ createdAt: { $gt: since } }, { updatedAt: { $gt: since } }],
+          };
+
+          const [activity, unread] = await Promise.all([
+            Message.find(activityFilter)
+              .select(MESSAGE_SELECT)
+              .sort({ updatedAt: -1 })
+              .limit(100)
               .lean(),
             Message.countDocuments({
               conversation: { $in: convIds },
               sender: { $ne: userId },
               readBy: { $ne: userId },
+              isDeleted: { $ne: true },
             }),
           ]);
 
-          if (newMessages.length > 0) {
-            send({ type: "chat_new", messages: newMessages, unreadCount: unread });
+          const populated = await populateMessages(activity);
+          type MsgRow = {
+            createdAt: Date | string;
+            updatedAt: Date | string;
+            sender?: { _id?: unknown } | unknown;
+          };
+          const rows = populated as unknown as MsgRow[];
+          const senderIdOf = (m: MsgRow) =>
+            String(typeof m.sender === "object" && m.sender && "_id" in m.sender ? m.sender._id : m.sender ?? "");
+
+          const newMsgs = rows.filter((m) => new Date(m.createdAt).getTime() > since.getTime());
+          const updatedMsgs = rows.filter((m) => {
+            const created = new Date(m.createdAt).getTime();
+            const updated = new Date(m.updatedAt).getTime();
+            return created <= since.getTime() && updated > since.getTime();
+          });
+
+          const incomingNew = newMsgs.filter((m) => senderIdOf(m) !== userId);
+
+          if (incomingNew.length > 0) {
+            send({ type: "chat_new", messages: incomingNew, unreadCount: unread });
             currentPollMs = basePollMs;
-          } else {
+          }
+          if (updatedMsgs.length > 0) {
+            send({ type: "chat_update", messages: updatedMsgs, unreadCount: unread });
+            currentPollMs = basePollMs;
+          }
+          if (incomingNew.length === 0 && updatedMsgs.length === 0) {
             send({ type: "chat_heartbeat", unreadCount: unread, pollMs: currentPollMs });
-            currentPollMs = Math.min(maxPollMs, Math.floor(currentPollMs * 1.4));
+            currentPollMs = Math.min(maxPollMs, Math.floor(currentPollMs * 1.35));
           }
         } catch {
           send({ type: "chat_heartbeat", unreadCount: 0 });
-          currentPollMs = Math.min(maxPollMs, Math.floor(currentPollMs * 1.4));
+          currentPollMs = Math.min(maxPollMs, Math.floor(currentPollMs * 1.35));
         }
         timeout = setTimeout(tick, currentPollMs);
       };
@@ -104,7 +142,11 @@ export async function GET(req: NextRequest) {
       req.signal.addEventListener("abort", () => {
         stopped = true;
         if (timeout) clearTimeout(timeout);
-        try { controller.close(); } catch { /* already closed */ }
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
+        }
       });
     },
   });

@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import connectDB from "@/lib/mongodb";
 import StudentDocument from "@/models/Document";
 import mongoose from "mongoose";
+import { findDocumentInTenant } from "@/lib/tenantRecordAccess";
 
 export async function PUT(
   req: NextRequest,
@@ -13,6 +14,9 @@ export async function PUT(
 
   const { id } = await params;
   await connectDB();
+
+  const existing = await findDocumentInTenant(session, id);
+  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const body = await req.json();
   const doc = await StudentDocument.findByIdAndUpdate(
@@ -38,17 +42,16 @@ export async function DELETE(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const role = session.user.role;
-  if (role !== "super_admin" && role !== "branch_admin") {
+  if (role !== "super_admin" && role !== "branch_admin" && role !== "org_admin") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { id } = await params;
   await connectDB();
 
-  const doc = await StudentDocument.findById(id);
+  const doc = await findDocumentInTenant(session, id);
   if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // Delete file from MongoDB GridFS
   try {
     const match = doc.filePath?.match(/\/api\/documents\/file\/([a-f0-9]{24})/);
     if (match) {

@@ -3,6 +3,15 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --brand-primary: #2563eb;
+  --brand-secondary: #1d4ed8;
+  --brand-primary-light: #93c5fd;
+  --brand-primary-soft: #2563eb18;
+  --brand-on-primary: #ffffff;
+  --brand-sidebar-bg: #111827;
+  --brand-sidebar-hover: #1f2937;
+  --brand-sidebar-border: #374151;
+  --brand-sidebar-muted: #9ca3af;
 }
 
 @theme inline {
@@ -23,6 +32,19 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+.bg-brand-primary {
+  background-color: var(--brand-primary);
+}
+.text-brand-primary {
+  color: var(--brand-primary);
+}
+.border-brand-primary {
+  border-color: var(--brand-primary);
+}
+.hover\:bg-brand-primary:hover {
+  background-color: var(--brand-primary);
 }
 
 @keyframes bell-shake {

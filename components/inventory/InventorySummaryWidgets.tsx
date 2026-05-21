@@ -8,6 +8,8 @@ type Summary = {
   totalAssets: number;
   assignedCount: number;
   availableCount: number;
+  maintenanceCount?: number;
+  totalAssetValue?: number;
   lowStock: { _id: string; name: string; quantity: number; minStock: number; unit: string }[];
 };
 
@@ -29,6 +31,8 @@ export default function InventorySummaryWidgets() {
           totalAssets: d.totalAssets ?? 0,
           assignedCount: d.assignedCount ?? 0,
           availableCount: d.availableCount ?? 0,
+          maintenanceCount: d.maintenanceCount ?? 0,
+          totalAssetValue: d.totalAssetValue ?? 0,
           lowStock: Array.isArray(d.lowStock) ? d.lowStock : [],
         });
       })
@@ -61,7 +65,7 @@ export default function InventorySummaryWidgets() {
           <Boxes className="w-5 h-5 text-emerald-600" />
           <h2 className="text-sm font-bold text-gray-900">Inventory snapshot</h2>
         </div>
-        <Link href="/inventory" className="text-xs font-semibold text-emerald-700 hover:underline">
+        <Link href="/inventory/assets" className="text-xs font-semibold text-emerald-700 hover:underline">
           Manage →
         </Link>
       </div>

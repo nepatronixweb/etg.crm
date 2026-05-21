@@ -3,6 +3,7 @@ import connectDB from "@/lib/mongodb";
 import Application from "@/models/Application";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
+import { getTenantStudentIdsForSession } from "@/lib/tenantRecordAccess";
 
 export async function GET(req: NextRequest) {
   try {
@@ -22,6 +23,20 @@ export async function GET(req: NextRequest) {
     if (student) filter.student = student;
     if (status) filter.status = status;
     if (country) filter.country = country;
+
+    if (session.user.role !== "super_admin") {
+      const tenantStudentIds = await getTenantStudentIdsForSession(session);
+      if (!tenantStudentIds || tenantStudentIds.length === 0) {
+        return NextResponse.json({ applications: [], total: 0, page, pages: 0 });
+      }
+      if (student) {
+        if (!tenantStudentIds.some((id) => id.toString() === student)) {
+          return NextResponse.json({ applications: [], total: 0, page, pages: 0 });
+        }
+      } else {
+        filter.student = { $in: tenantStudentIds };
+      }
+    }
 
     const [applications, total] = await Promise.all([
       Application.find(filter)

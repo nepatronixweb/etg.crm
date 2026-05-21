@@ -87,9 +87,13 @@ function normalizeUserRolesShape(input: { role?: string | null; roles?: unknown;
     ? input.roles.map((r) => String(r).trim()).filter(Boolean)
     : [];
   const fromRole = String(input.role ?? "").trim();
-  const merged = Array.from(new Set([...(fromArray.length > 0 ? fromArray : []), ...(fromRole ? [fromRole] : [])]));
+  const merged = Array.from(new Set([...fromArray, ...(fromRole ? [fromRole] : [])]));
   const activeRaw = String(input.activeRole ?? "").trim();
-  const activeRole = merged.includes(activeRaw) ? activeRaw : merged[0] || fromRole || "";
+  const activeRole = merged.includes(activeRaw)
+    ? activeRaw
+    : fromRole && merged.includes(fromRole)
+      ? fromRole
+      : merged[0] || fromRole || "";
   return { roles: merged, activeRole };
 }
 
@@ -100,6 +104,7 @@ type OrgTokenFields = {
   orgTrialEndsAt: number | null;
   orgPaidThrough: number | null;
   orgAccessAllowed: boolean;
+  orgOnboardingCompleted: boolean;
 };
 
 async function resolveOrgSubscriptionForUser(params: {
@@ -114,6 +119,7 @@ async function resolveOrgSubscriptionForUser(params: {
       orgTrialEndsAt: null,
       orgPaidThrough: null,
       orgAccessAllowed: true,
+      orgOnboardingCompleted: true,
     };
   }
 
@@ -125,6 +131,7 @@ async function resolveOrgSubscriptionForUser(params: {
       orgTrialEndsAt: null,
       orgPaidThrough: null,
       orgAccessAllowed: false,
+      orgOnboardingCompleted: false,
     };
   }
 
@@ -137,6 +144,7 @@ async function resolveOrgSubscriptionForUser(params: {
       orgTrialEndsAt: null,
       orgPaidThrough: null,
       orgAccessAllowed: false,
+      orgOnboardingCompleted: false,
     };
   }
 
@@ -154,6 +162,7 @@ async function resolveOrgSubscriptionForUser(params: {
     orgTrialEndsAt: org.trialEndsAt ? new Date(org.trialEndsAt).getTime() : null,
     orgPaidThrough: org.paidThrough ? new Date(org.paidThrough).getTime() : null,
     orgAccessAllowed: allowed,
+    orgOnboardingCompleted: Boolean(org.onboardingCompletedAt),
   };
 }
 
@@ -167,6 +176,7 @@ function applyOrgFieldsToToken(
   token.orgTrialEndsAt = org.orgTrialEndsAt;
   token.orgPaidThrough = org.orgPaidThrough;
   token.orgAccessAllowed = org.orgAccessAllowed;
+  token.orgOnboardingCompleted = org.orgOnboardingCompleted;
 }
 
 export const authOptions: NextAuthOptions = {
@@ -284,6 +294,7 @@ export const authOptions: NextAuthOptions = {
           orgTrialEndsAt: u.orgTrialEndsAt ?? null,
           orgPaidThrough: u.orgPaidThrough ?? null,
           orgAccessAllowed: u.orgAccessAllowed ?? false,
+          orgOnboardingCompleted: u.orgOnboardingCompleted ?? false,
         });
         return token;
       }
@@ -356,6 +367,7 @@ export const authOptions: NextAuthOptions = {
         session.user.orgTrialEndsAt = (token.orgTrialEndsAt as number | null) ?? null;
         session.user.orgPaidThrough = (token.orgPaidThrough as number | null) ?? null;
         session.user.orgAccessAllowed = Boolean(token.orgAccessAllowed);
+        session.user.orgOnboardingCompleted = Boolean(token.orgOnboardingCompleted);
         session.user.dashboardWidgets = token.dashboardWidgets;
         session.user.dashboardWidgetOrder = token.dashboardWidgetOrder;
       }

@@ -555,9 +555,6 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
             {(lead as unknown as { course?: string }).course && (
               <Field label="Course" value={(lead as unknown as { course: string }).course} />
             )}
-            {(lead as unknown as { academicYear?: string }).academicYear && (
-              <Field label="Academic Year" value={(lead as unknown as { academicYear: string }).academicYear} />
-            )}
             {((lead as unknown as { intakeYear?: string }).intakeYear || (lead as unknown as { intakeQuarter?: string }).intakeQuarter) && (
               <div>
                 <p className="text-xs text-gray-400 mb-1">Intake</p>
@@ -587,12 +584,21 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
         )}
 
         {/* Academic Information */}
-        {(lead.academicScore || lead.academicInstitution || lead.temporaryAddress || lead.permanentAddress) && (
+        {(lead.academicScore || lead.academicInstitution || lead.temporaryAddress || lead.permanentAddress || (lead as unknown as { academicYear?: string }).academicYear || (lead as unknown as { passoutYear?: string }).passoutYear) && (
           <div className="px-6 py-5">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Student Academic Information</p>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-x-8 gap-y-5">
               {lead.academicScore && <Field label="GPA / Percentage" value={lead.academicScore} />}
               {lead.academicInstitution && <Field label="School / College" value={lead.academicInstitution} />}
+              {(lead as unknown as { academicYear?: string }).academicYear && (
+                <Field
+                  label="Academic Year"
+                  value={(lead as unknown as { academicYear: string }).academicYear.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                />
+              )}
+              {(lead as unknown as { passoutYear?: string }).passoutYear && (
+                <Field label="Passout Year" value={(lead as unknown as { passoutYear: string }).passoutYear} />
+              )}
               {lead.temporaryAddress && <Field label="Temporary Address" value={lead.temporaryAddress} />}
               {lead.permanentAddress && <Field label="Permanent Address" value={lead.permanentAddress} />}
             </div>

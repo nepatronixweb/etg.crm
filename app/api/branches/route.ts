@@ -6,6 +6,7 @@ import Organization from "@/models/Organization";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
 import { createTrialOrganization } from "@/lib/ensureBranchOrganization";
+import { assertOrgPlanLimit } from "@/lib/orgPlanUsage";
 
 export async function GET() {
   try {
@@ -78,6 +79,11 @@ export async function POST(req: NextRequest) {
         );
       }
       orgId = new mongoose.Types.ObjectId(sid);
+    }
+
+    const limitCheck = await assertOrgPlanLimit(orgId.toString(), "branches");
+    if (!limitCheck.ok) {
+      return NextResponse.json({ error: limitCheck.error, code: limitCheck.code }, { status: 403 });
     }
 
     const branch = await Branch.create({

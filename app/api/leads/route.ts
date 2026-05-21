@@ -13,6 +13,8 @@ import { hasModuleAction } from "@/lib/utils";
 import { createNotifications, getSuperAdminIds } from "@/lib/notifications";
 import { buildLeadListFilter, castObjectIdsForAggregateMatch } from "@/lib/buildLeadListFilter";
 import { upsertEnquiryFromLead } from "@/lib/leadEnquirySync";
+import { assertOrgPlanLimit } from "@/lib/orgPlanUsage";
+import { isBranchInOrganization } from "@/lib/orgUserScope";
 
 function normalizeLeadSource(raw: unknown): string {
   return String(raw ?? "")
@@ -54,7 +56,7 @@ export async function GET(req: NextRequest) {
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
     const limit = Math.min(500, Math.max(1, parseInt(searchParams.get("limit") || "50", 10)));
 
-    const { filter, searchTrimmed } = buildLeadListFilter(session, searchParams);
+    const { filter, searchTrimmed } = await buildLeadListFilter(session, searchParams);
 
     const skip = (page - 1) * limit;
     const escapedForNameRank = searchTrimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -155,6 +157,17 @@ export async function POST(req: NextRequest) {
     }
     if (!leadData.branch) {
       return NextResponse.json({ error: "Branch is required" }, { status: 400 });
+    }
+
+    if (session.user.role !== "super_admin" && session.user.organizationId) {
+      const inOrg = await isBranchInOrganization(String(leadData.branch), session.user.organizationId);
+      if (!inOrg) {
+        return NextResponse.json({ error: "Branch is not in your organization" }, { status: 403 });
+      }
+      const limitCheck = await assertOrgPlanLimit(session.user.organizationId, "leads");
+      if (!limitCheck.ok) {
+        return NextResponse.json({ error: limitCheck.error, code: limitCheck.code }, { status: 403 });
+      }
     }
 
     // Enforce role-based field restrictions

@@ -10,6 +10,7 @@ import Enquiry from "@/models/Enquiry";
 import AppSettings from "@/models/AppSettings";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
+import { normalizeOrganizationPlan, ORG_PLAN_IDS } from "@/lib/orgPlans";
 
 const STATUSES = ["trialing", "active", "expired", "suspended"] as const;
 
@@ -32,12 +33,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       paidThrough,
       trialEndsAt,
       billingNote,
+      plan,
     } = body as {
       name?: string;
       subscriptionStatus?: string;
       paidThrough?: string | null;
       trialEndsAt?: string | null;
       billingNote?: string;
+      plan?: string;
     };
 
     await connectDB();
@@ -65,6 +68,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (typeof billingNote === "string") {
       org.billingNote = billingNote.slice(0, 2000);
     }
+    if (typeof plan === "string" && ORG_PLAN_IDS.includes(plan as (typeof ORG_PLAN_IDS)[number])) {
+      org.plan = normalizeOrganizationPlan(plan);
+    }
 
     await org.save();
 
@@ -87,6 +93,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         trialEndsAt: org.trialEndsAt ? org.trialEndsAt.toISOString() : null,
         paidThrough: org.paidThrough ? org.paidThrough.toISOString() : null,
         billingNote: org.billingNote ?? "",
+        plan: org.plan ?? "trial",
       },
     });
   } catch {

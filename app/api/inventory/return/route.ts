@@ -4,6 +4,8 @@ import connectDB from "@/lib/mongodb";
 import Asset from "@/models/Asset";
 import AssetAssignment from "@/models/AssetAssignment";
 import { canManageInventory } from "@/lib/inventory/auth";
+import { logInventoryActivity } from "@/lib/inventory/activity";
+import { inventoryOrgScope } from "@/lib/inventory/scope";
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,13 +15,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     const body = await req.json();
-    const { assetId } = body;
+    const { assetId, conditionOnReturn, notes } = body;
     if (!assetId) {
       return NextResponse.json({ error: "assetId is required" }, { status: 400 });
     }
 
     await connectDB();
-    const asset = await Asset.findById(assetId);
+    const orgScope = await inventoryOrgScope(session);
+    const asset = await Asset.findOne({ _id: assetId, ...orgScope });
     if (!asset) return NextResponse.json({ error: "Asset not found" }, { status: 404 });
 
     const assignment = await AssetAssignment.findOne({
@@ -33,13 +36,27 @@ export async function POST(req: NextRequest) {
 
     assignment.status = "returned";
     assignment.returnedDate = new Date();
+    if (conditionOnReturn) assignment.conditionOnReturn = String(conditionOnReturn).trim();
+    if (notes) assignment.notes = String(notes).trim().slice(0, 512);
     await assignment.save();
+
+    if (conditionOnReturn && ["good", "damaged", "repair"].includes(String(conditionOnReturn))) {
+      asset.condition = conditionOnReturn;
+    }
 
     asset.status = "available";
     asset.assignedTo = null;
     await asset.save();
 
-    const populated = await Asset.findById(asset._id).populate("assignedTo", "name email").lean();
+    await logInventoryActivity(
+      session,
+      "RETURN",
+      asset._id.toString(),
+      asset.name,
+      `Returned asset ${asset.assetTag}`
+    );
+
+    const populated = await Asset.findById(asset._id).populate("assignedTo", "name email").populate("branch", "name").lean();
     return NextResponse.json({ ok: true, asset: populated });
   } catch (err) {
     console.error("POST /api/inventory/return", err);

@@ -5,6 +5,24 @@ import { auth } from "@/lib/auth";
 import Commission from "@/models/Commission";
 import ActivityLog from "@/models/ActivityLog";
 import { hasPermission } from "@/lib/utils";
+import { getOrgUserIdsForSession, getTenantStudentIdsForSession } from "@/lib/tenantRecordAccess";
+
+async function findCommissionInTenant(
+  session: NonNullable<Awaited<ReturnType<typeof auth>>>,
+  id: string
+) {
+  const doc = await Commission.findById(id).exec();
+  if (!doc) return null;
+  if (session.user.role === "super_admin") return doc;
+  const orgUserIds = await getOrgUserIdsForSession(session);
+  const studentIds = await getTenantStudentIdsForSession(session);
+  const byCreator =
+    orgUserIds?.some((uid) => uid.toString() === String(doc.createdBy)) ?? false;
+  const byStudent =
+    doc.studentId &&
+    (studentIds?.some((sid) => sid.toString() === String(doc.studentId)) ?? false);
+  return byCreator || byStudent ? doc : null;
+}
 
 function canUseCommission(session: NonNullable<Awaited<ReturnType<typeof auth>>>): boolean {
   if (session.user.role === "super_admin") return true;
@@ -53,9 +71,9 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: "Invalid id" }, { status: 400 });
     }
     await connectDB();
-    const doc = await Commission.findById(id).lean();
+    const doc = await findCommissionInTenant(session, id);
     if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    return NextResponse.json({ commission: doc });
+    return NextResponse.json({ commission: typeof doc.toObject === "function" ? doc.toObject() : doc });
   } catch (e) {
     console.error("GET /api/commissions/[id]", e);
     return NextResponse.json({ error: "Failed to load commission" }, { status: 500 });
@@ -73,6 +91,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: "Invalid id" }, { status: 400 });
     }
     await connectDB();
+    const existing = await findCommissionInTenant(session, id);
+    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
     const body = (await req.json()) as Record<string, unknown>;
     const $set = commissionUpdateFromBody(body);
 
@@ -108,7 +128,7 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "Invalid id" }, { status: 400 });
     }
     await connectDB();
-    const existing = await Commission.findById(id).lean();
+    const existing = await findCommissionInTenant(session, id);
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     await Commission.deleteOne({ _id: id });

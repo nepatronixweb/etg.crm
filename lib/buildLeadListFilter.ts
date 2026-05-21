@@ -6,6 +6,7 @@ import {
   isTelecallerOverviewDashboardBucket,
   mergeTelecallerOverviewBucketFilter,
 } from "@/lib/telecallerLeadOverviewBuckets";
+import { resolveBranchQueryForSession } from "@/lib/tenantRecordAccess";
 
 /** Omit one dimension when computing distinct values for that facet (cascading filter options). */
 export type LeadFacetKey =
@@ -20,7 +21,7 @@ export type LeadFacetKey =
   | "applyLevel"
   | "search";
 
-/** ?from / ?to - datetime-local / ISO, or legacy YYYY-MM-DD (1:00 / 23:00 local, same as filter UI). */
+/** ?from / ?to - date-only YYYY-MM-DD (00:00–19:00 local office day) or legacy ISO / datetime-local. */
 export function parseLeadCreatedAtBound(raw: string, bound: "from" | "to"): Date {
   const s = raw.trim();
   if (!s) return new Date(NaN);
@@ -73,16 +74,16 @@ function attachCountryClause(filter: Record<string, unknown>, countryTrimmed: st
 /**
  * Same match semantics as GET /api/leads — used for list + filter-meta facets.
  */
-export function buildLeadListFilter(
+export async function buildLeadListFilter(
   session: Session,
   searchParams: URLSearchParams,
   options?: { omitFacet?: LeadFacetKey }
-): {
+): Promise<{
   filter: Record<string, unknown>;
   bucketParam: string | null;
   searchTrimmed: string;
   searchOrClause: Array<Record<string, unknown>> | undefined;
-} {
+}> {
   const omit = options?.omitFacet;
 
   const branch = searchParams.get("branch");
@@ -107,13 +108,12 @@ export function buildLeadListFilter(
   const role = session.user.role;
   if (role === "counsellor") filter.assignedTo = session.user.id;
   else if (role === "telecaller") filter.source = { $ne: "walk_in" };
-  else if (role === "front_desk") {
-    filter.branch = session.user.branch;
-  } else if (role !== "super_admin") {
-    filter.branch = session.user.branch;
-  }
 
-  if (branch) filter.branch = branch;
+  if (role !== "super_admin") {
+    Object.assign(filter, await resolveBranchQueryForSession(session, branch));
+  } else if (branch) {
+    filter.branch = branch;
+  }
   if (standing && omit !== "standing") filter.standing = standing;
   if (source && omit !== "source") filter.source = source;
   if (assignedTo && omit !== "assignedTo") filter.assignedTo = assignedTo;

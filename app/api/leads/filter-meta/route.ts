@@ -23,8 +23,12 @@ const FACET_KEYS: LeadFacetKey[] = [
   "applyLevel",
 ];
 
-function matchStageForFacet(session: NonNullable<Awaited<ReturnType<typeof auth>>>, sp: URLSearchParams, omit: LeadFacetKey) {
-  const { filter } = buildLeadListFilter(session, sp, { omitFacet: omit });
+async function matchStageForFacet(
+  session: NonNullable<Awaited<ReturnType<typeof auth>>>,
+  sp: URLSearchParams,
+  omit: LeadFacetKey
+) {
+  const { filter } = await buildLeadListFilter(session, sp, { omitFacet: omit });
   return { $match: castObjectIdsForAggregateMatch(filter as Record<string, unknown>) as Record<string, unknown> };
 }
 
@@ -39,7 +43,7 @@ export async function GET(req: NextRequest) {
     const facetSpec: Record<string, mongoose.PipelineStage[]> = {};
 
     for (const key of FACET_KEYS) {
-      const m = matchStageForFacet(session, searchParams, key);
+      const m = await matchStageForFacet(session, searchParams, key);
       switch (key) {
         case "standing":
           facetSpec.standings = [

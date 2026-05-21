@@ -5,24 +5,7 @@ import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
 import { createNotifications, getSuperAdminIds } from "@/lib/notifications";
 import { LEAD_PATCH_FD_STATUS_AND_STAGE_ROLES } from "@/lib/leadWorkflowStatusRoles";
-
-function canAccessEnquiry(
-  role: string,
-  userId: string,
-  assignedToId: string | undefined
-): boolean {
-  if (role === "super_admin" || role === "telecaller") return true;
-  if (role === "counsellor" && assignedToId === userId) return true;
-  return false;
-}
-
-function populatedRefId(ref: unknown): string | undefined {
-  if (ref == null) return undefined;
-  if (typeof ref === "object" && "_id" in (ref as object)) {
-    return String((ref as { _id: unknown })._id);
-  }
-  return String(ref);
-}
+import { getEnquiryForSessionAccess } from "@/lib/tenantRecordAccess";
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -30,15 +13,14 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { id } = await params;
     await connectDB();
+    const access = await getEnquiryForSessionAccess(session, id);
+    if (access === "not_found") return NextResponse.json({ error: "Enquiry not found" }, { status: 404 });
+    if (access === "forbidden") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
     const enquiry = await Enquiry.findById(id)
       .populate("branch", "name location")
       .populate("assignedTo", "name email role")
       .populate("assignedBy", "name");
-    if (!enquiry) return NextResponse.json({ error: "Enquiry not found" }, { status: 404 });
-    const assignedToId = populatedRefId(enquiry.assignedTo);
-    if (!canAccessEnquiry(session.user.role, session.user.id, assignedToId)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
     return NextResponse.json(enquiry);
   } catch {
     return NextResponse.json({ error: "Failed to fetch enquiry" }, { status: 500 });
@@ -52,19 +34,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const { id } = await params;
     await connectDB();
 
-    const existing = await Enquiry.findById(id).select("assignedTo name").lean();
-    if (!existing) return NextResponse.json({ error: "Enquiry not found" }, { status: 404 });
-    const existingAssigned = existing.assignedTo?.toString();
-    if (!canAccessEnquiry(session.user.role, session.user.id, existingAssigned)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const access = await getEnquiryForSessionAccess(session, id);
+    if (access === "not_found") return NextResponse.json({ error: "Enquiry not found" }, { status: 404 });
+    if (access === "forbidden") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
+    const existingAssigned = access.assignedTo?.toString();
     const body = await req.json();
     const setFields = { ...body };
     if (!setFields.assignedTo) delete setFields.assignedTo;
     if (!setFields.branch) delete setFields.branch;
 
-    const oldAssignedTo = existingAssigned;
     const enquiry = await Enquiry.findByIdAndUpdate(id, { $set: setFields }, { new: true, runValidators: false });
     if (!enquiry) return NextResponse.json({ error: "Enquiry not found" }, { status: 404 });
 
@@ -80,7 +59,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     });
 
     const newAssignedTo = body.assignedTo?.toString();
-    if (newAssignedTo && newAssignedTo !== oldAssignedTo) {
+    if (newAssignedTo && newAssignedTo !== existingAssigned) {
       const adminIds = await getSuperAdminIds();
       const recipientIds = [...new Set([newAssignedTo, ...adminIds])];
       await createNotifications({
@@ -111,6 +90,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const update: Record<string, any> = {};
 
+    const access = await getEnquiryForSessionAccess(session, id);
+    if (access === "not_found") return NextResponse.json({ error: "Enquiry not found" }, { status: 404 });
+    if (access === "forbidden") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    const preAssigned = access.assignedTo?.toString();
+
     const resolveStatusEnteredAt = (): Date | null => {
       if (typeof body.statusDate === "string" && body.statusDate.trim() !== "") {
         const d = new Date(body.statusDate.trim());
@@ -118,13 +103,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
       return null;
     };
-
-    const pre = await Enquiry.findById(id).select("assignedTo name").lean();
-    if (!pre) return NextResponse.json({ error: "Enquiry not found" }, { status: 404 });
-    const preAssigned = pre.assignedTo?.toString();
-    if (!canAccessEnquiry(session.user.role, session.user.id, preAssigned)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
 
     if (LEAD_PATCH_FD_STATUS_AND_STAGE_ROLES.has(session.user.role)) {
       if (body.status) {
@@ -156,13 +134,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
     }
 
-    const oldAssignedTo = preAssigned;
     const enquiry = await Enquiry.findByIdAndUpdate(id, { $set: update }, { new: true });
     if (!enquiry) return NextResponse.json({ error: "Enquiry not found" }, { status: 404 });
 
     const newAssignedTo =
       body.assignedTo !== undefined && body.assignedTo !== null ? String(body.assignedTo) : undefined;
-    if (newAssignedTo && newAssignedTo !== oldAssignedTo) {
+    if (newAssignedTo && newAssignedTo !== preAssigned) {
       const adminIds = await getSuperAdminIds();
       const recipientIds = [...new Set([newAssignedTo, ...adminIds])];
       await createNotifications({
@@ -194,6 +171,6 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
     await Enquiry.findByIdAndDelete(id);
     return NextResponse.json({ message: "Enquiry deleted" });
   } catch {
-    return NextResponse.json({ error: "Failed to delete enquiry" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to delete enquiry" }, { status: 404 });
   }
 }

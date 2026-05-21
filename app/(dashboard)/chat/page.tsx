@@ -1,12 +1,16 @@
 "use client";
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import {
-  MessageCircle, Send, ArrowLeft, Search, Plus, Users, X, AlertCircle,
+  MessageCircle, Send, ArrowLeft, Search, Plus, Users, X, AlertCircle, Loader2,
 } from "lucide-react";
 import { getRoleLabel, hasPermission } from "@/lib/utils";
 import { isOrgWideAdmin } from "@/lib/roleGuards";
 import { UserRole } from "@/types";
+import { formatConversationListTime, shouldShowDateSeparator } from "@/lib/chatUtils";
+import { CHAT_STREAM_EVENT, type ChatStreamPayload } from "@/lib/chatEvents";
+import MessageBubble, { type ChatMessage } from "@/components/chat/MessageBubble";
+import ChatDateSeparator from "@/components/chat/ChatDateSeparator";
 
 async function parseChatError(res: Response): Promise<string> {
   try {
@@ -42,46 +46,13 @@ interface IConversation {
   unreadCount: number;
 }
 
-interface IMessage {
-  _id: string;
-  conversation: string;
-  sender: IUser;
-  text: string;
-  replyTo?: {
-    _id: string;
-    text: string;
-    sender?: IUser;
-    createdAt: string;
-  };
-  reactions?: { emoji: "👍🏻" | "❌"; user: string }[];
-  readBy: string[];
-  createdAt: string;
-}
-
-function timeAgo(dateStr: string) {
-  const d = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 1) return "now";
-  if (mins < 60) return `${mins}m`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h`;
-  const days = Math.floor(hrs / 24);
-  if (days < 7) return `${days}d`;
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-function formatMsgTime(dateStr: string) {
-  return new Date(dateStr).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
-}
-
-function formatMsgDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+function playChatTone(audioRef: React.MutableRefObject<HTMLAudioElement | null>) {
+  if (audioRef.current) {
+    audioRef.current.currentTime = 0;
+    audioRef.current.play().catch(() => {
+      /* autoplay blocked or missing file */
+    });
+  }
 }
 
 export default function ChatPage() {
@@ -92,22 +63,25 @@ export default function ChatPage() {
   const hasChatPermission =
     !!session?.user && hasPermission(userPermissions, "chat", role);
   const [enabledModules, setEnabledModules] = useState<string[] | null>(null);
+  const settingsLoaded = enabledModules !== null;
   const chatModuleAllowed =
-    !enabledModules ||
-    enabledModules.includes("chat") ||
-    isOrgWideAdmin(role);
+    settingsLoaded &&
+    (enabledModules.includes("chat") || isOrgWideAdmin(role));
 
   const [conversations, setConversations] = useState<IConversation[]>([]);
   const [activeConv, setActiveConv] = useState<IConversation | null>(null);
-  const [messages, setMessages] = useState<IMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [msgText, setMsgText] = useState("");
   const [sending, setSending] = useState(false);
+  const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [messageSearch, setMessageSearch] = useState("");
   const [searchingMessages, setSearchingMessages] = useState(false);
-  const [replyingTo, setReplyingTo] = useState<IMessage | null>(null);
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
 
   // New chat modal
   const [showNewChat, setShowNewChat] = useState(false);
@@ -122,9 +96,12 @@ export default function ChatPage() {
   }, [apiBanner]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatStreamRef = useRef<EventSource | null>(null);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const activeConvIdRef = useRef<string | null>(null);
+  const skipScrollRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const lastGlobalUnreadRef = useRef(0);
 
   // Initialize audio
   useEffect(() => {
@@ -132,12 +109,7 @@ export default function ChatPage() {
     audioRef.current.volume = 0.5;
   }, []);
 
-  const playMessageTone = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(() => { /* autoplay blocked */ });
-    }
-  }, []);
+  const playMessageTone = useCallback(() => playChatTone(audioRef), []);
 
   useEffect(() => {
     fetch("/api/settings/app")
@@ -158,9 +130,8 @@ export default function ChatPage() {
         return;
       }
       const moduleOk =
-        !enabledModules ||
-        enabledModules.includes("chat") ||
-        isOrgWideAdmin(r);
+        settingsLoaded &&
+        (enabledModules.includes("chat") || isOrgWideAdmin(r));
       if (!moduleOk) {
         setLoading(false);
         return;
@@ -187,15 +158,20 @@ export default function ChatPage() {
     const perms = (session.user.permissions ?? []) as string[];
     if (!hasPermission(perms, "chat", r)) return;
     const allowed =
-      !enabledModules ||
-      enabledModules.includes("chat") ||
-      isOrgWideAdmin(r);
+      settingsLoaded &&
+      (enabledModules.includes("chat") || isOrgWideAdmin(r));
     if (!allowed) {
       setConversations([]);
       setActiveConv(null);
       setMessages([]);
     }
   }, [session, enabledModules]);
+
+  const parseMessagesResponse = (data: unknown): { messages: ChatMessage[]; hasMore: boolean } => {
+    if (Array.isArray(data)) return { messages: data as ChatMessage[], hasMore: false };
+    const obj = data as { messages?: ChatMessage[]; hasMore?: boolean };
+    return { messages: obj.messages ?? [], hasMore: Boolean(obj.hasMore) };
+  };
 
   // Fetch messages for active conversation
   const fetchMessages = useCallback(async (convId: string, query?: string) => {
@@ -205,21 +181,64 @@ export default function ChatPage() {
       const q = query?.trim();
       const url = q
         ? `/api/chat/conversations/${convId}/messages?q=${encodeURIComponent(q)}&limit=100`
-        : `/api/chat/conversations/${convId}/messages`;
+        : `/api/chat/conversations/${convId}/messages?limit=50`;
       const res = await fetch(url);
+      if (activeConvIdRef.current !== convId) return;
       if (res.ok) {
         const data = await res.json();
-        setMessages(data);
+        const { messages: list, hasMore } = parseMessagesResponse(data);
+        if (activeConvIdRef.current !== convId) return;
+        setMessages(list);
+        setHasMoreMessages(hasMore);
         setApiBanner(null);
       } else {
         setApiBanner(await parseChatError(res));
       }
     } catch {
-      setApiBanner("Could not load messages. Check your connection and try again.");
+      if (activeConvIdRef.current === convId) {
+        setApiBanner("Could not load messages. Check your connection and try again.");
+      }
     }
-    setLoadingMsgs(false);
-    setSearchingMessages(false);
+    if (activeConvIdRef.current === convId) {
+      setLoadingMsgs(false);
+      setSearchingMessages(false);
+    }
   }, []);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!activeConv || loadingOlder || !hasMoreMessages || messages.length === 0) return;
+    const convId = activeConv._id;
+    setLoadingOlder(true);
+    skipScrollRef.current = true;
+    const scrollEl = messagesScrollRef.current;
+    const prevHeight = scrollEl?.scrollHeight ?? 0;
+    try {
+      const oldest = messages[0]?.createdAt;
+      const res = await fetch(
+        `/api/chat/conversations/${convId}/messages?limit=50&before=${encodeURIComponent(oldest)}`
+      );
+      if (activeConvIdRef.current !== convId) return;
+      if (res.ok) {
+        const data = await res.json();
+        const { messages: older, hasMore } = parseMessagesResponse(data);
+        if (activeConvIdRef.current !== convId) return;
+        setHasMoreMessages(hasMore);
+        setMessages((prev) => {
+          const ids = new Set(prev.map((m) => m._id));
+          const fresh = older.filter((m) => !ids.has(m._id));
+          return fresh.length > 0 ? [...fresh, ...prev] : prev;
+        });
+        requestAnimationFrame(() => {
+          if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight - prevHeight;
+        });
+      }
+    } catch {
+      if (activeConvIdRef.current === convId) {
+        setApiBanner("Could not load older messages.");
+      }
+    }
+    setLoadingOlder(false);
+  }, [activeConv, loadingOlder, hasMoreMessages, messages]);
 
   // Mark conversation as read
   const markRead = useCallback(async (convId: string) => {
@@ -230,46 +249,80 @@ export default function ChatPage() {
 
   // Select conversation
   const selectConversation = useCallback((conv: IConversation) => {
+    activeConvIdRef.current = conv._id;
+    skipScrollRef.current = false;
     setActiveConv(conv);
     setMessageSearch("");
     setReplyingTo(null);
+    setEditingMessage(null);
+    setMsgText("");
     fetchMessages(conv._id, "");
     markRead(conv._id);
-    // Update unread locally
     setConversations((prev) =>
       prev.map((c) => c._id === conv._id ? { ...c, unreadCount: 0 } : c)
     );
   }, [fetchMessages, markRead]);
 
-  // Send message
+  const mergeMessages = useCallback((incoming: ChatMessage[]) => {
+    setMessages((prev) => {
+      const map = new Map(prev.map((m) => [m._id, m]));
+      for (const m of incoming) map.set(m._id, m);
+      return Array.from(map.values()).sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+    });
+  }, []);
+
+  // Send or edit message
   const sendMessage = async () => {
     if (!msgText.trim() || !activeConv || sending) return;
     setSending(true);
     try {
-      const res = await fetch(`/api/chat/conversations/${activeConv._id}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: msgText.trim(),
-          replyToMessageId: replyingTo?._id,
-        }),
-      });
-      if (res.ok) {
-        const msg = await res.json();
-        setMessages((prev) => [...prev, msg]);
-        setMsgText("");
-        setReplyingTo(null);
-        setApiBanner(null);
-        // Update conversation last message locally
-        setConversations((prev) =>
-          prev.map((c) =>
-            c._id === activeConv._id
-              ? { ...c, lastMessage: msg.text, lastMessageAt: msg.createdAt }
-              : c
-          ).sort((a, b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime())
-        );
+      if (editingMessage) {
+        const res = await fetch(`/api/chat/conversations/${activeConv._id}/messages`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "edit", messageId: editingMessage._id, text: msgText.trim() }),
+        });
+        if (res.ok) {
+          const msg = (await res.json()) as ChatMessage;
+          mergeMessages([msg]);
+          setMsgText("");
+          setEditingMessage(null);
+          setApiBanner(null);
+        } else {
+          setApiBanner(await parseChatError(res));
+        }
       } else {
-        setApiBanner(await parseChatError(res));
+        const res = await fetch(`/api/chat/conversations/${activeConv._id}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: msgText.trim(),
+            replyToMessageId: replyingTo?._id,
+          }),
+        });
+        if (res.ok) {
+          const msg = (await res.json()) as ChatMessage;
+          mergeMessages([msg]);
+          setMsgText("");
+          setReplyingTo(null);
+          setApiBanner(null);
+          setConversations((prev) =>
+            prev
+              .map((c) =>
+                c._id === activeConv._id
+                  ? { ...c, lastMessage: msg.text, lastMessageAt: msg.createdAt }
+                  : c
+              )
+              .sort(
+                (a, b) =>
+                  new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime()
+              )
+          );
+        } else {
+          setApiBanner(await parseChatError(res));
+        }
       }
     } catch {
       setApiBanner("Could not send the message. Check your connection and try again.");
@@ -278,17 +331,17 @@ export default function ChatPage() {
     inputRef.current?.focus();
   };
 
-  const toggleReaction = async (messageId: string, emoji: "👍🏻" | "❌") => {
+  const toggleReaction = async (messageId: string, emoji: string) => {
     if (!activeConv) return;
     try {
       const res = await fetch(`/api/chat/conversations/${activeConv._id}/messages`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messageId, emoji }),
+        body: JSON.stringify({ action: "react", messageId, emoji }),
       });
       if (res.ok) {
-        const updated = await res.json();
-        setMessages((prev) => prev.map((m) => (m._id === updated._id ? updated : m)));
+        const updated = (await res.json()) as ChatMessage;
+        mergeMessages([updated]);
         setApiBanner(null);
       } else {
         setApiBanner(await parseChatError(res));
@@ -298,85 +351,106 @@ export default function ChatPage() {
     }
   };
 
-  // SSE for real-time messages
+  const deleteMessage = async (msg: ChatMessage) => {
+    if (!activeConv || !confirm("Delete this message for everyone?")) return;
+    try {
+      const res = await fetch(`/api/chat/conversations/${activeConv._id}/messages`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", messageId: msg._id }),
+      });
+      if (res.ok) {
+        const updated = (await res.json()) as ChatMessage;
+        mergeMessages([updated]);
+      } else {
+        setApiBanner(await parseChatError(res));
+      }
+    } catch {
+      setApiBanner("Could not delete message.");
+    }
+  };
+
+  const startEditMessage = (msg: ChatMessage) => {
+    setEditingMessage(msg);
+    setReplyingTo(null);
+    setMsgText(msg.text);
+    inputRef.current?.focus();
+  };
+
+  // Real-time updates via shared layout SSE (single connection)
   useEffect(() => {
     if (!session?.user) return;
     const r = session.user.role as UserRole;
     const perms = (session.user.permissions ?? []) as string[];
     if (!hasPermission(perms, "chat", r)) return;
     const moduleOk =
-      !enabledModules ||
-      enabledModules.includes("chat") ||
-      isOrgWideAdmin(r);
+      settingsLoaded &&
+      (enabledModules!.includes("chat") || isOrgWideAdmin(r));
     if (!moduleOk) return;
-    let retryTimeout: ReturnType<typeof setTimeout>;
 
-    const connect = () => {
-      const es = new EventSource("/api/chat/stream");
-      chatStreamRef.current = es;
+    const senderId = (m: ChatMessage) =>
+      String(typeof m.sender === "object" ? m.sender?._id : m.sender ?? "");
 
-      es.onmessage = (e) => {
-        try {
-          const payload = JSON.parse(e.data);
-          if (payload.type === "chat_new" && payload.messages?.length > 0) {
-            playMessageTone();
+    const onStream = (ev: Event) => {
+      const payload = (ev as CustomEvent<ChatStreamPayload>).detail;
+      if (!payload) return;
 
-            // If any message belongs to active conversation, append it
-            const newMsgs: IMessage[] = payload.messages;
-            setActiveConv((current) => {
-              if (current) {
-                const forThisConv = newMsgs.filter((m) => m.conversation === current._id);
-                if (forThisConv.length > 0) {
-                  setMessages((prev) => {
-                    const existingIds = new Set(prev.map((p) => p._id));
-                    const fresh = forThisConv.filter((m) => !existingIds.has(m._id));
-                    return fresh.length > 0 ? [...prev, ...fresh] : prev;
-                  });
-                  // mark as read since we're looking at this conv
-                  markRead(current._id);
-                }
-              }
-              return current;
-            });
+      if (payload.type === "chat_new" && payload.messages?.length) {
+        const newMsgs = payload.messages as ChatMessage[];
+        const activeId = activeConvIdRef.current;
+        const forActive = activeId
+          ? newMsgs.filter((m) => m.conversation === activeId)
+          : [];
+        const fromOthersInBackground = newMsgs.some(
+          (m) =>
+            m.conversation !== activeId &&
+            senderId(m) !== myId
+        );
+        const fromOthersInActive = forActive.some((m) => senderId(m) !== myId);
 
-            // Refresh conversation list
-            fetchConversations();
-          } else if (payload.type === "chat_heartbeat" || payload.type === "chat_init") {
-            // Silently update unread counts
-            setConversations((prev) => {
-              if (prev.length === 0 && payload.unreadCount > 0) {
-                fetchConversations();
-              }
-              return prev;
-            });
-          }
-        } catch { /* malformed */ }
-      };
+        if (fromOthersInBackground || (fromOthersInActive && document.hidden)) {
+          playMessageTone();
+        }
 
-      es.onerror = () => {
-        es.close();
-        chatStreamRef.current = null;
-        retryTimeout = setTimeout(connect, 5000);
-      };
+        if (forActive.length > 0 && activeId) {
+          mergeMessages(forActive);
+          markRead(activeId);
+        }
+        fetchConversations();
+      } else if (payload.type === "chat_update" && payload.messages?.length) {
+        const updates = payload.messages as ChatMessage[];
+        const activeId = activeConvIdRef.current;
+        if (activeId) {
+          const forThisConv = updates.filter((m) => m.conversation === activeId);
+          if (forThisConv.length > 0) mergeMessages(forThisConv);
+        }
+      } else if (payload.type === "chat_heartbeat" || payload.type === "chat_init") {
+        const unread = payload.unreadCount ?? 0;
+        if (unread !== lastGlobalUnreadRef.current) {
+          lastGlobalUnreadRef.current = unread;
+          fetchConversations();
+        }
+      }
     };
 
-    connect();
-    return () => {
-      chatStreamRef.current?.close();
-      clearTimeout(retryTimeout);
-    };
+    window.addEventListener(CHAT_STREAM_EVENT, onStream);
+    return () => window.removeEventListener(CHAT_STREAM_EVENT, onStream);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, enabledModules]);
+  }, [session, enabledModules, settingsLoaded, myId]);
 
-  // Scroll to bottom when messages change
   useEffect(() => {
+    if (skipScrollRef.current) {
+      skipScrollRef.current = false;
+      return;
+    }
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   useEffect(() => {
-    if (!activeConv) return;
+    if (!activeConv || !messageSearch.trim()) return;
+    const convId = activeConv._id;
     const timeout = setTimeout(() => {
-      fetchMessages(activeConv._id, messageSearch);
+      fetchMessages(convId, messageSearch);
     }, 250);
     return () => clearTimeout(timeout);
   }, [activeConv, messageSearch, fetchMessages]);
@@ -435,6 +509,11 @@ export default function ChatPage() {
     return getConvName(conv).charAt(0).toUpperCase();
   };
 
+  const otherParticipantIds = useMemo(() => {
+    if (!activeConv || !myId) return [];
+    return activeConv.participants.filter((p) => p._id !== myId).map((p) => p._id);
+  }, [activeConv, myId]);
+
   // Filter conversations by search
   const filteredConvs = conversations.filter((c) => {
     if (!searchQuery) return true;
@@ -475,7 +554,21 @@ export default function ChatPage() {
     );
   }
 
-  if (session && hasChatPermission && !chatModuleAllowed) {
+  if (session && session.user.orgAccessAllowed === false) {
+    return (
+      <div className="flex items-center justify-center min-h-[320px] px-4">
+        <div className="max-w-md text-center rounded-xl border border-red-200 bg-red-50 px-6 py-8">
+          <MessageCircle size={28} className="text-red-600 mx-auto mb-3" />
+          <p className="text-sm font-semibold text-red-900">Subscription required</p>
+          <p className="text-xs text-red-800/90 mt-2">
+            Chat is unavailable until billing is updated for your organization.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (session && hasChatPermission && settingsLoaded && !chatModuleAllowed) {
     return (
       <div className="flex items-center justify-center min-h-[320px] px-4">
         <div className="max-w-md text-center rounded-xl border border-slate-200 bg-slate-50 px-6 py-8">
@@ -490,7 +583,7 @@ export default function ChatPage() {
     );
   }
 
-  if (loading) {
+  if (!settingsLoaded || loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
@@ -602,7 +695,7 @@ export default function ChatPage() {
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-sm font-semibold text-gray-900 truncate">{getConvName(conv)}</p>
                     {conv.lastMessageAt && (
-                      <span className="text-[11px] text-gray-400 shrink-0">{timeAgo(conv.lastMessageAt)}</span>
+                      <span className="text-[11px] text-gray-400 shrink-0">{formatConversationListTime(conv.lastMessageAt)}</span>
                     )}
                   </div>
                   <div className="flex items-center justify-between gap-2 mt-0.5">
@@ -679,10 +772,10 @@ export default function ChatPage() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-gray-50">
+            <div ref={messagesScrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-1 bg-gradient-to-b from-gray-50 to-gray-100/80">
               {loadingMsgs || searchingMessages ? (
                 <div className="flex items-center justify-center py-8">
-                  <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                  <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
                 </div>
               ) : messages.length === 0 ? (
                 <div className="text-center py-12">
@@ -691,88 +784,74 @@ export default function ChatPage() {
                   </p>
                 </div>
               ) : (
-                messages.map((msg, idx) => {
-                  const isMe = msg.sender?._id === myId;
-                  const showAvatar = !isMe && (idx === 0 || messages[idx - 1]?.sender?._id !== msg.sender?._id);
-                  return (
-                    <div key={msg._id} className={`flex ${isMe ? "justify-end" : "justify-start"} gap-2`}>
-                      {!isMe && (
-                        <div className="w-7 shrink-0">
-                          {showAvatar && (
-                            <div className="w-7 h-7 rounded-full bg-gray-300 flex items-center justify-center text-[10px] font-bold text-gray-700">
-                              {msg.sender?.name?.charAt(0)?.toUpperCase() || "?"}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      <div className={`max-w-[70%] ${isMe ? "order-1" : ""}`}>
-                        {showAvatar && !isMe && (
-                          <p className="text-[11px] font-semibold text-gray-500 mb-0.5 ml-1">{msg.sender?.name}</p>
+                <>
+                  {hasMoreMessages && !messageSearch && (
+                    <div className="flex justify-center pb-2">
+                      <button
+                        type="button"
+                        disabled={loadingOlder}
+                        onClick={() => void loadOlderMessages()}
+                        className="text-xs font-semibold text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                      >
+                        {loadingOlder ? "Loading…" : "Load earlier messages"}
+                      </button>
+                    </div>
+                  )}
+                  {messages.map((msg, idx) => {
+                    const isMe = msg.sender?._id === myId;
+                    const showAvatar =
+                      !isMe && (idx === 0 || messages[idx - 1]?.sender?._id !== msg.sender?._id);
+                    const showName = showAvatar;
+                    const prev = idx > 0 ? messages[idx - 1]?.createdAt : undefined;
+                    return (
+                      <div key={msg._id}>
+                        {shouldShowDateSeparator(msg.createdAt, prev) && (
+                          <ChatDateSeparator dateStr={msg.createdAt} />
                         )}
-                        <div className={`px-3.5 py-2 rounded-2xl text-sm leading-relaxed ${
-                          isMe
-                            ? "bg-blue-600 text-white rounded-br-md"
-                            : "bg-white border border-gray-200 text-gray-800 rounded-bl-md"
-                        }`}>
-                          {msg.replyTo && (
-                            <div className={`mb-1.5 rounded-md border px-2 py-1 text-xs ${
-                              isMe ? "border-blue-200/70 bg-blue-500/40 text-blue-50" : "border-gray-200 bg-gray-50 text-gray-600"
-                            }`}>
-                              <p className="font-semibold">
-                                Reply to {msg.replyTo.sender?.name || "message"}
-                              </p>
-                              <p className="truncate">{msg.replyTo.text}</p>
-                            </div>
-                          )}
-                          {msg.text}
-                        </div>
-                        <div className={`mt-0.5 px-1 flex items-center gap-2 ${isMe ? "justify-end" : "justify-start"}`}>
-                          <p className="text-[10px] text-gray-400">
-                            {formatMsgDate(msg.createdAt)} · {formatMsgTime(msg.createdAt)}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => setReplyingTo(msg)}
-                            className="text-[10px] text-gray-500 hover:text-gray-800"
-                          >
-                            Reply
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => toggleReaction(msg._id, "👍🏻")}
-                            className={`text-[11px] rounded px-1 ${
-                              msg.reactions?.some((r) => r.emoji === "👍🏻" && String(r.user) === String(myId))
-                                ? "bg-blue-100 text-blue-700"
-                                : "text-gray-500 hover:bg-gray-100"
-                            }`}
-                            aria-label="React with thumbs up"
-                          >
-                            👍🏻 {msg.reactions?.filter((r) => r.emoji === "👍🏻").length || ""}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => toggleReaction(msg._id, "❌")}
-                            className={`text-[11px] rounded px-1 ${
-                              msg.reactions?.some((r) => r.emoji === "❌" && String(r.user) === String(myId))
-                                ? "bg-red-100 text-red-700"
-                                : "text-gray-500 hover:bg-gray-100"
-                            }`}
-                            aria-label="React with cross"
-                          >
-                            ❌ {msg.reactions?.filter((r) => r.emoji === "❌").length || ""}
-                          </button>
+                        <div className="py-1">
+                          <MessageBubble
+                            msg={msg}
+                            isMe={isMe}
+                            myId={myId ?? ""}
+                            showAvatar={showAvatar}
+                            showName={showName}
+                            otherParticipantIds={otherParticipantIds}
+                            onReply={setReplyingTo}
+                            onEdit={startEditMessage}
+                            onDelete={deleteMessage}
+                            onReact={toggleReaction}
+                          />
                         </div>
                       </div>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+                </>
               )}
               <div ref={messagesEndRef} />
             </div>
 
             {/* Input */}
             <div className="px-4 py-3 border-t border-gray-200 bg-white">
-              {replyingTo && (
+              {editingMessage && (
+                <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold text-amber-800">Editing message</p>
+                    <p className="text-xs text-amber-700/80 truncate">{editingMessage.text}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="text-amber-600 hover:text-amber-900"
+                    onClick={() => {
+                      setEditingMessage(null);
+                      setMsgText("");
+                    }}
+                    aria-label="Cancel edit"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+              {replyingTo && !editingMessage && (
                 <div className="mb-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-[11px] font-semibold text-gray-600">
@@ -797,9 +876,19 @@ export default function ChatPage() {
                 <input
                   ref={inputRef}
                   type="text"
-                  placeholder="Type a message..."
+                  placeholder={editingMessage ? "Edit your message…" : "Type a message… (Enter to send)"}
                   value={msgText}
                   onChange={(e) => setMsgText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void sendMessage();
+                    }
+                    if (e.key === "Escape" && editingMessage) {
+                      setEditingMessage(null);
+                      setMsgText("");
+                    }
+                  }}
                   className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-100"
                   autoFocus
                 />
@@ -807,8 +896,9 @@ export default function ChatPage() {
                   type="submit"
                   disabled={!msgText.trim() || sending}
                   className="p-2.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  title={editingMessage ? "Save edit" : "Send"}
                 >
-                  <Send size={16} />
+                  {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                 </button>
               </form>
             </div>

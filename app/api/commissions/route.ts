@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
-import { auth } from "@/lib/auth";
 import Commission from "@/models/Commission";
 import ActivityLog from "@/models/ActivityLog";
+import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/utils";
+import { getOrgUserIdsForSession, organizationIdForSessionCreate } from "@/lib/tenantRecordAccess";
 
 function canUseCommission(session: NonNullable<Awaited<ReturnType<typeof auth>>>): boolean {
   if (session.user.role === "super_admin") return true;
@@ -22,9 +23,24 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "30", 10)));
     const skip = (page - 1) * limit;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const filter: Record<string, any> = {};
+    if (session.user.role !== "super_admin") {
+      const orgId = organizationIdForSessionCreate(session);
+      if (!orgId) {
+        return NextResponse.json({ commissions: [], total: 0, page, pages: 0 });
+      }
+      const orgUserIds = await getOrgUserIdsForSession(session);
+      const orParts: Record<string, unknown>[] = [{ organization: orgId }];
+      if (orgUserIds && orgUserIds.length > 0) {
+        orParts.push({ organization: null, createdBy: { $in: orgUserIds } });
+      }
+      filter.$or = orParts;
+    }
+
     const [rows, total] = await Promise.all([
-      Commission.find({}).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-      Commission.countDocuments({}),
+      Commission.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Commission.countDocuments(filter),
     ]);
 
     return NextResponse.json({ commissions: rows, total, page, pages: Math.ceil(total / limit) });
@@ -71,6 +87,7 @@ export async function POST(req: NextRequest) {
       commissionAmount: String(body.commissionAmount ?? ""),
       remarksStatus: body.remarksStatus ?? "",
       commissionStatus: body.commissionStatus ?? "",
+      organization: organizationIdForSessionCreate(session),
       createdBy: session.user.id,
       createdByName: session.user.name ?? "",
     });

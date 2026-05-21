@@ -12,6 +12,9 @@ import {
 } from "lucide-react";
 import { useBrandingRefresh } from "@/app/branding-context";
 import { notifyAppSettingsChanged } from "@/lib/appSettingsSync";
+import { adjustHexColor, normalizeHexColor, applyBrandThemeToDocument } from "@/lib/brandTheme";
+import BrandColorEditor from "@/components/branding/BrandColorEditor";
+import { resolveBrandingAssetUrl } from "@/lib/brandingUrls";
 import { ALL_PERMISSIONS, SETTINGS_SUB_PERMISSIONS, stripModuleGranularKeys, withFullModuleGranular } from "@/lib/utils";
 import {
   audienceSupportsOrderCustomization,
@@ -136,6 +139,7 @@ interface AppSettings {
   logoPath: string;
   faviconPath: string;
   brandColor: string;
+  brandSecondaryColor: string;
   address: string;
   phone: string;
   email: string;
@@ -210,6 +214,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   logoPath: "",
   faviconPath: "",
   brandColor: "#2563eb",
+  brandSecondaryColor: "",
   address: "",
   phone: "",
   email: "",
@@ -1093,12 +1098,18 @@ export default function SettingsPage() {
   // Logo upload
   const [logoPreview, setLogoPreview] = useState<string>("");
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [logoUploadError, setLogoUploadError] = useState("");
   const logoInputRef = useRef<HTMLInputElement>(null);
-
-  // QR upload
   const [qrPreview, setQrPreview] = useState<string>("");
   const [uploadingQr, setUploadingQr] = useState(false);
+  const [qrUploadError, setQrUploadError] = useState("");
   const qrInputRef = useRef<HTMLInputElement>(null);
+
+  // Favicon upload
+  const [faviconPreview, setFaviconPreview] = useState<string>("");
+  const [uploadingFavicon, setUploadingFavicon] = useState(false);
+  const [faviconUploadError, setFaviconUploadError] = useState("");
+  const faviconInputRef = useRef<HTMLInputElement>(null);
 
   // Checklists
   const [checklists, setChecklists] = useState<Checklist[]>([]);
@@ -1122,14 +1133,21 @@ export default function SettingsPage() {
                 : { name: c.name, universities: normalizeUniversitiesArray(c.universities) }
             );
           }
+          const primaryLoaded = normalizeHexColor(d.brandColor || "#2563eb");
+          const secondaryLoaded = normalizeHexColor(
+            d.brandSecondaryColor?.trim() || adjustHexColor(primaryLoaded, -12)
+          );
           setSettings((prev) => ({
             ...prev,
             ...d,
+            brandColor: primaryLoaded,
+            brandSecondaryColor: secondaryLoaded,
             dashboardWidgets: mergeDashboardWidgetsFromApi(d.dashboardWidgets),
             dashboardWidgetOrder: mergeDashboardWidgetOrderFromApi(d.dashboardWidgetOrder),
           }));
-          if (d.logoPath) setLogoPreview(d.logoPath);
-          if (d.paymentQrPath) setQrPreview(d.paymentQrPath);
+          if (d.logoPath) setLogoPreview(resolveBrandingAssetUrl(d.logoPath));
+          if (d.paymentQrPath) setQrPreview(resolveBrandingAssetUrl(d.paymentQrPath));
+          if (d.faviconPath) setFaviconPreview(resolveBrandingAssetUrl(d.faviconPath));
         }
         setLoading(false);
       })
@@ -1386,13 +1404,29 @@ export default function SettingsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadingLogo(true);
+    setLogoUploadError("");
     const formData = new FormData();
     formData.append("logo", file);
     try {
       const res = await fetch("/api/settings/logo", { method: "POST", body: formData });
-      const d = await res.json();
-      if (d.logoPath) { setLogoPreview(d.logoPath); set("logoPath", d.logoPath); refreshBranding(); }
-    } finally { setUploadingLogo(false); }
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLogoUploadError(typeof d.error === "string" ? d.error : "Logo upload failed");
+        return;
+      }
+      if (d.logoPath) {
+        const url = resolveBrandingAssetUrl(d.logoPath);
+        setLogoPreview(url);
+        set("logoPath", d.logoPath);
+        refreshBranding();
+        notifyAppSettingsChanged();
+      }
+    } catch {
+      setLogoUploadError("Network error while uploading logo");
+    } finally {
+      setUploadingLogo(false);
+      if (logoInputRef.current) logoInputRef.current.value = "";
+    }
   };
 
   // ── QR upload ──
@@ -1400,14 +1434,72 @@ export default function SettingsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadingQr(true);
+    setQrUploadError("");
     const formData = new FormData();
     formData.append("qr", file);
     try {
       const res = await fetch("/api/settings/qr", { method: "POST", body: formData });
-      const d = await res.json();
-      if (d.paymentQrPath) { setQrPreview(d.paymentQrPath); set("paymentQrPath", d.paymentQrPath); refreshBranding(); }
-    } finally { setUploadingQr(false); }
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setQrUploadError(typeof d.error === "string" ? d.error : "QR upload failed");
+        return;
+      }
+      if (d.paymentQrPath) {
+        const url = resolveBrandingAssetUrl(d.paymentQrPath);
+        setQrPreview(url);
+        set("paymentQrPath", d.paymentQrPath);
+        refreshBranding();
+        notifyAppSettingsChanged();
+      }
+    } catch {
+      setQrUploadError("Network error while uploading QR code");
+    } finally {
+      setUploadingQr(false);
+      if (qrInputRef.current) qrInputRef.current.value = "";
+    }
   };
+
+  // ── Favicon upload ──
+  const handleFaviconUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingFavicon(true);
+    setFaviconUploadError("");
+    const formData = new FormData();
+    formData.append("favicon", file);
+    try {
+      const res = await fetch("/api/settings/favicon", { method: "POST", body: formData });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setFaviconUploadError(typeof d.error === "string" ? d.error : "Favicon upload failed");
+        return;
+      }
+      if (d.faviconPath) {
+        const url = resolveBrandingAssetUrl(d.faviconPath);
+        setFaviconPreview(url);
+        set("faviconPath", d.faviconPath);
+        refreshBranding();
+        notifyAppSettingsChanged();
+      }
+    } catch {
+      setFaviconUploadError("Network error while uploading favicon");
+    } finally {
+      setUploadingFavicon(false);
+      if (faviconInputRef.current) faviconInputRef.current.value = "";
+    }
+  };
+
+  const primaryBrand = normalizeHexColor(settings.brandColor);
+  const secondaryBrand = normalizeHexColor(settings.brandSecondaryColor || settings.brandColor);
+
+  // Live-apply brand colors while editing (reverts via refreshBranding on leave)
+  useEffect(() => {
+    if (tab !== "branding" || loading) return;
+    applyBrandThemeToDocument(primaryBrand, secondaryBrand);
+    return () => {
+      refreshBranding();
+    };
+  }, [tab, loading, primaryBrand, secondaryBrand, refreshBranding]);
 
   // ── Checklist helpers ──
   const loadCountry = async (country: string) => {
@@ -1566,7 +1658,52 @@ export default function SettingsPage() {
                         </button>
                       )}
                     </div>
-                    <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                    <input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/jpg,image/gif,image/svg+xml,image/webp" className="hidden" onChange={handleLogoUpload} />
+                    {logoUploadError && (
+                      <p className="text-xs text-red-600 mt-2">{logoUploadError}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Favicon */}
+              <div>
+                <p className="text-xs font-semibold text-gray-600 mb-2">Browser Tab Icon (Favicon)</p>
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center bg-gray-50 overflow-hidden">
+                    {faviconPreview ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={faviconPreview} alt="Favicon" className="w-full h-full object-contain p-1" />
+                    ) : (
+                      <ImageIcon size={20} className="text-gray-300" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-600 mb-2">Small icon shown in the browser tab (PNG, ICO, SVG — max 1 MB)</p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => faviconInputRef.current?.click()}
+                        disabled={uploadingFavicon}
+                        className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-gray-500 rounded-lg text-xs font-medium text-gray-700 transition-colors"
+                      >
+                        <Upload size={12} />
+                        {uploadingFavicon ? "Uploading…" : "Upload Favicon"}
+                      </button>
+                      {faviconPreview && (
+                        <button
+                          type="button"
+                          onClick={() => { setFaviconPreview(""); set("faviconPath", ""); }}
+                          className="px-3 py-2 border border-red-200 hover:border-red-400 text-red-500 hover:text-red-700 rounded-lg text-xs font-medium transition-colors"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    <input ref={faviconInputRef} type="file" accept="image/png,image/jpeg,image/x-icon,image/vnd.microsoft.icon,image/svg+xml,image/webp" className="hidden" onChange={handleFaviconUpload} />
+                    {faviconUploadError && (
+                      <p className="text-xs text-red-600 mt-2">{faviconUploadError}</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1598,30 +1735,19 @@ export default function SettingsPage() {
             </div>
           </SectionCard>
 
-          <SectionCard title="Brand Color" description="Set the primary brand color used throughout the interface">
-            <div className="flex items-center gap-5">
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Primary Brand Color</label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={settings.brandColor}
-                    onChange={(e) => set("brandColor", e.target.value)}
-                    className="w-12 h-12 rounded-lg border border-gray-300 cursor-pointer p-0.5"
-                  />
-                  <div>
-                    <p className="text-sm font-mono font-medium text-gray-900">{settings.brandColor.toUpperCase()}</p>
-                    <p className="text-xs text-gray-500">Click to change color</p>
-                  </div>
-                  <div
-                    className="w-32 h-12 rounded-lg flex items-center justify-center text-white text-xs font-semibold shadow-sm"
-                    style={{ backgroundColor: settings.brandColor }}
-                  >
-                    Preview
-                  </div>
-                </div>
-              </div>
-            </div>
+          <SectionCard title="Brand Colors" description="Primary and accent colors applied across the CRM — sidebar, buttons, and highlights. Changes preview instantly; click Save to persist.">
+            <BrandColorEditor
+              primary={settings.brandColor}
+              secondary={settings.brandSecondaryColor}
+              shortCode={settings.shortCode}
+              companyName={settings.companyName}
+              logoUrl={logoPreview}
+              onPrimaryChange={(hex) => set("brandColor", hex)}
+              onSecondaryChange={(hex) => set("brandSecondaryColor", hex)}
+              onBothChange={(p, s) => {
+                setSettings((prev) => ({ ...prev, brandColor: p, brandSecondaryColor: s }));
+              }}
+            />
           </SectionCard>
 
           <SectionCard title="Online Payment QR Code" description="Upload the QR code displayed to users when they select Online as the exam payment method">
@@ -1661,6 +1787,9 @@ export default function SettingsPage() {
                   )}
                 </div>
                 <input ref={qrInputRef} type="file" accept="image/png,image/jpeg,image/jpg,image/webp" className="hidden" onChange={handleQrUpload} />
+                {qrUploadError && (
+                  <p className="text-xs text-red-600 mt-2">{qrUploadError}</p>
+                )}
               </div>
             </div>
           </SectionCard>

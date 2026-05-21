@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { formatDate, formatDateTime, getStatusColor, getRoleLabel, COUNTRIES } from "@/lib/utils";
+import { canBypassVisaAdmissionLock } from "@/lib/studentVisaLock";
 import { mergeRemarksForPipeline, type DeptRemarkLists } from "@/lib/admissionPipelineRemarks";
 import { normalizeUniversitiesArray, universityEntryNames } from "@/lib/countryUniversities";
 import { formatStandingLabel, standingInlineStyle, standingOptionPrefix } from "@/lib/studentStandingUi";
@@ -627,8 +628,11 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   const canEditAdmission = ["super_admin", "org_admin", "admission_team", "application_team", "visa_team"].includes(role);
   const canViewAdmission = canEditAdmission || ["counsellor", "front_desk"].includes(role);
   const canVisa = ["super_admin", "visa_team"].includes(role);
+  const canBypassVisaLock = canBypassVisaAdmissionLock(role);
   const isCountryVisaApproved = (country: string) =>
     !!student.countries?.find((c) => c.country === country)?.visaApprovedAt;
+  const isAdmissionStatusLocked = (country: string) =>
+    isCountryVisaApproved(country) && !canBypassVisaLock;
   const filteredDocs = docs.filter((doc) => !selectedCountry || doc.country === selectedCountry);
 
   const counselledEvent =
@@ -1201,7 +1205,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
 
               <div className="space-y-3">
                 {student.admissionDetails?.map((entry, index) => {
-                  const rowVisaLocked = isCountryVisaApproved(entry.country);
+                  const rowVisaLocked = isAdmissionStatusLocked(entry.country);
                   const canEditAdmissionRow = canEditAdmission && !rowVisaLocked;
                   return (
                   <div key={entry._id ?? index} className={`p-4 rounded-xl border transition-all duration-300 ${entry.closed ? "bg-gray-100 border-gray-300" : "bg-gray-50 border-gray-100"}`}>
@@ -1219,12 +1223,16 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                         </div>
 
                         <div className="p-6 space-y-6">
-                          {isCountryVisaApproved(editAdmissionForm.country) && (
+                          {isAdmissionStatusLocked(editAdmissionForm.country) ? (
                             <p className="text-xs text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 leading-relaxed">
                               <Lock size={12} className="inline-block mr-1.5 align-text-bottom text-emerald-700" />
-                              Visa approved for this country - <strong>stage</strong>, <strong>standing</strong>, <strong>remarks</strong>, and <strong>pipeline</strong> are locked. You can still update other fields below.
+                              Visa approved for this country — <strong>stage</strong>, <strong>standing</strong>, <strong>remarks</strong>, and <strong>pipeline</strong> are locked for other teams. You can still update other fields below.
                             </p>
-                          )}
+                          ) : isCountryVisaApproved(editAdmissionForm.country) && canBypassVisaLock ? (
+                            <p className="text-xs text-blue-900 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2.5 leading-relaxed">
+                              Visa approved — as Visa team you can still update <strong>stage</strong> and <strong>pipeline</strong> (e.g. set pipeline to Visa).
+                            </p>
+                          ) : null}
                           {/* Section: Institution */}
                           <div>
                             <div className="flex items-center gap-2 mb-4">
@@ -1352,7 +1360,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Stage</label>
                                   <select
                                     value={editAdmissionForm.stage}
-                                    disabled={isCountryVisaApproved(editAdmissionForm.country)}
+                                    disabled={isAdmissionStatusLocked(editAdmissionForm.country)}
                                     onChange={(e) => {
                                       const v = e.target.value;
                                       const list = getStagesForCountry(editAdmissionForm.country);
@@ -1414,7 +1422,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Standing</label>
                                   <select
                                     value={editAdmissionForm.standing}
-                                    disabled={isCountryVisaApproved(editAdmissionForm.country)}
+                                    disabled={isAdmissionStatusLocked(editAdmissionForm.country)}
                                     onChange={(e) => setEditAdmissionForm((form) => ({ ...form, standing: e.target.value }))}
                                     className="w-full px-4 py-2.5 bg-white border border-orange-200 rounded-xl text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                                   >
@@ -1431,7 +1439,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Remarks</label>
                                   <select
                                     value={editAdmissionForm.remarks}
-                                    disabled={isCountryVisaApproved(editAdmissionForm.country)}
+                                    disabled={isAdmissionStatusLocked(editAdmissionForm.country)}
                                     onChange={(e) => setEditAdmissionForm((form) => ({ ...form, remarks: e.target.value }))}
                                     className="w-full px-4 py-2.5 bg-white border border-amber-200 rounded-xl text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                                   >
@@ -1445,7 +1453,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Pipeline</label>
                                   <select
                                     value={editAdmissionForm.pipeline ?? ""}
-                                    disabled={isCountryVisaApproved(editAdmissionForm.country)}
+                                    disabled={isAdmissionStatusLocked(editAdmissionForm.country)}
                                     onChange={(e) => setEditAdmissionForm((form) => ({ ...form, pipeline: e.target.value }))}
                                     className="w-full px-4 py-2.5 bg-white border border-purple-200 rounded-xl text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                                   >
@@ -2185,7 +2193,9 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                       ) : null}
                     </p>
                     <p className="text-xs text-gray-500 mb-3">
-                      Stage, standing, remarks, and pipeline for admission entries in this country are locked. The counsellor target was decremented when this was first approved.
+                      {canBypassVisaLock
+                        ? "Visa is approved. You can still update stage and pipeline in Admission Details below (e.g. set pipeline to Visa)."
+                        : "Stage, standing, remarks, and pipeline for admission entries in this country are locked. The counsellor target was decremented when this was first approved."}
                     </p>
                     <button
                       type="button"

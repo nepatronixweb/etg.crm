@@ -7,6 +7,7 @@ import { auth } from "@/lib/auth";
 import { getAppSettingsLeanForOrganizationId } from "@/lib/appSettingsScope";
 import { isRoleSlugAllowed, normalizeApplicationRoles } from "@/lib/applicationRoles";
 import { isBranchInOrganization, isUserInOrganization } from "@/lib/orgUserScope";
+import { validateUserRolesSelection, rolesIncludeSuperAdmin, resolveUserRoles } from "@/lib/userRoles";
 
 function canManageUsers(session: { user: { role: string; permissions?: string[] } }): boolean {
   if (session.user.role === "super_admin") return true;
@@ -154,11 +155,23 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           }
         }
         body.roles = normalizedRoles;
+        const rolesError = validateUserRolesSelection(normalizedRoles);
+        if (rolesError) {
+          return NextResponse.json({ error: rolesError }, { status: 400 });
+        }
         if (typeof body.activeRole !== "string" || !normalizedRoles.includes(body.activeRole.trim())) {
           body.activeRole = String(body.role);
         } else {
           body.activeRole = body.activeRole.trim();
         }
+      } else if (targetUser) {
+        const existing = resolveUserRoles({
+          role: String((targetUser as { role?: string }).role ?? ""),
+          roles: (targetUser as { roles?: unknown }).roles as string[] | undefined,
+        });
+        const normalizedRoles = normalizeRolesPayload(existing, String(body.role));
+        body.roles = normalizedRoles;
+        body.activeRole = String(body.role);
       }
     }
 
@@ -182,6 +195,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         }
       }
       body.roles = normalizedRoles;
+      const rolesError = validateUserRolesSelection(normalizedRoles);
+      if (rolesError) {
+        return NextResponse.json({ error: rolesError }, { status: 400 });
+      }
       if (typeof body.activeRole !== "string" || !normalizedRoles.includes(body.activeRole.trim())) {
         body.activeRole = normalizedRoles[0] || fallbackRole;
       } else {
@@ -197,7 +214,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       if (target?.role === "super_admin" || targetRoles.includes("super_admin")) {
         return NextResponse.json({ error: "Only super admins can edit super admin accounts" }, { status: 403 });
       }
-      if (body.role === "super_admin") {
+      if (body.role === "super_admin" || (Array.isArray(body.roles) && rolesIncludeSuperAdmin(body.roles as string[]))) {
         return NextResponse.json({ error: "Only super admins can assign the super admin role" }, { status: 403 });
       }
     }

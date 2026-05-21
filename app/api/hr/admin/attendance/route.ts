@@ -4,6 +4,7 @@ import connectDB from "@/lib/mongodb";
 import Attendance from "@/models/Attendance";
 import { isHrAdmin } from "@/lib/hr/auth";
 import { monthToDateRange } from "@/lib/hr/salary";
+import { getOrgUserIdsForSession } from "@/lib/tenantRecordAccess";
 
 export async function GET(req: NextRequest) {
   try {
@@ -44,6 +45,17 @@ export async function GET(req: NextRequest) {
       date: { $gte: from, $lte: to },
     };
     if (userId) filter.userId = userId;
+
+    if (session.user.role !== "super_admin") {
+      const orgUserIds = await getOrgUserIdsForSession(session);
+      if (!orgUserIds || orgUserIds.length === 0) {
+        return NextResponse.json({ from, to, attendance: [] });
+      }
+      if (userId && !orgUserIds.some((id) => id.toString() === userId)) {
+        return NextResponse.json({ from, to, attendance: [] });
+      }
+      if (!userId) filter.userId = { $in: orgUserIds };
+    }
 
     const rows = await Attendance.find(filter)
       .populate("userId", "name email role")

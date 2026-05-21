@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
 import { DEFAULT_APPLICATION_ROLES } from "@/lib/applicationRoles";
+import { DEFAULT_INVENTORY_CATEGORIES, DEFAULT_INVENTORY_UNITS } from "@/lib/inventoryConfig";
 import { DEFAULT_TELECALLER_TRANSFER_OUTCOMES } from "@/lib/telecallerTransferConfig";
 import { universityEntriesFromNames, type UniversityEntry } from "@/lib/countryUniversities";
 
@@ -13,6 +14,8 @@ export interface IAppSettings extends Document {
   logoPath: string;
   faviconPath: string;
   brandColor: string;
+  /** Darker accent for sidebar / buttons; defaults to brandColor when empty. */
+  brandSecondaryColor: string;
   // Contact
   address: string;
   phone: string;
@@ -69,6 +72,10 @@ export interface IAppSettings extends Document {
   dashboardWidgets: Record<string, boolean>;
   /** Per-audience widget order (ids only; merged with defaults on read). */
   dashboardWidgetOrder: Record<string, string[]>;
+  /** Org-defined inventory categories (slug + label). */
+  inventoryCategories: { slug: string; label: string }[];
+  /** Units of measure for consumable stock. */
+  inventoryUnits: string[];
 }
 
 /** String-only seed; converted to `UniversityEntry[]` for schema default typing. */
@@ -115,6 +122,7 @@ const AppSettingsSchema = new Schema<IAppSettings>(
     logoPath:    { type: String, default: "" },
     faviconPath: { type: String, default: "" },
     brandColor:  { type: String, default: "#2563eb" },
+    brandSecondaryColor: { type: String, default: "" },
     // Contact
     address:  { type: String, default: "" },
     phone:    { type: String, default: "" },
@@ -388,6 +396,14 @@ const AppSettingsSchema = new Schema<IAppSettings>(
     },
     dashboardWidgets: { type: Schema.Types.Mixed, default: () => ({}) },
     dashboardWidgetOrder: { type: Schema.Types.Mixed, default: () => ({}) },
+    inventoryCategories: {
+      type: [{ slug: { type: String, required: true }, label: { type: String, required: true } }],
+      default: () => DEFAULT_INVENTORY_CATEGORIES.map((c) => ({ ...c })),
+    },
+    inventoryUnits: {
+      type: [String],
+      default: () => [...DEFAULT_INVENTORY_UNITS],
+    },
   },
   { timestamps: true }
 );

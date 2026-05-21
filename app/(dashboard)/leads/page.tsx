@@ -33,10 +33,6 @@ import {
 } from "@/lib/telecallerTransferConfig";
 import type { TelecallerTransferOutcome } from "@/types/telecallerTransfer";
 import CounselledTimeInline from "@/components/CounselledTimeInline";
-import {
-  withLeadFilterDefaultFromTime,
-  withLeadFilterDefaultToTime,
-} from "@/lib/dateTimeRangeFilterDefaults";
 import { fdWorkflowChoicesForPicker } from "@/lib/fdStatusOptions";
 import { useFdStatusOptions } from "@/lib/useFdStatusOptions";
 import { subscribeAppSettingsChanged } from "@/lib/appSettingsSync";
@@ -73,17 +69,32 @@ const APPLY_LEVEL_FILTERS: { value: string; label: string }[] = [
   { value: "phd", label: "PhD" },
 ];
 
+/** Current / completed qualification level (Student Academic Information). */
+const STUDENT_ACADEMIC_LEVEL_OPTIONS: { value: string; label: string }[] = [
+  { value: "+2", label: "+2" },
+  { value: "bachelors", label: "Bachelors" },
+  { value: "masters", label: "Masters" },
+  { value: "diploma", label: "Diploma" },
+  { value: "others", label: "Others" },
+];
+
+const PASSOUT_YEAR_OPTIONS = Array.from({ length: 41 }, (_, i) =>
+  (new Date().getFullYear() + 5 - i).toString()
+);
+
 const FIELD_CLASS =
   "w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-colors";
 
 const LABEL_CLASS = "block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide";
 const REQUIRED_FORM_KEYS = new Set(["name", "phone", "source", "branch"]);
 
-/** datetime-local value (no TZ) → UTC ISO for API (Mongo createdAt is UTC). */
-function localDateTimeInputToUtcIsoParam(v: string): string {
-  const ms = new Date(v.trim()).getTime();
-  if (Number.isNaN(ms)) return "";
-  return new Date(ms).toISOString();
+/** Normalize date filter to YYYY-MM-DD for API (?from / ?to). */
+function leadFilterDateParam(v: string): string {
+  const t = v.trim();
+  if (!t) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  if (t.includes("T")) return t.slice(0, 10);
+  return t;
 }
 
 function LeadsPageContent() {
@@ -178,7 +189,7 @@ function LeadsPageContent() {
     visitCaptured: false, visitedAt: "", visitPurpose: "",
     captureVisitEntries: [{ visitedAt: "", visitPurpose: "" }],
     appendCaptureVisit: false,
-    academicYear: "", applyLevel: "", course: "", intakeYear: "", intakeQuarter: "",
+    academicYear: "", passoutYear: "", applyLevel: "", course: "", intakeYear: "", intakeQuarter: "",
   });
 
   const searchRef = useRef(search);
@@ -193,12 +204,12 @@ function LeadsPageContent() {
       if (filterAssignedTo) params.set("assignedTo", filterAssignedTo);
       if (filterSource) params.set("source", filterSource);
       if (filterDateFrom) {
-        const iso = localDateTimeInputToUtcIsoParam(filterDateFrom);
-        if (iso) params.set("from", iso);
+        const d = leadFilterDateParam(filterDateFrom);
+        if (d) params.set("from", d);
       }
       if (filterDateTo) {
-        const iso = localDateTimeInputToUtcIsoParam(filterDateTo);
-        if (iso) params.set("to", iso);
+        const d = leadFilterDateParam(filterDateTo);
+        if (d) params.set("to", d);
       }
       if (filterService) params.set("service", filterService);
       if (filterLeadStage) params.set("stage", filterLeadStage);
@@ -432,6 +443,8 @@ function LeadsPageContent() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const modalSessionRef = useRef(0);
+  /** Visits loaded from DB when edit modal opens — only rows after this index are sent on update. */
+  const captureVisitBaselineRef = useRef(0);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -461,11 +474,12 @@ function LeadsPageContent() {
       visitCaptured: false, visitedAt: "", visitPurpose: "",
       captureVisitEntries: [{ visitedAt: "", visitPurpose: "" }],
       appendCaptureVisit: false,
-      academicYear: "", applyLevel: "", course: "", intakeYear: "", intakeQuarter: "",
+      academicYear: "", passoutYear: "", applyLevel: "", course: "", intakeYear: "", intakeQuarter: "",
     });
     setAttachedFiles([]);
     setSubmitError("");
     setEditingLead(null);
+    captureVisitBaselineRef.current = 0;
   };
 
   const closeLeadModalInternal = (force: boolean) => {
@@ -510,6 +524,12 @@ function LeadsPageContent() {
     const captureVisitEntries = existingCaptureVisits.length > 0
       ? existingCaptureVisits
       : (fallbackSingleVisit.visitedAt || fallbackSingleVisit.visitPurpose ? [fallbackSingleVisit] : [{ visitedAt: "", visitPurpose: "" }]);
+    captureVisitBaselineRef.current =
+      existingCaptureVisits.length > 0
+        ? existingCaptureVisits.length
+        : fallbackSingleVisit.visitedAt || fallbackSingleVisit.visitPurpose
+          ? 1
+          : 0;
 
     setForm({
       name: lead.name || "",
@@ -552,6 +572,7 @@ function LeadsPageContent() {
       captureVisitEntries,
       appendCaptureVisit: false,
       academicYear: lead.academicYear || "",
+      passoutYear: (lead as unknown as { passoutYear?: string }).passoutYear || "",
       applyLevel: lead.applyLevel || "",
       course: lead.course || "",
       intakeYear: lead.intakeYear || "",
@@ -568,10 +589,11 @@ function LeadsPageContent() {
     openEditForm(lead);
     setForm((prev) => ({
       ...prev,
-      source: "capture_visit",
       visitCaptured: true,
-      visitedAt: prev.visitedAt || new Date().toISOString().slice(0, 10),
-      captureVisitEntries: [...(prev.captureVisitEntries || []), { visitedAt: new Date().toISOString().slice(0, 10), visitPurpose: "" }],
+      captureVisitEntries: [
+        ...(prev.captureVisitEntries || []),
+        { visitedAt: new Date().toISOString().slice(0, 10), visitPurpose: "" },
+      ],
       appendCaptureVisit: true,
     }));
   };
@@ -627,7 +649,7 @@ function LeadsPageContent() {
     payload.phone = trimmedPhone;
     payload.source = normalizedSource;
     payload.branch = trimmedBranch;
-    const captureVisitEntries = form.visitCaptured
+    const allCaptureVisitEntries = form.visitCaptured
       ? (form.captureVisitEntries || [])
           .map((v) => ({
             visitedAt: String(v.visitedAt || "").trim(),
@@ -635,16 +657,25 @@ function LeadsPageContent() {
           }))
           .filter((v) => v.visitedAt)
       : [];
-    const latestCaptureVisit = captureVisitEntries[captureVisitEntries.length - 1];
-    payload.visitPurpose = latestCaptureVisit?.visitPurpose || "";
-    payload.visitedAt = latestCaptureVisit?.visitedAt ? new Date(latestCaptureVisit.visitedAt).toISOString() : "";
+    const captureVisitEntries = editingLead
+      ? allCaptureVisitEntries.slice(captureVisitBaselineRef.current)
+      : allCaptureVisitEntries;
+    delete payload.captureVisitEntries;
+    delete payload.appendCaptureVisit;
     if (captureVisitEntries.length > 0) {
+      const latestCaptureVisit = allCaptureVisitEntries[allCaptureVisitEntries.length - 1];
+      payload.visitPurpose = latestCaptureVisit?.visitPurpose || "";
+      payload.visitedAt = latestCaptureVisit?.visitedAt
+        ? new Date(latestCaptureVisit.visitedAt).toISOString()
+        : "";
       payload.captureVisitEntries = captureVisitEntries.map((v) => ({
         visitedAt: new Date(v.visitedAt).toISOString(),
         visitPurpose: v.visitPurpose,
       }));
+    } else if (editingLead) {
+      delete payload.visitedAt;
+      delete payload.visitPurpose;
     }
-    delete payload.appendCaptureVisit;
     if (!payload.assignedTo) delete payload.assignedTo;
     if (!editingLead) {
       delete payload.status;
@@ -814,12 +845,18 @@ function LeadsPageContent() {
     return SERVICES.filter((s) => set.has(s));
   }, [filterFacetMeta?.services]);
 
-  const yearOptions = useMemo(() => {
-    const years = Array.from({ length: 6 }, (_, i) => (new Date().getFullYear() + i - 1).toString());
+  const academicLevelFilterOptions = useMemo(() => {
     const allow = filterFacetMeta?.academicYears;
-    if (!allow?.length) return years;
+    if (!allow?.length) return STUDENT_ACADEMIC_LEVEL_OPTIONS;
     const set = new Set(allow);
-    return years.filter((y) => set.has(y));
+    const fromDefs = STUDENT_ACADEMIC_LEVEL_OPTIONS.filter((o) => set.has(o.value));
+    const extras = allow
+      .filter((v) => !STUDENT_ACADEMIC_LEVEL_OPTIONS.some((o) => o.value === v))
+      .map((v) => ({
+        value: v,
+        label: v.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      }));
+    return [...fromDefs, ...extras];
   }, [filterFacetMeta?.academicYears]);
 
   const applyLevelOptions = useMemo(() => {
@@ -1081,18 +1118,13 @@ function LeadsPageContent() {
     return `${dd}-${mm}-${yyyy} ${hh}:${min}`;
   };
 
-  /** Display value from filter string (YYYY-MM-DD or datetime-local) in the chip row. */
-  const formatDateFilterChip = (v: string, bound: "from" | "to") => {
+  /** Display date-only filter value in the chip row. */
+  const formatDateFilterChip = (v: string) => {
     if (!v) return "";
-    const parsed =
-      v.length <= 10 && !v.includes("T")
-        ? bound === "from"
-          ? `${v}T01:00:00`
-          : `${v}T23:00:00`
-        : v;
-    const dt = new Date(parsed);
-    if (Number.isNaN(dt.getTime())) return v;
-    return formatLeadDateTime(dt);
+    const datePart = leadFilterDateParam(v);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return v;
+    const [yyyy, mm, dd] = datePart.split("-");
+    return `${dd}-${mm}-${yyyy}`;
   };
 
   // ── Export filtered leads to Excel (CSV) ──
@@ -1164,7 +1196,7 @@ function LeadsPageContent() {
             onClick={() => router.replace(leadsPathBase)}
             className="shrink-0 rounded-md border border-sky-300 bg-white px-3 py-1.5 text-xs font-medium text-sky-900 hover:bg-sky-100"
           >
-            Show all leads
+            Show all enquiries
           </button>
         </div>
       )}
@@ -1172,19 +1204,25 @@ function LeadsPageContent() {
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Leads</h1>
+          <h1 className="text-xl font-semibold text-gray-900">{isEnquiriesRoute ? "Enquiries" : "Leads"}</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {loading
               ? "Loading…"
               : isTelecallerFreshView
                 ? (() => {
                     const t = totalLeads;
-                    const pl = t !== 1 ? "s" : "";
+                    const label = isEnquiriesRoute
+                      ? t !== 1
+                        ? "fresh enquiries"
+                        : "fresh enquiry"
+                      : t !== 1
+                        ? "fresh leads"
+                        : "fresh lead";
                     return search.trim()
-                      ? `${filtered.length} of ${t} fresh lead${pl} match search`
-                      : `${t} fresh lead${pl}`;
+                      ? `${filtered.length} of ${t} ${label} match search`
+                      : `${t} ${label}`;
                   })()
-                : `${filtered.length} of ${totalLeads || leads.length} leads`}
+                : `${filtered.length} of ${totalLeads || leads.length} ${isEnquiriesRoute ? "enquiries" : "leads"}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1194,14 +1232,14 @@ function LeadsPageContent() {
               className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-700 text-white px-4 py-2.5 rounded-md text-sm font-medium transition-colors"
             >
               <Plus size={15} />
-              Add Lead
+              Add {isEnquiriesRoute ? "Enquiry" : "Lead"}
             </button>
           )}
           {canExport && (
           <button
             onClick={exportToExcel}
             disabled={loading || filtered.length === 0}
-            title={`Export ${filtered.length} lead${filtered.length !== 1 ? "s" : ""} to Excel`}
+            title={`Export ${filtered.length} ${isEnquiriesRoute ? "enquir" : "lead"}${filtered.length !== 1 ? (isEnquiriesRoute ? "ies" : "s") : (isEnquiriesRoute ? "y" : "")} to Excel`}
             className="inline-flex items-center gap-2 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed px-4 py-2.5 rounded-md text-sm font-medium transition-colors"
           >
             <FileSpreadsheet size={15} />
@@ -1332,16 +1370,16 @@ function LeadsPageContent() {
 
           {/* Academic Year */}
           <div className="flex-1 min-w-[8rem] xl:min-w-24 relative">
-            <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Acad. Year</label>
+            <label className="absolute left-3 top-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest pointer-events-none">Acad. Level</label>
             <select
               value={filterAcademicYear}
               onChange={(e) => setFilterAcademicYear(e.target.value)}
-              title="Intake years in current results"
+              title="Student academic level in current results"
               className="w-full pt-7 pb-2 px-3 bg-transparent text-sm text-gray-700 focus:outline-none focus:bg-gray-50 cursor-pointer appearance-none pr-8"
             >
-              <option value="">All years</option>
-              {yearOptions.map((y) => (
-                <option key={y} value={y}>{y}</option>
+              <option value="">All levels</option>
+              {academicLevelFilterOptions.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
             <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -1428,13 +1466,13 @@ function LeadsPageContent() {
             {filterAssignedTo && <span className="flex items-center gap-1 text-xs bg-amber-50 text-amber-700 border border-amber-100 px-2.5 py-0.5 rounded-full font-medium">{counsellors.find((c) => c._id === filterAssignedTo)?.name ?? "Assigned"}<button onClick={() => setFilterAssignedTo("")}><X size={10} /></button></span>}
             {filterDateFrom && (
               <span className="flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full font-medium max-w-[min(100%,14rem)] truncate" title={filterDateFrom}>
-                From: {formatDateFilterChip(filterDateFrom, "from")}
+                From: {formatDateFilterChip(filterDateFrom)}
                 <button type="button" onClick={() => setFilterDateFrom("")}><X size={10} /></button>
               </span>
             )}
             {filterDateTo && (
               <span className="flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full font-medium max-w-[min(100%,14rem)] truncate" title={filterDateTo}>
-                To: {formatDateFilterChip(filterDateTo, "to")}
+                To: {formatDateFilterChip(filterDateTo)}
                 <button type="button" onClick={() => setFilterDateTo("")}><X size={10} /></button>
               </span>
             )}
@@ -2181,24 +2219,29 @@ function LeadsPageContent() {
                   </div>
 
                   <div className="sm:col-span-2 p-3 rounded-md border border-gray-200 bg-gray-50 space-y-3">
-                    <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 sm:col-span-1">
-                      <input
-                        type="checkbox"
-                        checked={form.visitCaptured}
-                        onChange={(e) =>
-                          setForm({
-                            ...form,
-                            visitCaptured: e.target.checked,
-                            captureVisitEntries:
-                              e.target.checked && (!form.captureVisitEntries || form.captureVisitEntries.length === 0)
-                                ? [{ visitedAt: new Date().toISOString().slice(0, 10), visitPurpose: "" }]
-                                : form.captureVisitEntries,
-                          })
-                        }
-                        className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-500"
-                      />
-                      Capture Visit
-                    </label>
+                    <div>
+                      <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 sm:col-span-1">
+                        <input
+                          type="checkbox"
+                          checked={form.visitCaptured}
+                          onChange={(e) =>
+                            setForm({
+                              ...form,
+                              visitCaptured: e.target.checked,
+                              captureVisitEntries:
+                                e.target.checked && (!form.captureVisitEntries || form.captureVisitEntries.length === 0)
+                                  ? [{ visitedAt: new Date().toISOString().slice(0, 10), visitPurpose: "" }]
+                                  : form.captureVisitEntries,
+                            })
+                          }
+                          className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-500"
+                        />
+                        Capture Visit
+                      </label>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Log a branch visit here. This does not change the lead source above.
+                      </p>
+                    </div>
                     {form.visitCaptured && (
                       <>
                         {(form.captureVisitEntries || []).map((entry, idx) => (
@@ -2365,21 +2408,6 @@ function LeadsPageContent() {
                     />
                   </div>
 
-                  {/* Academic Year */}
-                  <div>
-                    <label className={LABEL_CLASS}>Academic Year</label>
-                    <select
-                      value={form.academicYear}
-                      onChange={(e) => setForm({ ...form, academicYear: e.target.value })}
-                      className={FIELD_CLASS}
-                    >
-                      <option value="">Select year</option>
-                      {Array.from({ length: 6 }, (_, i) => (new Date().getFullYear() + i - 1).toString()).map((y) => (
-                        <option key={y} value={y}>{y}</option>
-                      ))}
-                    </select>
-                  </div>
-
                   {/* Intake */}
                   <div className="sm:col-span-2">
                     <label className={LABEL_CLASS}>Intake</label>
@@ -2525,6 +2553,32 @@ function LeadsPageContent() {
                       placeholder="Institution name"
                       className={FIELD_CLASS}
                     />
+                  </div>
+                  <div>
+                    <label className={LABEL_CLASS}>Academic Year</label>
+                    <select
+                      value={form.academicYear}
+                      onChange={(e) => setForm({ ...form, academicYear: e.target.value })}
+                      className={FIELD_CLASS}
+                    >
+                      <option value="">Select level</option>
+                      {STUDENT_ACADEMIC_LEVEL_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={LABEL_CLASS}>Passout Year</label>
+                    <select
+                      value={form.passoutYear}
+                      onChange={(e) => setForm({ ...form, passoutYear: e.target.value })}
+                      className={FIELD_CLASS}
+                    >
+                      <option value="">Select year</option>
+                      {PASSOUT_YEAR_OPTIONS.map((y) => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className={LABEL_CLASS}>Temporary Address</label>
@@ -2846,36 +2900,33 @@ function LeadsPageContent() {
           style={{ position: "fixed", insetBlockStart: datePickerPos.insetBlockStart, insetInlineStart: datePickerPos.insetInlineStart, zIndex: 9999 }}
           className="w-80 bg-white border border-gray-200 rounded-2xl shadow-2xl p-5"
         >
-          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">Filter by date &amp; time</p>
-          <p className="text-[10px] text-gray-400 mb-4 leading-snug">Uses lead <span className="font-semibold text-gray-500">created</span> time (your local timezone).</p>
+          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">Filter by date</p>
+          <p className="text-[10px] text-gray-400 mb-4 leading-snug">
+            Uses lead <span className="font-semibold text-gray-500">created</span> date. Each day includes the full office day until{" "}
+            <span className="font-semibold text-gray-500">7:00 PM</span> (local time).
+          </p>
           <div className="space-y-3">
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1.5">From</label>
               <input
-                type="datetime-local"
-                step={60}
-                value={filterDateFrom}
-                onChange={(e) => setFilterDateFrom(withLeadFilterDefaultFromTime(e.target.value))}
+                type="date"
+                value={leadFilterDateParam(filterDateFrom)}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-colors"
               />
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1.5">To</label>
               <input
-                type="datetime-local"
-                step={60}
-                value={filterDateTo}
-                onChange={(e) => setFilterDateTo(withLeadFilterDefaultToTime(e.target.value))}
+                type="date"
+                value={leadFilterDateParam(filterDateTo)}
+                onChange={(e) => setFilterDateTo(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-colors"
               />
             </div>
             <div className="flex items-center gap-2 pt-1">
               <button
-                onClick={() => {
-                  setFilterDateFrom((f) => (f ? withLeadFilterDefaultFromTime(f) : ""));
-                  setFilterDateTo((t) => (t ? withLeadFilterDefaultToTime(t) : ""));
-                  setShowDatePicker(false);
-                }}
+                onClick={() => setShowDatePicker(false)}
                 className="flex-1 py-2 rounded-lg bg-gray-900 text-white text-xs font-semibold hover:bg-gray-700 transition-colors"
               >
                 Apply

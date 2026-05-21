@@ -3,7 +3,6 @@ import { auth } from "@/lib/auth";
 import connectDB from "@/lib/mongodb";
 import AppSettings from "@/models/AppSettings";
 import {
-  APP_SETTINGS_PLATFORM_FILTER,
   getAppSettingsDocumentForSession,
 } from "@/lib/appSettingsScope";
 
@@ -41,9 +40,7 @@ export async function GET() {
     const s = await getAppSettingsDocumentForSession(session);
     const tenantNames = Array.isArray(s.b2bNames) ? s.b2bNames.map((x) => String(x)) : [];
     if (s.organization) {
-      const plat = await AppSettings.findOne(APP_SETTINGS_PLATFORM_FILTER).select("b2bNames").lean();
-      const platformNames = Array.isArray(plat?.b2bNames) ? plat.b2bNames.map((x) => String(x)) : [];
-      return NextResponse.json({ b2bNames: mergeB2bNameSuggestions(tenantNames, platformNames) });
+      return NextResponse.json({ b2bNames: tenantNames });
     }
     return NextResponse.json({ b2bNames: tenantNames });
   } catch (err) {

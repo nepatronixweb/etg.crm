@@ -173,6 +173,7 @@ export interface ILead {
   senderName?: string;
   // Application details
   academicYear?: string;
+  passoutYear?: string;
   applyLevel?: string;
   course?: string;
   intakeYear?: string;

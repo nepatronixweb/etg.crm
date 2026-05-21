@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { tenantUserScopeForSession } from "@/lib/tenantRecordAccess";
 import connectDB from "@/lib/mongodb";
 import Attendance from "@/models/Attendance";
 import User from "@/models/User";
@@ -26,7 +27,9 @@ export async function GET(req: NextRequest) {
     if (!range) return NextResponse.json({ error: "Invalid month" }, { status: 400 });
 
     await connectDB();
-    const employees = await User.find({ isActive: true })
+    const userScope =
+      session.user.role === "super_admin" ? {} : await tenantUserScopeForSession(session);
+    const employees = await User.find({ isActive: true, ...userScope })
       .select("name email monthlySalary workingDays workingHoursPerDay officeNetworkIp")
       .sort({ name: 1 })
       .lean();

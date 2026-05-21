@@ -49,6 +49,8 @@ export interface ICommission extends Document {
   commissionAmount: string;
   remarksStatus: "yes" | "received" | "processed" | "";
   commissionStatus: "" | "completed" | "discontinued";
+  /** Tenant owner; null = legacy platform rows. */
+  organization?: mongoose.Types.ObjectId | null;
   createdBy: mongoose.Types.ObjectId;
   createdByName: string;
   createdAt: Date;
@@ -96,6 +98,7 @@ const CommissionSchema = new Schema<ICommission>(
     commissionAmount: { type: String, default: "" },
     remarksStatus: { type: String, enum: ["yes", "received", "processed", ""], default: "" },
     commissionStatus: { type: String, enum: ["completed", "discontinued", ""], default: "" },
+    organization: { type: Schema.Types.ObjectId, ref: "Organization", default: null, index: true },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
     createdByName: { type: String, default: "" },
   },

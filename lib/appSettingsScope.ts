@@ -76,6 +76,7 @@ export async function createFreshTrialTenantAppSettings(
     logoPath: "",
     faviconPath: "",
     brandColor: "#2563eb",
+    brandSecondaryColor: "",
     address: "",
     phone: "",
     email: "",
@@ -124,7 +125,7 @@ export async function createFreshTrialTenantAppSettings(
 /**
  * Document used for GET backfills and PUT updates.
  * - Logged-out / login page: platform (`organization: null`).
- * - Logged-in: tenant row when `organizationId` or `branch → organization` resolves; otherwise platform.
+ * - Logged-in tenant users: their org row only — never platform ETG defaults.
  */
 export async function getAppSettingsDocumentForSession(
   session: Session | null
@@ -132,16 +133,22 @@ export async function getAppSettingsDocumentForSession(
   await connectDB();
   await migrateAppSettingsOrganizationField();
   const orgId = await resolveAppSettingsOrganizationId(session);
+  const isTenantSession =
+    session?.user != null && session.user.role !== "super_admin" && orgId != null;
+
   const filter =
     orgId != null ? { organization: orgId } : APP_SETTINGS_PLATFORM_FILTER;
   let doc = await AppSettings.findOne(filter);
   if (!doc && orgId) {
     const org = await Organization.findById(orgId);
     if (org) {
-      doc = await createTenantAppSettings(orgId, org.name);
+      doc = await createFreshTrialTenantAppSettings(orgId, org.name);
     }
   }
   if (!doc) {
+    if (isTenantSession) {
+      throw new Error("Tenant AppSettings missing for organization " + String(orgId));
+    }
     doc = await AppSettings.findOne(APP_SETTINGS_PLATFORM_FILTER);
     if (!doc) doc = await AppSettings.create({ organization: null });
   }
@@ -158,6 +165,7 @@ export async function getAppSettingsLeanForOrganizationId(
       organization: new mongoose.Types.ObjectId(organizationId),
     }).lean();
     if (row) return row as unknown as Record<string, unknown>;
+    return null;
   }
   const plat = await AppSettings.findOne(APP_SETTINGS_PLATFORM_FILTER).lean();
   return (plat as unknown as Record<string, unknown> | null) ?? null;

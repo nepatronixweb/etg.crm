@@ -52,7 +52,7 @@ export default function TrialSignupPage() {
         return;
       }
       if (sign?.ok) {
-        router.push("/dashboard");
+        router.push("/onboarding");
         return;
       }
       setError("Account created but sign-in did not complete. Try logging in.");

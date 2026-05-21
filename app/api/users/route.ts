@@ -9,6 +9,8 @@ import Branch from "@/models/Branch";
 import { getAppSettingsLeanForOrganizationId } from "@/lib/appSettingsScope";
 import { isRoleSlugAllowed, normalizeApplicationRoles } from "@/lib/applicationRoles";
 import { getBranchIdsInOrganization, isBranchInOrganization } from "@/lib/orgUserScope";
+import { assertOrgPlanLimit } from "@/lib/orgPlanUsage";
+import { validateUserRolesSelection } from "@/lib/userRoles";
 
 function canManageUsers(session: { user: { role: string; permissions?: string[] } }): boolean {
   if (session.user.role === "super_admin") return true;
@@ -200,6 +202,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid role" }, { status: 400 });
     }
     const normalizedRoles = normalizeRolesPayload(roles, String(role));
+    const rolesError = validateUserRolesSelection(normalizedRoles);
+    if (rolesError) {
+      return NextResponse.json({ error: rolesError }, { status: 400 });
+    }
+    if (normalizedRoles.includes("super_admin") && session.user.role !== "super_admin") {
+      return NextResponse.json({ error: "Only super admins can assign the super admin role" }, { status: 403 });
+    }
     for (const roleSlug of normalizedRoles) {
       if (!isRoleSlugAllowed(roleSlug, roleCatalog)) {
         return NextResponse.json({ error: `Invalid role in roles: ${roleSlug}` }, { status: 400 });
@@ -212,6 +221,13 @@ export async function POST(req: NextRequest) {
 
     const existing = await User.findOne({ email });
     if (existing) return NextResponse.json({ error: "Email already exists" }, { status: 400 });
+
+    if (session.user.role !== "super_admin" && orgIdForCatalog) {
+      const limitCheck = await assertOrgPlanLimit(orgIdForCatalog, "users");
+      if (!limitCheck.ok) {
+        return NextResponse.json({ error: limitCheck.error, code: limitCheck.code }, { status: 403 });
+      }
+    }
 
     const hashed = await bcrypt.hash(password, 10);
     const dashboardWidgets = sanitizeDashboardWidgets(body.dashboardWidgets);
@@ -253,7 +269,7 @@ export async function POST(req: NextRequest) {
       module: "Users",
       targetId: user._id.toString(),
       targetName: user.name,
-      details: `Created user with role ${role}`,
+      details: `Created user with roles: ${normalizedRoles.join(", ")}`,
     });
 
     return NextResponse.json({ message: "User created", user }, { status: 201 });

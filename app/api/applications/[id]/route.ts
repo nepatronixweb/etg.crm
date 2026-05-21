@@ -3,6 +3,7 @@ import connectDB from "@/lib/mongodb";
 import Application from "@/models/Application";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
+import { findApplicationInTenant } from "@/lib/tenantRecordAccess";
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -10,8 +11,9 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { id } = await params;
     await connectDB();
+    const access = await findApplicationInTenant(session, id);
+    if (!access) return NextResponse.json({ error: "Application not found" }, { status: 404 });
     const app = await Application.findById(id).populate("student", "name email").populate("submittedBy", "name");
-    if (!app) return NextResponse.json({ error: "Application not found" }, { status: 404 });
     return NextResponse.json(app);
   } catch {
     return NextResponse.json({ error: "Failed to fetch application" }, { status: 500 });
@@ -27,6 +29,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const body = await req.json();
 
     if (body.status === "submitted") body.submittedAt = new Date();
+
+    const existing = await findApplicationInTenant(session, id);
+    if (!existing) return NextResponse.json({ error: "Application not found" }, { status: 404 });
 
     const app = await Application.findByIdAndUpdate(id, body, { new: true });
 

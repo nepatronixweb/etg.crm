@@ -62,6 +62,7 @@ export interface ILeadDocument extends Document {
   senderName?: string;
   // Application details
   academicYear?: string;
+  passoutYear?: string;
   applyLevel?: string;
   course?: string;
   intakeYear?: string;
@@ -137,6 +138,7 @@ const LeadSchema = new Schema<ILeadDocument>(
     senderName: { type: String, trim: true },
     // Application details
     academicYear: { type: String, trim: true },
+    passoutYear: { type: String, trim: true },
     applyLevel: { type: String, default: "" },
     course: { type: String, trim: true },
     intakeYear: { type: String, trim: true },

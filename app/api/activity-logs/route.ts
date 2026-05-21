@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
+import { getOrgUserIdsForSession } from "@/lib/tenantRecordAccess";
 
 export async function GET(req: NextRequest) {
   try {
@@ -21,6 +22,19 @@ export async function GET(req: NextRequest) {
     const filter: Record<string, any> = {};
     if (moduleFilter) filter.module = moduleFilter;
     if (user) filter.user = user;
+
+    if (session.user.role !== "super_admin") {
+      const orgUserIds = await getOrgUserIdsForSession(session);
+      if (orgUserIds && orgUserIds.length === 0) {
+        return NextResponse.json({ logs: [], total: 0, pages: 0 });
+      }
+      if (orgUserIds) {
+        if (user && !orgUserIds.some((id) => id.toString() === user)) {
+          return NextResponse.json({ logs: [], total: 0, pages: 0 });
+        }
+        filter.user = user ? user : { $in: orgUserIds };
+      }
+    }
 
     const [logs, total] = await Promise.all([
       ActivityLog.find(filter)

@@ -3,6 +3,7 @@ import connectDB from "@/lib/mongodb";
 import Lead from "@/models/Lead";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
+import { findLeadInTenant } from "@/lib/tenantRecordAccess";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -11,10 +12,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { id } = await params;
     await connectDB();
 
-    const { content } = await req.json();
-    const lead = await Lead.findById(id);
+    const lead = await findLeadInTenant(session, id);
     if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
 
+    const { content } = await req.json();
     lead.notes.push({
       content,
       addedBy: session.user.id,

@@ -6,6 +6,12 @@ import ActivityLog from "@/models/ActivityLog";
 import Branch from "@/models/Branch";
 import { auth } from "@/lib/auth";
 import { getAppSettingsLeanForOrganizationId } from "@/lib/appSettingsScope";
+import {
+  canBypassVisaAdmissionLock,
+  VISA_APPROVED_DEFAULT_STAGE,
+  VISA_PIPELINE_LABEL,
+} from "@/lib/studentVisaLock";
+import { findStudentInTenant } from "@/lib/tenantRecordAccess";
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -13,7 +19,9 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { id } = await params;
     await connectDB();
-    const student = await Student.findById(id)
+    const studentDoc = await findStudentInTenant(session, id);
+    if (!studentDoc) return NextResponse.json({ error: "Student not found" }, { status: 404 });
+    const student = await Student.findById(studentDoc._id)
       .populate("branch", "name location")
       .populate("counsellor", "name email")
       .populate({ path: "lead", select: "statusDates" })
@@ -173,11 +181,13 @@ function pickPrimaryAdmissionForTopLevelSync(
   return last as Record<string, unknown> | undefined;
 }
 
-/** After visa approval, stage / pipeline / standing / remarks cannot change for that country. */
+/** After visa approval, stage / pipeline / standing / remarks cannot change for that country (except visa team). */
 function freezeVisaLockedAdmissionFields(
   existingStudent: { countries?: unknown; admissionDetails?: unknown },
   details: Record<string, unknown>[],
+  options?: { bypassLock?: boolean },
 ): Record<string, unknown>[] {
+  if (options?.bypassLock) return details;
   const oldList = Array.isArray(existingStudent.admissionDetails)
     ? (existingStudent.admissionDetails as Record<string, unknown>[])
     : [];
@@ -206,7 +216,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     await connectDB();
     const body = await req.json();
 
-    const existingStudent = await Student.findById(id).lean();
+    const existingStudent = await findStudentInTenant(session, id);
     if (!existingStudent) {
       return NextResponse.json({ error: "Student not found" }, { status: 404 });
     }
@@ -243,7 +253,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           return detail;
         });
 
-        const frozenDetails = freezeVisaLockedAdmissionFields(existingStudent, pipelineMapped);
+        const frozenDetails = freezeVisaLockedAdmissionFields(existingStudent, pipelineMapped, {
+          bypassLock: canBypassVisaAdmissionLock(session.user.role),
+        });
 
         const updatedAdmissionDetails = mergeAdmissionDetailTrackingHistory(
           Array.isArray(existingStudent.admissionDetails) ? existingStudent.admissionDetails : [],
@@ -303,7 +315,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         const nextRows: Record<string, unknown>[] = rawDetails.map((row: unknown) => {
           const next: Record<string, unknown> = { ...(row as Record<string, unknown>) };
           const rowCountry = String(next.country ?? "");
-          if (countryHasVisaApproved(existingStudent.countries, rowCountry)) {
+          if (
+            countryHasVisaApproved(existingStudent.countries, rowCountry) &&
+            !canBypassVisaAdmissionLock(session.user.role)
+          ) {
             return next;
           }
           if (body.stage !== undefined) {
@@ -382,7 +397,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     await connectDB();
     const body = await req.json();
 
-    const student = await Student.findById(id);
+    const student = await findStudentInTenant(session, id);
     if (!student) return NextResponse.json({ error: "Student not found" }, { status: 404 });
 
     if (body.visaApproved && body.country != null) {
@@ -411,6 +426,41 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       if (!countrySub.visaStatus?.trim()) {
         countrySub.visaStatus = "Approved";
       }
+      countrySub.status = "visa";
+
+      const todayYmd = new Date().toISOString().slice(0, 10);
+      let syncedTopLevel = false;
+      for (const detail of student.admissionDetails) {
+        const row = detail as {
+          country?: string;
+          stage?: string;
+          pipeline?: string;
+          statusDate?: string;
+          closed?: boolean;
+        };
+        if (String(row.country ?? "") !== countryName) continue;
+        row.pipeline = VISA_PIPELINE_LABEL;
+        if (!String(row.stage ?? "").trim() || !String(row.stage).startsWith("visa_")) {
+          row.stage = VISA_APPROVED_DEFAULT_STAGE;
+        }
+        if (!String(row.statusDate ?? "").trim()) {
+          row.statusDate = todayYmd;
+        }
+        if (!row.closed) syncedTopLevel = true;
+      }
+      if (syncedTopLevel) {
+        student.currentStage = VISA_PIPELINE_LABEL;
+        const openRow = [...student.admissionDetails]
+          .reverse()
+          .find(
+            (d: { country?: string; closed?: boolean }) =>
+              String(d.country ?? "") === countryName && !d.closed,
+          ) as { stage?: string } | undefined;
+        if (openRow?.stage) student.stage = openRow.stage;
+      }
+
+      student.markModified("admissionDetails");
+      student.markModified("countries");
       await student.save();
       const updated = await Student.findById(id)
         .populate("branch", "name location")

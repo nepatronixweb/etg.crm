@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import connectDB from "@/lib/mongodb";
 import User from "@/models/User";
 import { canManageInventory } from "@/lib/inventory/auth";
+import { tenantUserScopeForSession } from "@/lib/tenantRecordAccess";
 
 /** Active users for assign-asset dropdown (inventory managers only). */
 export async function GET() {
@@ -13,7 +14,9 @@ export async function GET() {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     await connectDB();
-    const users = await User.find({ isActive: true })
+    const userScope =
+      session.user.role === "super_admin" ? {} : await tenantUserScopeForSession(session);
+    const users = await User.find({ isActive: true, ...userScope })
       .select("_id name email role")
       .sort({ name: 1 })
       .lean();

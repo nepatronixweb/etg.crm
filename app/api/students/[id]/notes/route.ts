@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import Student from "@/models/Student";
 import { auth } from "@/lib/auth";
+import { findStudentInTenant } from "@/lib/tenantRecordAccess";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -10,10 +11,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { id } = await params;
     await connectDB();
 
-    const { content } = await req.json();
-    const student = await Student.findById(id);
+    const student = await findStudentInTenant(session, id);
     if (!student) return NextResponse.json({ error: "Student not found" }, { status: 404 });
 
+    const { content } = await req.json();
     student.notes.push({
       content,
       addedBy: session.user.id,

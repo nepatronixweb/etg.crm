@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { createNotifications, getSuperAdminIds } from "@/lib/notifications";
 import { LEAD_PATCH_FD_STATUS_AND_STAGE_ROLES } from "@/lib/leadWorkflowStatusRoles";
 import { deleteEnquiryByLinkedLead, upsertEnquiryFromLead } from "@/lib/leadEnquirySync";
+import { findLeadInTenant } from "@/lib/tenantRecordAccess";
 
 type CaptureVisitEntry = {
   visitedAt: Date;
@@ -35,7 +36,9 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { id } = await params;
     await connectDB();
-    const lead = await Lead.findById(id)
+    const leadDoc = await findLeadInTenant(session, id);
+    if (!leadDoc) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    const lead = await Lead.findById(leadDoc._id)
       .populate("branch", "name location")
       .populate("assignedTo", "name email role")
       .populate("assignedBy", "name");
@@ -83,6 +86,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (session.user.role === "front_desk" && body.stage) {
       return NextResponse.json({ error: "Front desk users cannot update stage" }, { status: 403 });
     }
+
+    const inTenant = await findLeadInTenant(session, id);
+    if (!inTenant) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
 
     // Snapshot old assignedTo before updating
     const oldLead = await Lead.findById(id).select("assignedTo name").lean();
@@ -154,6 +160,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { id } = await params;
     await connectDB();
+    const inTenant = await findLeadInTenant(session, id);
+    if (!inTenant) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     const body = await req.json();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const update: Record<string, any> = {};

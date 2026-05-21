@@ -1,30 +1,33 @@
 const DATE_PREFIX = /^(\d{4}-\d{2}-\d{2})/;
-const DATE_TIME_PREFIX = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/;
+
+/** Office closing time for lead/enquiry date filters (local wall clock). */
+export const OFFICE_DAY_END_HOUR = 19;
+export const OFFICE_DAY_END_MINUTE = 0;
 
 /**
- * Leads / enquiries `datetime-local` "From": after a date is chosen, use 1:00 AM local on that day.
+ * Leads / enquiries date-only "From": start of calendar day (00:00 local).
+ * Legacy datetime-local values (with T) are returned unchanged.
  */
 export function withLeadFilterDefaultFromTime(value: string): string {
   if (!value?.trim()) return "";
   const t = value.trim();
-  const explicitTime = t.match(DATE_TIME_PREFIX);
-  if (explicitTime) return `${explicitTime[1]}T${explicitTime[2]}`;
+  if (t.includes("T")) return t.slice(0, 16);
   const m = t.match(DATE_PREFIX);
   if (!m) return value.trim();
-  return `${m[1]}T01:00`;
+  return m[1];
 }
 
 /**
- * Leads / enquiries `datetime-local` "To": after a date is chosen, use 11:00 PM local on that day.
+ * Leads / enquiries date-only "To": date portion only (bounds applied on parse).
+ * Legacy datetime-local values (with T) are returned unchanged.
  */
 export function withLeadFilterDefaultToTime(value: string): string {
   if (!value?.trim()) return "";
   const t = value.trim();
-  const explicitTime = t.match(DATE_TIME_PREFIX);
-  if (explicitTime) return `${explicitTime[1]}T${explicitTime[2]}`;
+  if (t.includes("T")) return t.slice(0, 16);
   const m = t.match(DATE_PREFIX);
   if (!m) return value.trim();
-  return `${m[1]}T23:00`;
+  return m[1];
 }
 
 /** Analytics `type="date"` From → UTC ISO (1:00 AM local wall time). */
@@ -38,10 +41,14 @@ export function dateOnlyToAnalyticsToIso(dateYmd: string): string {
 }
 
 /**
- * Legacy `?from` / `?to` with date-only `YYYY-MM-DD` (same 1:00 / 23:00 local wall-time rule as the UI defaults).
+ * Lead / enquiry `?from` / `?to` with date-only `YYYY-MM-DD`:
+ * - From: start of day (00:00 local)
+ * - To: end of office day (19:00 local — 7 PM closing)
  */
 export function parseCreatedAtDateOnlyBound(rawYmd: string, bound: "from" | "to"): Date {
   const s = rawYmd.trim();
-  if (bound === "from") return new Date(`${s}T01:00:00`);
-  return new Date(`${s}T23:00:00`);
+  if (bound === "from") return new Date(`${s}T00:00:00`);
+  const hh = String(OFFICE_DAY_END_HOUR).padStart(2, "0");
+  const mm = String(OFFICE_DAY_END_MINUTE).padStart(2, "0");
+  return new Date(`${s}T${hh}:${mm}:00`);
 }

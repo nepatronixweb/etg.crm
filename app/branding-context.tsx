@@ -11,6 +11,8 @@ import {
   type FdStatusOption,
 } from "@/lib/fdStatusOptions";
 import { subscribeAppSettingsChanged } from "@/lib/appSettingsSync";
+import { applyBrandThemeToDocument, normalizeHexColor, adjustHexColor } from "@/lib/brandTheme";
+import { resolveBrandingAssetUrl } from "@/lib/brandingUrls";
 
 export interface Branding {
   companyName: string;
@@ -19,6 +21,7 @@ export interface Branding {
   logoPath: string;
   faviconPath: string;
   brandColor: string;
+  brandSecondaryColor: string;
   paymentQrPath: string;
 }
 
@@ -29,6 +32,7 @@ const defaultBranding: Branding = {
   logoPath: "",
   faviconPath: "",
   brandColor: "#2563eb",
+  brandSecondaryColor: "",
   paymentQrPath: "",
 };
 
@@ -72,14 +76,19 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
           setFdWorkflowStatusOptions(fdStatusOptionsFromStrings(d.fdStatuses));
         }
         if (d?.companyName) {
+          const primary = normalizeHexColor(d.brandColor || defaultBranding.brandColor);
+          const secondary = normalizeHexColor(
+            d.brandSecondaryColor || adjustHexColor(d.brandColor || defaultBranding.brandColor, -12)
+          );
           setBranding({
             companyName: d.companyName || defaultBranding.companyName,
             shortCode: d.shortCode || defaultBranding.shortCode,
             tagline: d.tagline || defaultBranding.tagline,
-            logoPath: d.logoPath || "",
-            faviconPath: d.faviconPath || "",
-            brandColor: d.brandColor || defaultBranding.brandColor,
-            paymentQrPath: d.paymentQrPath || "",
+            logoPath: resolveBrandingAssetUrl(d.logoPath) || "",
+            faviconPath: resolveBrandingAssetUrl(d.faviconPath) || "",
+            brandColor: primary,
+            brandSecondaryColor: secondary,
+            paymentQrPath: resolveBrandingAssetUrl(d.paymentQrPath) || "",
           });
         }
       })
@@ -105,6 +114,11 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
       document.removeEventListener("visibilitychange", onVis);
     };
   }, [load]);
+
+  // Apply theme CSS variables app-wide
+  useEffect(() => {
+    applyBrandThemeToDocument(branding.brandColor, branding.brandSecondaryColor);
+  }, [branding.brandColor, branding.brandSecondaryColor]);
 
   // Update document title when branding loads
   useEffect(() => {

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import mongoose from "mongoose";
 import { auth } from "@/lib/auth";
+import { findDocumentInTenant } from "@/lib/tenantRecordAccess";
+import StudentDocument from "@/models/Document";
 
 export async function GET(
   _req: NextRequest,
@@ -31,6 +33,15 @@ export async function GET(
     if (files.length === 0) {
       return NextResponse.json({ error: "File not found" }, { status: 404 });
     }
+
+    const linked = await StudentDocument.findOne({
+      filePath: { $regex: id },
+    }).select("_id").lean();
+    if (linked) {
+      const allowed = await findDocumentInTenant(session, String(linked._id));
+      if (!allowed) return NextResponse.json({ error: "File not found" }, { status: 404 });
+    }
+
     const file = files[0];
 
     const chunks: Buffer[] = [];

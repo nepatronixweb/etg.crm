@@ -3,14 +3,13 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useSession } from "next-auth/react";
 import {
   Plus, Users, Search, KeyRound, X, UserPlus,
-  Mail, Phone, Shield, Building2, Target, Calendar,
+  Mail, Phone, Building2, Target, Calendar,
   Lock, Eye, EyeOff, CheckCircle2, AlertCircle,
   RotateCcw, UserCog, ChevronDown, Settings, Info, Trash2,
   Banknote, Clock, Globe,
 } from "lucide-react";
 import {
   formatDate,
-  getRoleBadgeColor,
   getRoleLabel,
   ALL_PERMISSIONS,
   ROLE_DEFAULT_PERMISSIONS,
@@ -20,7 +19,17 @@ import {
   withFullModuleGranular,
 } from "@/lib/utils";
 import { useApplicationRolesCatalog, useBranding } from "@/app/branding-context";
+import UserRolesFormSection, { UserRoleBadges } from "@/components/users/UserRolesFormSection";
 import { UserDashboardFormSection } from "@/components/users/UserDashboardFormSection";
+import {
+  mergeDefaultPermissionsForRoles,
+  permissionSetsEqual,
+  pickDefaultCreatableRole,
+  resolvePrimaryRole,
+  resolveUserRoles,
+  userHasRole,
+  validateUserRolesSelection,
+} from "@/lib/userRoles";
 import {
   mergeDashboardWidgetsFromApi,
   mergeDashboardWidgetOrderFromApi,
@@ -32,6 +41,8 @@ interface User {
   name: string;
   email: string;
   role: string;
+  roles?: string[];
+  activeRole?: string;
   phone?: string;
   dateOfBirth?: string;
   branch: { _id: string; name: string } | null;
@@ -53,6 +64,8 @@ type UserFormState = {
   email: string;
   password: string;
   role: string;
+  roles: string[];
+  customPermissions: boolean;
   branch: string;
   phone: string;
   dateOfBirth: string;
@@ -66,18 +79,6 @@ type UserFormState = {
   userDashboardOrder: DashboardWidgetOrderState;
 };
 
-/* ─── Role icon color (unknown slugs fall back) ─── */
-const roleIconMap: Record<string, string> = {
-  super_admin: "text-red-500",
-  counsellor: "text-blue-500",
-  telecaller: "text-green-500",
-  application_team: "text-purple-500",
-  admission_team: "text-yellow-600",
-  visa_team: "text-orange-500",
-  front_desk: "text-gray-500",
-  account_finance: "text-teal-600",
-};
-
 export default function UsersPage() {
   const { data: session } = useSession();
   const branding = useBranding();
@@ -87,7 +88,7 @@ export default function UsersPage() {
   const defaultCreatableRole = useMemo(() => {
     const slugs = applicationRoles.map((r) => r.slug);
     const visible = isSuperAdmin ? slugs : slugs.filter((s) => s !== "super_admin");
-    return visible[0] ?? "counsellor";
+    return pickDefaultCreatableRole(visible);
   }, [applicationRoles, isSuperAdmin]);
 
   const availableRoles = useMemo(() => {
@@ -105,23 +106,28 @@ export default function UsersPage() {
     [applicationRoles]
   );
 
-  const buildEmptyForm = useCallback((): UserFormState => ({
-    name: "",
-    email: "",
-    password: "",
-    role: defaultCreatableRole,
-    branch: "",
-    phone: "",
-    dateOfBirth: "",
-    target: "0",
-    permissions: defaultPermissionsForSlug(defaultCreatableRole),
-    monthlySalary: "0",
-    workingHoursPerDay: "8",
-    workingDays: "26",
-    officeNetworkIp: "",
-    userDashboardWidgets: {},
-    userDashboardOrder: {},
-  }), [defaultCreatableRole, defaultPermissionsForSlug]);
+  const buildEmptyForm = useCallback((): UserFormState => {
+    const roles = [defaultCreatableRole];
+    return {
+      name: "",
+      email: "",
+      password: "",
+      role: defaultCreatableRole,
+      roles,
+      customPermissions: false,
+      branch: "",
+      phone: "",
+      dateOfBirth: "",
+      target: "0",
+      permissions: mergeDefaultPermissionsForRoles(roles, defaultPermissionsForSlug),
+      monthlySalary: "0",
+      workingHoursPerDay: "8",
+      workingDays: "26",
+      officeNetworkIp: "",
+      userDashboardWidgets: {},
+      userDashboardOrder: {},
+    };
+  }, [defaultCreatableRole, defaultPermissionsForSlug]);
 
   /* ─── State ─── */
   const [users, setUsers] = useState<User[]>([]);
@@ -226,7 +232,7 @@ export default function UsersPage() {
 
   const roleFilterOptions = useMemo(() => {
     const fromCatalog = applicationRoles.map((r) => r.slug);
-    const fromUsers = [...new Set(users.map((u) => u.role))];
+    const fromUsers = [...new Set(users.flatMap((u) => resolveUserRoles(u)))];
     return [...new Set([...fromCatalog, ...fromUsers])];
   }, [applicationRoles, users]);
 
@@ -236,14 +242,15 @@ export default function UsersPage() {
       const q = search.toLowerCase();
       if (!u.name.toLowerCase().includes(q) && !u.email.toLowerCase().includes(q)) return false;
     }
-    if (roleFilter !== "all" && u.role !== roleFilter) return false;
+    if (roleFilter !== "all" && !userHasRole(u, roleFilter)) return false;
     if (statusFilter === "active" && !u.isActive) return false;
     if (statusFilter === "inactive" && u.isActive) return false;
     return true;
   });
 
   const canManageRow = useCallback(
-    (u: User) => u._id !== session?.user?.id && (isSuperAdmin || u.role !== "super_admin"),
+    (u: User) =>
+      u._id !== session?.user?.id && (isSuperAdmin || !userHasRole(u, "super_admin")),
     [session?.user?.id, isSuperAdmin]
   );
 
@@ -392,10 +399,26 @@ export default function UsersPage() {
     setFormSuccess("");
     setFormLoading(true);
 
+    const roleSlugs = form.roles.length > 0 ? form.roles : [form.role];
+    const rolesError = validateUserRolesSelection(roleSlugs);
+    if (rolesError) {
+      setFormError(rolesError);
+      setFormLoading(false);
+      return;
+    }
+    if (roleSlugs.length === 0) {
+      setFormError("Select at least one role.");
+      setFormLoading(false);
+      return;
+    }
+    const primaryRole = roleSlugs.includes(form.role) ? form.role : roleSlugs[0]!;
+
     const basePayload: Record<string, unknown> = {
       name: form.name,
       email: form.email,
-      role: form.role,
+      role: primaryRole,
+      roles: roleSlugs,
+      activeRole: primaryRole,
       branch: form.branch,
       phone: form.phone,
       dateOfBirth: form.dateOfBirth,
@@ -453,16 +476,22 @@ export default function UsersPage() {
 
   const openEdit = (u: User) => {
     setEditUser(u);
+    const roles = resolveUserRoles(u);
+    const primary = resolvePrimaryRole(u);
+    const merged = mergeDefaultPermissionsForRoles(roles, defaultPermissionsForSlug);
+    const storedPerms = u.permissions?.length ? [...u.permissions] : merged;
     setForm({
       name: u.name,
       email: u.email,
       password: "",
-      role: u.role,
+      role: primary,
+      roles,
+      customPermissions: u.permissions?.length ? !permissionSetsEqual(storedPerms, merged) : false,
       branch: u.branch?._id || "",
       phone: u.phone || "",
       dateOfBirth: u.dateOfBirth || "",
       target: String(u.target || 0),
-      permissions: u.permissions?.length ? [...u.permissions] : defaultPermissionsForSlug(u.role),
+      permissions: storedPerms,
       monthlySalary: String(u.monthlySalary ?? 0),
       workingHoursPerDay: String(u.workingHoursPerDay ?? 8),
       workingDays: String(u.workingDays ?? 26),
@@ -745,16 +774,13 @@ export default function UsersPage() {
                   </td>
                   {/* Role */}
                   <td className="px-5 py-3.5">
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold ${getRoleBadgeColor(user.role)}`}>
-                      <Shield size={11} className={roleIconMap[user.role] ?? "text-gray-500"} />
-                      {getRoleLabel(user.role, applicationRoles)}
-                    </span>
+                    <UserRoleBadges user={user} applicationRoles={applicationRoles} />
                   </td>
                   {/* Branch */}
                   <td className="px-5 py-3.5 text-gray-600">{user.branch?.name || "-"}</td>
                   {/* Target */}
                   <td className="px-5 py-3.5">
-                    {user.role === "counsellor" ? (
+                    {userHasRole(user, "counsellor") ? (
                       <div className="flex items-center gap-2">
                         <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                           <div
@@ -983,60 +1009,50 @@ export default function UsersPage() {
 
                 <section className="space-y-4">
                   <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Role & branch</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4">
-                    <div>
-                      <label htmlFor="user-form-role" className="block text-xs font-semibold text-gray-700 mb-1.5">
-                        Role <span className="text-red-500 font-bold">*</span>
-                      </label>
-                      <div className="relative">
-                        <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none z-[1]" />
-                        <select
-                          id="user-form-role"
-                          required
-                          value={form.role}
-                          onChange={(e) => {
-                            const newRole = e.target.value;
-                            setForm({
-                              ...form,
-                              role: newRole,
-                              permissions: defaultPermissionsForSlug(newRole),
-                              userDashboardWidgets: {},
-                              userDashboardOrder: {},
-                            });
-                          }}
-                          className="appearance-none w-full pl-10 pr-9 py-2.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors cursor-pointer"
-                        >
-                          {availableRoles.map((r) => (
-                            <option key={r} value={r}>
-                              {getRoleLabel(r, applicationRoles)}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                      </div>
-                    </div>
-                    <div>
-                      <label htmlFor="user-form-branch" className="block text-xs font-semibold text-gray-700 mb-1.5">
-                        Branch <span className="text-red-500 font-bold">*</span>
-                      </label>
-                      <div className="relative">
-                        <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none z-[1]" />
-                        <select
-                          id="user-form-branch"
-                          required
-                          value={form.branch}
-                          onChange={(e) => setForm({ ...form, branch: e.target.value })}
-                          className="appearance-none w-full pl-10 pr-9 py-2.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors cursor-pointer"
-                        >
-                          <option value="">Select branch</option>
-                          {branches.map((b) => (
-                            <option key={b._id} value={b._id}>
-                              {b.name}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                      </div>
+                  <UserRolesFormSection
+                    availableRoles={availableRoles}
+                    applicationRoles={applicationRoles}
+                    selectedRoles={form.roles.length > 0 ? form.roles : [form.role]}
+                    primaryRole={form.role}
+                    permissions={form.permissions}
+                    customPermissions={form.customPermissions}
+                    defaultPermissionsForSlug={defaultPermissionsForSlug}
+                    onRolesChange={(roles, primaryRole, permissions, customPermissions) => {
+                      setForm((f) => ({
+                        ...f,
+                        roles,
+                        role: primaryRole,
+                        permissions,
+                        customPermissions,
+                        userDashboardWidgets: {},
+                        userDashboardOrder: {},
+                      }));
+                    }}
+                    onCustomPermissionsChange={(customPermissions) => {
+                      setForm((f) => ({ ...f, customPermissions }));
+                    }}
+                  />
+                  <div>
+                    <label htmlFor="user-form-branch" className="block text-xs font-semibold text-gray-700 mb-1.5">
+                      Branch <span className="text-red-500 font-bold">*</span>
+                    </label>
+                    <div className="relative">
+                      <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none z-[1]" />
+                      <select
+                        id="user-form-branch"
+                        required
+                        value={form.branch}
+                        onChange={(e) => setForm({ ...form, branch: e.target.value })}
+                        className="appearance-none w-full pl-10 pr-9 py-2.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors cursor-pointer"
+                      >
+                        <option value="">Select branch</option>
+                        {branches.map((b) => (
+                          <option key={b._id} value={b._id}>
+                            {b.name}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                     </div>
                   </div>
                 </section>
@@ -1163,7 +1179,7 @@ export default function UsersPage() {
                         Role defaults are pre-filled. For Leads and Students, enable the module first, then optionally restrict Add and Export; other modules are access-only. Updates apply on the user&apos;s next login.
                       </p>
                     </div>
-                    {form.role !== "super_admin" && (
+                    {!(form.roles.includes("super_admin") || form.role === "super_admin") && (
                       <div className="flex items-center gap-2 shrink-0">
                         <button
                           type="button"
@@ -1181,7 +1197,7 @@ export default function UsersPage() {
                                 next.push(...ALL_SETTINGS_SUB_KEYS);
                               }
                             }
-                            setForm({ ...form, permissions: next });
+                            setForm({ ...form, permissions: next, customPermissions: true });
                           }}
                           className="text-xs font-semibold text-blue-600 hover:text-blue-700"
                         >
@@ -1190,7 +1206,7 @@ export default function UsersPage() {
                         <span className="text-gray-300">|</span>
                         <button
                           type="button"
-                          onClick={() => setForm({ ...form, permissions: [] })}
+                          onClick={() => setForm({ ...form, permissions: [], customPermissions: true })}
                           className="text-xs font-semibold text-gray-600 hover:text-gray-800"
                         >
                           Clear
@@ -1199,7 +1215,7 @@ export default function UsersPage() {
                     )}
                   </div>
 
-                  {form.role === "super_admin" ? (
+                  {form.roles.includes("super_admin") || form.role === "super_admin" ? (
                     <div className="flex gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm">
                       <Info className="w-5 h-5 text-slate-500 shrink-0 mt-0.5" />
                       <div>
@@ -1240,11 +1256,13 @@ export default function UsersPage() {
                                       if (hasBase) {
                                         setForm({
                                           ...form,
+                                          customPermissions: true,
                                           permissions: stripModuleGranularKeys(form.permissions, module),
                                         });
                                       } else {
                                         setForm({
                                           ...form,
+                                          customPermissions: true,
                                           permissions: withFullModuleGranular(form.permissions, module),
                                         });
                                       }
@@ -1275,7 +1293,7 @@ export default function UsersPage() {
                                           } else {
                                             next.push(addKey);
                                           }
-                                          setForm({ ...form, permissions: next });
+                                          setForm({ ...form, permissions: next, customPermissions: true });
                                         }}
                                         className="accent-blue-600 shrink-0"
                                       />
@@ -1295,7 +1313,7 @@ export default function UsersPage() {
                                           } else {
                                             next.push(exportKey);
                                           }
-                                          setForm({ ...form, permissions: next });
+                                          setForm({ ...form, permissions: next, customPermissions: true });
                                         }}
                                         className="accent-blue-600 shrink-0"
                                       />
@@ -1333,7 +1351,7 @@ export default function UsersPage() {
                                       next = [...next, ...ALL_SETTINGS_SUB_KEYS];
                                     }
                                   }
-                                  setForm({ ...form, permissions: next });
+                                  setForm({ ...form, permissions: next, customPermissions: true });
                                 }}
                                 className="mt-0.5 accent-blue-600 shrink-0"
                               />
@@ -1361,6 +1379,7 @@ export default function UsersPage() {
                                 onClick={() =>
                                   setForm({
                                     ...form,
+                                    customPermissions: true,
                                     permissions: [...form.permissions.filter((p) => !p.startsWith("settings:")), ...ALL_SETTINGS_SUB_KEYS],
                                   })
                                 }
@@ -1372,7 +1391,7 @@ export default function UsersPage() {
                               <button
                                 type="button"
                                 onClick={() =>
-                                  setForm({ ...form, permissions: form.permissions.filter((p) => !p.startsWith("settings:")) })
+                                  setForm({ ...form, permissions: form.permissions.filter((p) => !p.startsWith("settings:")), customPermissions: true })
                                 }
                                 className="text-[11px] font-semibold text-gray-600 hover:text-gray-800"
                               >
@@ -1399,7 +1418,7 @@ export default function UsersPage() {
                                       const next = subChecked
                                         ? form.permissions.filter((p) => p !== sub.key)
                                         : [...form.permissions, sub.key];
-                                      setForm({ ...form, permissions: next });
+                                      setForm({ ...form, permissions: next, customPermissions: true });
                                     }}
                                     className="accent-blue-600 shrink-0"
                                   />
@@ -1414,7 +1433,7 @@ export default function UsersPage() {
                   )}
                 </section>
 
-                {form.role === "counsellor" && (
+                {(form.roles.includes("counsellor") || form.role === "counsellor") && (
                   <section className="space-y-4">
                     <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Targets</h3>
                     <div className="max-w-full sm:max-w-xs">

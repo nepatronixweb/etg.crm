@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import Student from "@/models/Student";
 import { auth } from "@/lib/auth";
-import { getBranchIdsInOrganization } from "@/lib/orgUserScope";
+import { getBranchIdsInOrganization, TENANT_SCOPE_EMPTY_MATCH } from "@/lib/orgUserScope";
 
 export async function GET() {
   try {
@@ -22,6 +22,8 @@ export async function GET() {
     if (!isSuperAdmin && orgId) {
       const branchIds = await getBranchIdsInOrganization(orgId);
       branchScope = branchIds.length === 0 ? { branch: { $in: [] } } : { branch: { $in: branchIds } };
+    } else if (!isSuperAdmin) {
+      branchScope = { ...TENANT_SCOPE_EMPTY_MATCH };
     }
 
     const enrolledFilter = { enrolled: true, ...branchScope };

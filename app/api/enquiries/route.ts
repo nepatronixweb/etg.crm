@@ -8,6 +8,7 @@ import Enquiry from "@/models/Enquiry";
 import User from "@/models/User";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
+import { tenantBranchScopeForSession } from "@/lib/orgUserScope";
 import { hasModuleAction } from "@/lib/utils";
 import { createNotifications, getSuperAdminIds } from "@/lib/notifications";
 import { mergeTelecallerFreshLeadFilter, TELECALLER_FRESH_BUCKET } from "@/lib/telecallerFreshLeads";
@@ -16,6 +17,7 @@ import {
   mergeTelecallerOverviewBucketFilter,
 } from "@/lib/telecallerLeadOverviewBuckets";
 import { parseCreatedAtDateOnlyBound } from "@/lib/dateTimeRangeFilterDefaults";
+import { nativeEnquiryOnlyMatch } from "@/lib/leadEnquirySync";
 
 function parseEnquiryCreatedAtBound(raw: string, bound: "from" | "to"): Date {
   const s = raw.trim();
@@ -47,7 +49,17 @@ function castObjectIdsForAggregateMatch(obj: Record<string, unknown>): Record<st
 }
 
 function canUseEnquiriesApi(role: string): boolean {
-  return role === "telecaller" || role === "super_admin";
+  return role === "telecaller" || role === "super_admin" || role === "org_admin";
+}
+
+function appendNativeEnquiryScope(filter: Record<string, unknown>): void {
+  if (Array.isArray(filter.$and)) {
+    filter.$and.push(nativeEnquiryOnlyMatch);
+  } else if (filter.$and) {
+    filter.$and = [filter.$and, nativeEnquiryOnlyMatch];
+  } else {
+    filter.$and = [nativeEnquiryOnlyMatch];
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -79,6 +91,8 @@ export async function GET(req: NextRequest) {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const filter: Record<string, any> = {};
+
+    appendNativeEnquiryScope(filter);
 
     if (branch) filter.branch = branch;
     if (standing) filter.standing = standing;
@@ -143,18 +157,24 @@ export async function GET(req: NextRequest) {
     }
 
     if (session.user.role === "telecaller") {
-      const poolClause = {
-        $or: [
-          { source: { $ne: "walk_in" } },
-          { linkedLeadId: { $exists: true, $ne: null } },
-        ],
-      };
+      const telecallerPool = { source: { $ne: "walk_in" } };
       if (Array.isArray(filter.$and)) {
-        filter.$and.push(poolClause);
+        filter.$and.push(telecallerPool);
       } else if (filter.$and) {
-        filter.$and = [filter.$and, poolClause];
+        filter.$and = [filter.$and, telecallerPool];
       } else {
-        filter.$and = [poolClause];
+        filter.$and = [telecallerPool];
+      }
+    }
+
+    if (session.user.role !== "super_admin") {
+      const tenantScope = await tenantBranchScopeForSession(session);
+      if (Array.isArray(filter.$and)) {
+        filter.$and.push(tenantScope);
+      } else if (filter.$and) {
+        filter.$and = [filter.$and, tenantScope];
+      } else {
+        Object.assign(filter, tenantScope);
       }
     }
 

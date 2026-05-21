@@ -4,6 +4,8 @@ import { LeadSource, LeadStanding, LeadStatus, INote } from "@/types";
 /**
  * Telecaller / import pipeline records - stored in the `enquiries` collection.
  * Separate from {@link Lead} (walk-in, front desk, counsellor-assigned CRM leads).
+ *
+ * Rows with `linkedLeadId` are legacy mirrors of CRM leads and must not appear on /enquiries.
  */
 const NoteSchema = new Schema<INote>(
   {
@@ -59,6 +61,7 @@ export interface IEnquiryDocument extends Document {
   visaExpiryDate?: string;
   senderName?: string;
   academicYear?: string;
+  passoutYear?: string;
   applyLevel?: string;
   course?: string;
   intakeYear?: string;
@@ -116,6 +119,7 @@ const EnquirySchema = new Schema<IEnquiryDocument>(
     visaExpiryDate: { type: String },
     senderName: { type: String, trim: true },
     academicYear: { type: String, trim: true },
+    passoutYear: { type: String, trim: true },
     applyLevel: { type: String, default: "" },
     course: { type: String, trim: true },
     intakeYear: { type: String, trim: true },

@@ -22,6 +22,7 @@ declare module "next-auth" {
       orgPaidThrough: number | null;
       /** When false, middleware blocks app APIs and pages except /billing. */
       orgAccessAllowed: boolean;
+      orgOnboardingCompleted: boolean;
       /** Per-user dashboard visibility overrides (merged with org settings). */
       dashboardWidgets?: Record<string, boolean>;
       dashboardWidgetOrder?: Partial<Record<string, string[]>>;
@@ -40,6 +41,7 @@ declare module "next-auth/jwt" {
     orgTrialEndsAt?: number | null;
     orgPaidThrough?: number | null;
     orgAccessAllowed?: boolean;
+    orgOnboardingCompleted?: boolean;
     dashboardWidgets?: Record<string, boolean>;
     dashboardWidgetOrder?: Partial<Record<string, string[]>>;
   }

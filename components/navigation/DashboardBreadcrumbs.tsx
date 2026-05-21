@@ -29,6 +29,8 @@ const SEGMENT_LABELS: Record<string, string> = {
   settings: "Settings",
   organizations: "Organizations",
   inventory: "Inventory",
+  assets: "Assets",
+  stock: "Stock",
   hr: "HR Management",
   commission: "Commission",
   "university-requirements": "University / Colleges",

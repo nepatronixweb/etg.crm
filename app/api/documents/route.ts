@@ -4,6 +4,11 @@ import mongoose from "mongoose";
 import StudentDocument from "@/models/Document";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
+import {
+  appendDocumentListTenantScope,
+  assertParentRecordsInTenant,
+  findDocumentInTenant,
+} from "@/lib/tenantRecordAccess";
 
 export async function GET(req: NextRequest) {
   try {
@@ -25,6 +30,8 @@ export async function GET(req: NextRequest) {
     if (lead) filter.lead = lead;
     if (enquiry) filter.enquiry = enquiry;
     if (country) filter.country = country;
+
+    await appendDocumentListTenantScope(session, filter);
 
     const [documents, total] = await Promise.all([
       StudentDocument.find(filter)
@@ -107,6 +114,15 @@ export async function POST(req: NextRequest) {
 
     if (!studentId && !leadId && !enquiryId) {
       return NextResponse.json({ error: "studentId, leadId, or enquiryId required" }, { status: 400 });
+    }
+
+    const parentOk = await assertParentRecordsInTenant(session, {
+      studentId,
+      leadId,
+      enquiryId,
+    });
+    if (!parentOk) {
+      return NextResponse.json({ error: "Record not found" }, { status: 404 });
     }
 
     const docData: Record<string, unknown> = {

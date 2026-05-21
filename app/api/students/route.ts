@@ -7,6 +7,8 @@ import Enquiry from "@/models/Enquiry";
 import User from "@/models/User";
 import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
+import { assertOrgPlanLimit } from "@/lib/orgPlanUsage";
+import { tenantBranchScopeForSession } from "@/lib/orgUserScope";
 import { hasModuleAction } from "@/lib/utils";
 import { normalizeMatchIdsForAggregate } from "@/lib/mongoAggregateMatch";
 
@@ -37,13 +39,18 @@ export async function GET(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const baseParts: Record<string, any>[] = [];
 
+    const tenantScope =
+      session.user.role !== "super_admin" ? await tenantBranchScopeForSession(session) : null;
+
     if (leadId) {
       baseParts.push({ lead: leadId });
+      if (tenantScope) baseParts.push(tenantScope);
     } else if (enquiryId) {
       baseParts.push({ enquiry: enquiryId });
+      if (tenantScope) baseParts.push(tenantScope);
     } else {
       if (session.user.role === "counsellor") baseParts.push({ counsellor: session.user.id });
-      else if (session.user.role !== "super_admin") baseParts.push({ branch: session.user.branch });
+      else if (tenantScope) baseParts.push(tenantScope);
       if (branch) baseParts.push({ branch });
     }
 
@@ -88,7 +95,7 @@ export async function GET(req: NextRequest) {
 
     const needsLead = !enrolled && !stage;
     const originSelect =
-      "source interestedService interestedCountry interestedCountries parentName parentPhone1 parentPhone2 academicScore academicInstitution temporaryAddress permanentAddress examType examScore examJoinDate examStartDate examEndDate examPaymentMethod examEstimatedDate gender maritalStatus nationality passportNumber visaExpiryDate senderName academicYear applyLevel course intakeYear intakeQuarter comments";
+      "source interestedService interestedCountry interestedCountries parentName parentPhone1 parentPhone2 academicScore academicInstitution temporaryAddress permanentAddress examType examScore examJoinDate examStartDate examEndDate examPaymentMethod examEstimatedDate gender maritalStatus nationality passportNumber visaExpiryDate senderName academicYear passoutYear applyLevel course intakeYear intakeQuarter comments";
     const originWithDates = `${originSelect} statusDates`;
     const leadPopulate = needsLead
       ? [
@@ -188,6 +195,13 @@ export async function POST(req: NextRequest) {
         interestedService, interestedCountry,
         branch, counsellorId, comments,
       } = body;
+
+      if (session.user.role !== "super_admin" && session.user.organizationId) {
+        const limitCheck = await assertOrgPlanLimit(session.user.organizationId, "leads");
+        if (!limitCheck.ok) {
+          return NextResponse.json({ error: limitCheck.error, code: limitCheck.code }, { status: 403 });
+        }
+      }
 
       // Create lead first
       const lead = await Lead.create({
