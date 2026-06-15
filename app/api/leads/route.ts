@@ -12,6 +12,12 @@ import { auth } from "@/lib/auth";
 import { hasModuleAction } from "@/lib/utils";
 import { createNotifications, getSuperAdminIds } from "@/lib/notifications";
 import { buildLeadListFilter, castObjectIdsForAggregateMatch } from "@/lib/buildLeadListFilter";
+import {
+  buildLeadDuplicateQuery,
+  leadDedupAggregateStages,
+  normalizeLeadPhone,
+  stripLeadDedupInternals,
+} from "@/lib/leadDuplicateGuard";
 import { upsertEnquiryFromLead } from "@/lib/leadEnquirySync";
 import { assertOrgPlanLimit } from "@/lib/orgPlanUsage";
 import { isBranchInOrganization } from "@/lib/orgUserScope";
@@ -59,40 +65,12 @@ export async function GET(req: NextRequest) {
     const { filter, searchTrimmed } = await buildLeadListFilter(session, searchParams);
 
     const skip = (page - 1) * limit;
-    const escapedForNameRank = searchTrimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
     const fetchPage = async () => {
-      if (!searchTrimmed) {
-        return Lead.find(filter)
-          .populate("branch", "name")
-          .populate("assignedTo", "name email")
-          .populate("assignedBy", "name")
-          .sort({ createdAt: -1 })
-          .skip(skip)
-          .limit(limit)
-          .lean();
-      }
       const matchFilter = castObjectIdsForAggregateMatch(filter) as Record<string, unknown>;
       const pipeline: mongoose.PipelineStage[] = [
         { $match: matchFilter },
-        {
-          $addFields: {
-            _nameSearchRank: {
-              $cond: [
-                {
-                  $regexMatch: {
-                    input: { $toString: { $ifNull: ["$name", ""] } },
-                    regex: escapedForNameRank,
-                    options: "i",
-                  },
-                },
-                1,
-                0,
-              ],
-            },
-          },
-        },
-        { $sort: { _nameSearchRank: -1, createdAt: -1 } },
+        ...leadDedupAggregateStages({ searchTrimmed: searchTrimmed || undefined }),
         { $skip: skip },
         { $limit: limit },
       ];
@@ -102,16 +80,16 @@ export async function GET(req: NextRequest) {
         { path: "assignedTo", select: "name email" },
         { path: "assignedBy", select: "name" },
       ]);
-      return aggLeads.map((doc: Record<string, unknown>) => {
-        const { _nameSearchRank: _r, ...rest } = doc;
-        return rest;
-      });
+      return aggLeads.map((doc: Record<string, unknown>) => stripLeadDedupInternals(doc));
     };
 
-    const countFilter = searchTrimmed
-      ? (castObjectIdsForAggregateMatch(filter) as Record<string, unknown>)
-      : filter;
-    const [leads, total] = await Promise.all([fetchPage(), Lead.countDocuments(countFilter)]);
+    const countPipeline: mongoose.PipelineStage[] = [
+      { $match: castObjectIdsForAggregateMatch(filter) as Record<string, unknown> },
+      ...leadDedupAggregateStages({ searchTrimmed: searchTrimmed || undefined }),
+      { $count: "total" },
+    ];
+    const [leads, countRows] = await Promise.all([fetchPage(), Lead.aggregate(countPipeline)]);
+    const total = (countRows[0] as { total?: number } | undefined)?.total ?? 0;
     return NextResponse.json({ leads, total, page, pages: Math.ceil(total / limit) });
   } catch {
     return NextResponse.json({ error: "Failed to fetch leads" }, { status: 500 });
@@ -158,6 +136,23 @@ export async function POST(req: NextRequest) {
     if (!leadData.branch) {
       return NextResponse.json({ error: "Branch is required" }, { status: 400 });
     }
+
+    const dupQuery = buildLeadDuplicateQuery(leadData.branch, leadData.phone);
+    if (dupQuery) {
+      const existing = await Lead.findOne(dupQuery).select("_id name phone status").lean();
+      if (existing) {
+        return NextResponse.json(
+          {
+            error: `A lead with phone ${leadData.phone} already exists at this branch (${existing.name}). Open the existing record instead of creating a duplicate.`,
+            code: "DUPLICATE_LEAD",
+            existingLeadId: String(existing._id),
+            existingLeadName: existing.name,
+          },
+          { status: 409 }
+        );
+      }
+    }
+    leadData.phoneNormalized = normalizeLeadPhone(leadData.phone);
 
     if (session.user.role !== "super_admin" && session.user.organizationId) {
       const inOrg = await isBranchInOrganization(String(leadData.branch), session.user.organizationId);

@@ -1,5 +1,6 @@
 import mongoose, { Document, Schema } from "mongoose";
 import { LeadSource, LeadStanding, LeadStatus, INote } from "@/types";
+import { normalizeLeadPhone } from "@/lib/leadDuplicateGuard";
 
 /**
  * Telecaller / import pipeline records - stored in the `enquiries` collection.
@@ -20,6 +21,7 @@ const NoteSchema = new Schema<INote>(
 export interface IEnquiryDocument extends Document {
   name: string;
   phone: string;
+  phoneNormalized?: string;
   email: string;
   dateOfBirth: string;
   source: LeadSource;
@@ -77,6 +79,7 @@ const EnquirySchema = new Schema<IEnquiryDocument>(
   {
     name: { type: String, trim: true, default: "" },
     phone: { type: String, default: "" },
+    phoneNormalized: { type: String, default: "", index: true },
     email: { type: String, lowercase: true, default: "" },
     dateOfBirth: { type: String, default: "" },
     source: { type: String, default: "walk_in" },
@@ -146,5 +149,12 @@ EnquirySchema.index({ academicYear: 1 });
 EnquirySchema.index({ applyLevel: 1 });
 EnquirySchema.index({ branch: 1, createdAt: -1 });
 EnquirySchema.index({ linkedLeadId: 1 }, { unique: true, sparse: true });
+EnquirySchema.index({ branch: 1, phoneNormalized: 1 });
+
+EnquirySchema.pre("save", function syncPhoneNormalized() {
+  if (this.phone) {
+    this.phoneNormalized = normalizeLeadPhone(String(this.phone));
+  }
+});
 
 export default mongoose.models.Enquiry || mongoose.model<IEnquiryDocument>("Enquiry", EnquirySchema, "enquiries");

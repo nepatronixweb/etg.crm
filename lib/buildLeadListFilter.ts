@@ -8,6 +8,8 @@ import {
 } from "@/lib/telecallerLeadOverviewBuckets";
 import { resolveBranchQueryForSession } from "@/lib/tenantRecordAccess";
 
+export { resolveLeadCountryForDisplay } from "@/lib/leadCountryDisplay";
+
 /** Omit one dimension when computing distinct values for that facet (cascading filter options). */
 export type LeadFacetKey =
   | "standing"
@@ -55,17 +57,49 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function attachCountryClause(filter: Record<string, unknown>, countryTrimmed: string): void {
+/** Exact country match — prefers interestedCountries when populated; legacy interestedCountry only when array is empty. */
+export function buildLeadCountryMatchClause(countryTrimmed: string): Record<string, unknown> {
   const esc = escapeRegex(countryTrimmed);
-  const countryBlock = {
+  const rx = new RegExp(`^${esc}$`, "i");
+  return {
     $or: [
-      { interestedCountry: { $regex: new RegExp(`^${esc}$`, "i") } },
-      { "interestedCountries.country": { $regex: new RegExp(`^${esc}$`, "i") } },
+      {
+        interestedCountries: {
+          $elemMatch: { country: { $regex: rx } },
+        },
+      },
+      {
+        $and: [
+          {
+            $or: [{ interestedCountries: { $exists: false } }, { interestedCountries: { $size: 0 } }],
+          },
+          { interestedCountry: { $regex: rx } },
+        ],
+      },
     ],
   };
+}
+
+
+export function attachCountryClause(filter: Record<string, unknown>, countryTrimmed: string): void {
+  const countryBlock = buildLeadCountryMatchClause(countryTrimmed);
+
+  // Top-level $or (e.g. search) must AND with country — fold into $and so filters never compete.
+  if (filter.$or) {
+    const searchOr = filter.$or;
+    delete filter.$or;
+    const merged: unknown[] = Array.isArray(filter.$and) ? [...filter.$and] : filter.$and ? [filter.$and] : [];
+    merged.push({ $or: searchOr });
+    filter.$and = merged;
+  }
+
   const andArr = filter.$and;
   if (Array.isArray(andArr)) {
     andArr.push(countryBlock);
+    return;
+  }
+  if (filter.$and) {
+    filter.$and = [filter.$and, countryBlock];
     return;
   }
   filter.$and = [countryBlock];

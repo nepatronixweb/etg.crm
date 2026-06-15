@@ -6,6 +6,12 @@ import ActivityLog from "@/models/ActivityLog";
 import { auth } from "@/lib/auth";
 import { hasModuleAction } from "@/lib/utils";
 import { upsertEnquiryFromLead } from "@/lib/leadEnquirySync";
+import {
+  buildLeadDuplicateQuery,
+  leadDedupAggregateStages,
+  normalizeLeadPhone,
+  stripLeadDedupInternals,
+} from "@/lib/leadDuplicateGuard";
 
 interface ImportedRow {
   name: string;
@@ -61,24 +67,48 @@ export async function POST(req: NextRequest) {
     const standing = leadType === "cold" ? "cold" : "warm";
     const status   = leadType === "cold" ? "AP-Not Interested" : "Open/Unassigned";
 
-    // Build lead documents
-    const docs = rows
-      .filter((r) => r.name?.trim())
-      .map((r) => ({
-        name:             r.name.trim(),
-        phone:            (r.phone ?? "").trim(),
-        email:            (r.email ?? "").toLowerCase().trim(),
-        interestedCountry:(r.interestedCountry ?? "").trim(),
-        comments:         (r.comments ?? "").trim(),
+    // Build lead documents (skip rows that duplicate an existing branch+phone)
+    const docs: Array<Record<string, unknown>> = [];
+    let skippedDuplicates = 0;
+    const seenInFile = new Set<string>();
+
+    for (const r of rows.filter((row) => row.name?.trim())) {
+      const phone = (r.phone ?? "").trim();
+      const phoneNormalized = normalizeLeadPhone(phone);
+      const fileKey = `${branchId || ""}::${phoneNormalized}`;
+      if (phoneNormalized.length >= 7) {
+        if (seenInFile.has(fileKey)) {
+          skippedDuplicates++;
+          continue;
+        }
+        seenInFile.add(fileKey);
+        const dupQuery = buildLeadDuplicateQuery(String(branchId), phone);
+        if (dupQuery) {
+          const existing = await Lead.findOne(dupQuery).select("_id").lean();
+          if (existing) {
+            skippedDuplicates++;
+            continue;
+          }
+        }
+      }
+
+      docs.push({
+        name: r.name.trim(),
+        phone,
+        phoneNormalized,
+        email: (r.email ?? "").toLowerCase().trim(),
+        interestedCountry: (r.interestedCountry ?? "").trim(),
+        comments: (r.comments ?? "").trim(),
         source,
-        campaign:         campaign.trim(),
-        importDate:       importTs,
+        campaign: campaign.trim(),
+        importDate: importTs,
         status,
         standing,
-        branch:           branchId || undefined,
-        assignedTo:       userId,
-        assignedBy:       userId,
-      }));
+        branch: branchId || undefined,
+        assignedTo: userId,
+        assignedBy: userId,
+      });
+    }
 
     if (docs.length === 0) {
       return NextResponse.json(
@@ -111,7 +141,10 @@ export async function POST(req: NextRequest) {
       details:  `Bulk import - Campaign: "${campaign}", Type: ${leadType}, Source: ${source}, ${inserted.length} leads added`,
     });
 
-    return NextResponse.json({ imported: inserted.length, campaign }, { status: 201 });
+    return NextResponse.json(
+      { imported: inserted.length, skippedDuplicates, campaign },
+      { status: 201 }
+    );
   } catch (err) {
     console.error("Lead import error:", err);
     return NextResponse.json({ error: "Import failed" }, { status: 500 });

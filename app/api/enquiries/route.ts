@@ -17,6 +17,13 @@ import {
   mergeTelecallerOverviewBucketFilter,
 } from "@/lib/telecallerLeadOverviewBuckets";
 import { parseCreatedAtDateOnlyBound } from "@/lib/dateTimeRangeFilterDefaults";
+import { attachCountryClause } from "@/lib/buildLeadListFilter";
+import {
+  buildLeadDuplicateQuery,
+  leadDedupAggregateStages,
+  normalizeLeadPhone,
+  stripLeadDedupInternals,
+} from "@/lib/leadDuplicateGuard";
 import { nativeEnquiryOnlyMatch } from "@/lib/leadEnquirySync";
 
 function parseEnquiryCreatedAtBound(raw: string, bound: "from" | "to"): Date {
@@ -98,7 +105,6 @@ export async function GET(req: NextRequest) {
     if (standing) filter.standing = standing;
     if (source) filter.source = source;
     if (assignedTo) filter.assignedTo = assignedTo;
-    if (country) filter.interestedCountry = country;
     if (status) filter.status = status;
     if (from || to) {
       const createdRange: { $gte?: Date; $lte?: Date } = {};
@@ -178,41 +184,18 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const countryTrimmed = (country ?? "").trim();
+    if (countryTrimmed) {
+      attachCountryClause(filter, countryTrimmed);
+    }
+
     const skip = (page - 1) * limit;
-    const escapedForNameRank = searchTrimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
     const fetchPage = async () => {
-      if (!searchTrimmed) {
-        return Enquiry.find(filter)
-          .populate("branch", "name")
-          .populate("assignedTo", "name email")
-          .populate("assignedBy", "name")
-          .sort({ createdAt: -1 })
-          .skip(skip)
-          .limit(limit)
-          .lean();
-      }
       const matchFilter = castObjectIdsForAggregateMatch(filter) as Record<string, unknown>;
       const pipeline: mongoose.PipelineStage[] = [
         { $match: matchFilter },
-        {
-          $addFields: {
-            _nameSearchRank: {
-              $cond: [
-                {
-                  $regexMatch: {
-                    input: { $toString: { $ifNull: ["$name", ""] } },
-                    regex: escapedForNameRank,
-                    options: "i",
-                  },
-                },
-                1,
-                0,
-              ],
-            },
-          },
-        },
-        { $sort: { _nameSearchRank: -1, createdAt: -1 } },
+        ...leadDedupAggregateStages({ searchTrimmed: searchTrimmed || undefined }),
         { $skip: skip },
         { $limit: limit },
       ];
@@ -222,16 +205,16 @@ export async function GET(req: NextRequest) {
         { path: "assignedTo", select: "name email" },
         { path: "assignedBy", select: "name" },
       ]);
-      return agg.map((doc: Record<string, unknown>) => {
-        const { _nameSearchRank: _r, ...rest } = doc;
-        return rest;
-      });
+      return agg.map((doc: Record<string, unknown>) => stripLeadDedupInternals(doc));
     };
 
-    const countFilter = searchTrimmed
-      ? (castObjectIdsForAggregateMatch(filter) as Record<string, unknown>)
-      : filter;
-    const [leads, total] = await Promise.all([fetchPage(), Enquiry.countDocuments(countFilter)]);
+    const countPipeline: mongoose.PipelineStage[] = [
+      { $match: castObjectIdsForAggregateMatch(filter) as Record<string, unknown> },
+      ...leadDedupAggregateStages({ searchTrimmed: searchTrimmed || undefined }),
+      { $count: "total" },
+    ];
+    const [leads, countRows] = await Promise.all([fetchPage(), Enquiry.aggregate(countPipeline)]);
+    const total = (countRows[0] as { total?: number } | undefined)?.total ?? 0;
     return NextResponse.json({ leads, total, page, pages: Math.ceil(total / limit) });
   } catch {
     return NextResponse.json({ error: "Failed to fetch enquiries" }, { status: 500 });
@@ -256,6 +239,33 @@ export async function POST(req: NextRequest) {
 
     if (!enquiryData.branch && session.user.branch) {
       enquiryData.branch = session.user.branch;
+    }
+
+    const enquiryPhone = typeof enquiryData.phone === "string" ? enquiryData.phone.trim() : "";
+    if (enquiryPhone && enquiryData.branch) {
+      const dupQuery = buildLeadDuplicateQuery(enquiryData.branch, enquiryPhone);
+      if (dupQuery) {
+        const existing = await Enquiry.findOne({
+          $and: [
+            dupQuery,
+            { $or: [{ linkedLeadId: { $exists: false } }, { linkedLeadId: null }] },
+          ],
+        })
+          .select("_id name phone status")
+          .lean();
+        if (existing) {
+          return NextResponse.json(
+            {
+              error: `An enquiry with phone ${enquiryPhone} already exists at this branch (${existing.name}). Open the existing record instead.`,
+              code: "DUPLICATE_LEAD",
+              existingLeadId: String(existing._id),
+              existingLeadName: existing.name,
+            },
+            { status: 409 }
+          );
+        }
+      }
+      enquiryData.phoneNormalized = normalizeLeadPhone(enquiryPhone);
     }
 
     if (assignmentMethod === "round_robin" && enquiryData.branch) {

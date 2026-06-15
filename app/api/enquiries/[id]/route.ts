@@ -6,6 +6,9 @@ import { auth } from "@/lib/auth";
 import { createNotifications, getSuperAdminIds } from "@/lib/notifications";
 import { LEAD_PATCH_FD_STATUS_AND_STAGE_ROLES } from "@/lib/leadWorkflowStatusRoles";
 import { getEnquiryForSessionAccess } from "@/lib/tenantRecordAccess";
+import { jsonNoCache } from "@/lib/apiNoCache";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -21,7 +24,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
       .populate("branch", "name location")
       .populate("assignedTo", "name email role")
       .populate("assignedBy", "name");
-    return NextResponse.json(enquiry);
+    return jsonNoCache(enquiry);
   } catch {
     return NextResponse.json({ error: "Failed to fetch enquiry" }, { status: 500 });
   }
@@ -72,7 +75,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       });
     }
 
-    return NextResponse.json(enquiry);
+    return jsonNoCache(enquiry);
   } catch (error) {
     console.error("Update enquiry error:", error);
     const message = error instanceof Error ? error.message : "Failed to update enquiry";
@@ -152,7 +155,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
     }
 
-    return NextResponse.json(enquiry);
+    return jsonNoCache(enquiry);
   } catch (error) {
     console.error("Patch enquiry error:", error);
     const message = error instanceof Error ? error.message : "Failed to update enquiry";

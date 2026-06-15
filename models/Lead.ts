@@ -1,5 +1,6 @@
 import mongoose, { Document, Schema } from "mongoose";
 import { LeadSource, LeadStanding, LeadStatus, INote } from "@/types";
+import { normalizeLeadPhone } from "@/lib/leadDuplicateGuard";
 
 const NoteSchema = new Schema<INote>(
   {
@@ -20,6 +21,8 @@ export interface ILeadDocument extends Document {
   interestedService: string;
   interestedCountry: string;
   branch: mongoose.Types.ObjectId;
+  /** Normalized phone digits for duplicate detection within a branch. */
+  phoneNormalized?: string;
   standing: LeadStanding;
   assignedTo?: mongoose.Types.ObjectId;
   assignedBy?: mongoose.Types.ObjectId;
@@ -81,6 +84,7 @@ const LeadSchema = new Schema<ILeadDocument>(
   {
     name: { type: String, trim: true, default: "" },
     phone: { type: String, default: "" },
+    phoneNormalized: { type: String, default: "", index: true },
     email: { type: String, lowercase: true, default: "" },
     dateOfBirth: { type: String, default: "" },
     source: {
@@ -180,5 +184,12 @@ LeadSchema.index({ stage: 1 });
 LeadSchema.index({ academicYear: 1 });
 LeadSchema.index({ applyLevel: 1 });
 LeadSchema.index({ branch: 1, createdAt: -1 }); // multi-tenant paginated list
+LeadSchema.index({ branch: 1, phoneNormalized: 1 });
+
+LeadSchema.pre("save", function syncPhoneNormalized() {
+  if (this.phone) {
+    this.phoneNormalized = normalizeLeadPhone(String(this.phone));
+  }
+});
 
 export default mongoose.models.Lead || mongoose.model<ILeadDocument>("Lead", LeadSchema);

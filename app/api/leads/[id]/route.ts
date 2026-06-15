@@ -7,6 +7,11 @@ import { createNotifications, getSuperAdminIds } from "@/lib/notifications";
 import { LEAD_PATCH_FD_STATUS_AND_STAGE_ROLES } from "@/lib/leadWorkflowStatusRoles";
 import { deleteEnquiryByLinkedLead, upsertEnquiryFromLead } from "@/lib/leadEnquirySync";
 import { findLeadInTenant } from "@/lib/tenantRecordAccess";
+import { buildLeadDuplicateQuery, normalizeLeadPhone } from "@/lib/leadDuplicateGuard";
+import { normalizeLeadCountryFields, syncLeadToLinkedStudent } from "@/lib/leadRecordSync";
+import { jsonNoCache } from "@/lib/apiNoCache";
+
+export const dynamic = "force-dynamic";
 
 type CaptureVisitEntry = {
   visitedAt: Date;
@@ -43,7 +48,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
       .populate("assignedTo", "name email role")
       .populate("assignedBy", "name");
     if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
-    return NextResponse.json(lead);
+    return jsonNoCache(lead);
   } catch {
     return NextResponse.json({ error: "Failed to fetch lead" }, { status: 500 });
   }
@@ -90,6 +95,30 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const inTenant = await findLeadInTenant(session, id);
     if (!inTenant) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
 
+    const currentLead = await Lead.findById(id).select("branch phone").lean();
+    const nextPhone = typeof body.phone === "string" ? body.phone.trim() : currentLead?.phone;
+    const branchForDup = body.branch || currentLead?.branch;
+    if (nextPhone && branchForDup) {
+      const dupQuery = buildLeadDuplicateQuery(String(branchForDup), nextPhone, id);
+      if (dupQuery) {
+        const existing = await Lead.findOne(dupQuery).select("_id name phone status").lean();
+        if (existing) {
+          return NextResponse.json(
+            {
+              error: `Another lead with phone ${nextPhone} already exists at this branch (${existing.name}).`,
+              code: "DUPLICATE_LEAD",
+              existingLeadId: String(existing._id),
+              existingLeadName: existing.name,
+            },
+            { status: 409 }
+          );
+        }
+      }
+      if (typeof body.phone === "string") {
+        body.phoneNormalized = normalizeLeadPhone(body.phone);
+      }
+    }
+
     // Snapshot old assignedTo before updating
     const oldLead = await Lead.findById(id).select("assignedTo name").lean();
     const oldAssignedTo = oldLead?.assignedTo?.toString();
@@ -97,6 +126,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     // Use $set to only update provided fields - prevents wiping status/stage/remarks
     // when the edit form doesn't include them
     const setFields = { ...body };
+    normalizeLeadCountryFields(setFields);
     // Remove empty ObjectId refs so Mongoose doesn't reject them
     if (!setFields.assignedTo) delete setFields.assignedTo;
     if (!setFields.branch) delete setFields.branch;
@@ -131,6 +161,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       console.error("Lead→Enquiry sync failed:", syncErr);
     }
 
+    try {
+      await syncLeadToLinkedStudent(lead);
+    } catch (syncErr) {
+      console.error("Lead→Student sync failed:", syncErr);
+    }
+
     // Fire notification if counsellor assignment changed
     const newAssignedTo = body.assignedTo?.toString();
     if (newAssignedTo && newAssignedTo !== oldAssignedTo) {
@@ -146,7 +182,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       });
     }
 
-    return NextResponse.json(lead);
+    return jsonNoCache(lead);
   } catch (error) {
     console.error("Update lead error:", error);
     const message = error instanceof Error ? error.message : "Failed to update lead";
@@ -220,11 +256,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     // Allow other fields like assignedTo, notes, etc for all users
-    const allowedFields = ["assignedTo", "assignedBy", "standing", "interestedCountry", "interestedService", "comments", "notes"];
+    const allowedFields = ["assignedTo", "assignedBy", "standing", "interestedCountry", "interestedCountries", "interestedService", "comments", "notes"];
     for (const field of allowedFields) {
       if (field in body) {
         update[field] = body[field];
       }
+    }
+    if ("interestedCountries" in update) {
+      normalizeLeadCountryFields(update);
     }
 
     const oldLead = await Lead.findById(id).select("assignedTo name").lean();
@@ -256,7 +295,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       console.error("Lead→Enquiry sync failed:", syncErr);
     }
 
-    return NextResponse.json(lead);
+    try {
+      await syncLeadToLinkedStudent(lead);
+    } catch (syncErr) {
+      console.error("Lead→Student sync failed:", syncErr);
+    }
+
+    return jsonNoCache(lead);
   } catch (error) {
     console.error("Patch lead error:", error);
     const message = error instanceof Error ? error.message : "Failed to update lead";

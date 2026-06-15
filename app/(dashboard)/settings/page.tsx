@@ -1209,6 +1209,92 @@ export default function SettingsPage() {
     [schedulePersistCountries]
   );
 
+  const leadSourcesPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const schedulePersistLeadSources = useCallback((sources: string[]) => {
+    if (leadSourcesPersistTimerRef.current) clearTimeout(leadSourcesPersistTimerRef.current);
+    leadSourcesPersistTimerRef.current = setTimeout(() => {
+      leadSourcesPersistTimerRef.current = null;
+      fetch("/api/settings/app", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadSources: sources }),
+      })
+        .then((res) => {
+          if (!res.ok) {
+            console.error("Lead sources autosave failed:", res.status);
+            return;
+          }
+          notifyAppSettingsChanged();
+        })
+        .catch((e) => console.error("Lead sources autosave:", e));
+    }, 450);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (leadSourcesPersistTimerRef.current) clearTimeout(leadSourcesPersistTimerRef.current);
+    };
+  }, []);
+
+  const appendLeadSource = useCallback(
+    (raw: string) => {
+      const val = raw.trim();
+      if (!val) return;
+      setSettings((prev) => {
+        const cur = prev.leadSources || [];
+        if (cur.includes(val)) return prev;
+        const next = [...cur, val];
+        schedulePersistLeadSources(next);
+        return { ...prev, leadSources: next };
+      });
+      setSaved(false);
+    },
+    [schedulePersistLeadSources]
+  );
+
+  const fdStatusesPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const schedulePersistFdStatuses = useCallback((statuses: string[]) => {
+    if (fdStatusesPersistTimerRef.current) clearTimeout(fdStatusesPersistTimerRef.current);
+    fdStatusesPersistTimerRef.current = setTimeout(() => {
+      fdStatusesPersistTimerRef.current = null;
+      fetch("/api/settings/app", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fdStatuses: statuses }),
+      })
+        .then((res) => {
+          if (!res.ok) {
+            console.error("Front desk statuses autosave failed:", res.status);
+            return;
+          }
+          notifyAppSettingsChanged();
+        })
+        .catch((e) => console.error("Front desk statuses autosave:", e));
+    }, 450);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (fdStatusesPersistTimerRef.current) clearTimeout(fdStatusesPersistTimerRef.current);
+    };
+  }, []);
+
+  const appendFdStatus = useCallback(
+    (raw: string) => {
+      const val = raw.trim();
+      if (!val) return;
+      setSettings((prev) => {
+        const cur = prev.fdStatuses || [];
+        if (cur.includes(val)) return prev;
+        const next = [...cur, val];
+        schedulePersistFdStatuses(next);
+        return { ...prev, fdStatuses: next };
+      });
+      setSaved(false);
+    },
+    [schedulePersistFdStatuses]
+  );
+
   const b2bNamesPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const schedulePersistB2bNames = useCallback((names: string[]) => {
     if (b2bNamesPersistTimerRef.current) clearTimeout(b2bNamesPersistTimerRef.current);
@@ -1939,12 +2025,23 @@ export default function SettingsPage() {
           </SectionCard>
 
           {/* ── Lead Sources ── */}
-          <SectionCard title="Lead Sources" description="Where your leads come from. Shown in dropdowns when creating or editing leads. Drag to reorder.">
+          <SectionCard title="Lead Sources" description="Where your leads come from. Shown in dropdowns when creating or editing leads. Drag to reorder. Changes save automatically.">
             <div className="space-y-3">
               <DraggableChipList
                 items={settings.leadSources}
-                onChange={(next) => set("leadSources", next)}
-                onRemoveItem={(item) => set("leadSources", settings.leadSources.filter((i) => i !== item))}
+                onChange={(next) => {
+                  setSettings((prev) => ({ ...prev, leadSources: next }));
+                  setSaved(false);
+                  schedulePersistLeadSources(next);
+                }}
+                onRemoveItem={(item) => {
+                  setSettings((prev) => {
+                    const next = prev.leadSources.filter((i) => i !== item);
+                    schedulePersistLeadSources(next);
+                    return { ...prev, leadSources: next };
+                  });
+                  setSaved(false);
+                }}
                 emptyLabel="No sources defined"
                 accent="blue"
               />
@@ -1955,8 +2052,8 @@ export default function SettingsPage() {
                     if (e.key === "Enter") {
                       e.preventDefault();
                       const val = (e.target as HTMLInputElement).value.trim();
-                      if (val && !settings.leadSources.includes(val)) {
-                        set("leadSources", [...settings.leadSources, val]);
+                      if (val) {
+                        appendLeadSource(val);
                         (e.target as HTMLInputElement).value = "";
                       }
                     }
@@ -1966,24 +2063,38 @@ export default function SettingsPage() {
                 <button type="button" onClick={() => {
                   const input = document.getElementById("sourceInput") as HTMLInputElement;
                   const val = input.value.trim();
-                  if (val && !settings.leadSources.includes(val)) {
-                    set("leadSources", [...settings.leadSources, val]);
+                  if (val) {
+                    appendLeadSource(val);
                     input.value = "";
                   }
                 }} className="px-4 py-2.5 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm">
                   <Plus size={13} /> Add
                 </button>
               </div>
+              <p className="text-[11px] text-gray-500 flex items-center gap-1">
+                <Zap size={10} /> {settings.leadSources.length} sources configured. Saved automatically; they appear in lead create/edit dropdowns without a page refresh.
+              </p>
             </div>
           </SectionCard>
 
           {/* ── Front Desk Statuses ── */}
-          <SectionCard title="Front Desk Statuses" description="Workflow status labels for every lead (Front Desk, counsellors, telecallers, and pipeline teams). The same list is used on the leads table, lead detail, filters, and reports. Drag to reorder.">
+          <SectionCard title="Front Desk Statuses" description="Workflow status labels for every lead (Front Desk, counsellors, telecallers, and pipeline teams). The same list is used on the leads table, lead detail, filters, and reports. Drag to reorder. Changes save automatically for all staff.">
             <div className="space-y-3">
               <DraggableChipList
                 items={settings.fdStatuses}
-                onChange={(next) => set("fdStatuses", next)}
-                onRemoveItem={(item) => set("fdStatuses", settings.fdStatuses.filter((i) => i !== item))}
+                onChange={(next) => {
+                  setSettings((prev) => ({ ...prev, fdStatuses: next }));
+                  setSaved(false);
+                  schedulePersistFdStatuses(next);
+                }}
+                onRemoveItem={(item) => {
+                  setSettings((prev) => {
+                    const next = prev.fdStatuses.filter((i) => i !== item);
+                    schedulePersistFdStatuses(next);
+                    return { ...prev, fdStatuses: next };
+                  });
+                  setSaved(false);
+                }}
                 emptyLabel="No statuses defined"
                 accent="purple"
               />
@@ -1994,8 +2105,8 @@ export default function SettingsPage() {
                     if (e.key === "Enter") {
                       e.preventDefault();
                       const val = (e.target as HTMLInputElement).value.trim();
-                      if (val && !settings.fdStatuses.includes(val)) {
-                        set("fdStatuses", [...settings.fdStatuses, val]);
+                      if (val) {
+                        appendFdStatus(val);
                         (e.target as HTMLInputElement).value = "";
                       }
                     }
@@ -2005,8 +2116,8 @@ export default function SettingsPage() {
                 <button type="button" onClick={() => {
                   const input = document.getElementById("fdStatusInput") as HTMLInputElement;
                   const val = input.value.trim();
-                  if (val && !settings.fdStatuses.includes(val)) {
-                    set("fdStatuses", [...settings.fdStatuses, val]);
+                  if (val) {
+                    appendFdStatus(val);
                     input.value = "";
                   }
                 }} className="px-4 py-2.5 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm">
@@ -2014,7 +2125,7 @@ export default function SettingsPage() {
                 </button>
               </div>
               <p className="text-[11px] text-gray-400 flex items-center gap-1">
-                <Zap size={10} /> {settings.fdStatuses.length} statuses configured. Saved list is used everywhere leads show workflow status.
+                <Zap size={10} /> {settings.fdStatuses.length} statuses configured. Saved automatically; all staff see updates in lead workflow dropdowns without signing out.
               </p>
             </div>
           </SectionCard>

@@ -13,6 +13,8 @@ import CounselledClockCard from "@/components/CounselledClockCard";
 import { useFdStatusOptions } from "@/lib/useFdStatusOptions";
 import { fdWorkflowChoicesForPicker } from "@/lib/fdStatusOptions";
 import { roleCanEditLeadFdStatus } from "@/lib/leadWorkflowStatusRoles";
+import { subscribeAppSettingsChanged } from "@/lib/appSettingsSync";
+import { leadSourceLabelFromList } from "@/lib/leadSourceLabels";
 
 interface CountryEntry {
   country: string;
@@ -46,6 +48,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const [appLeadStages, setAppLeadStages] = useState(LEAD_STAGES);
   const [appStageGroups, setAppStageGroups] = useState(LEAD_STAGE_GROUPS);
   const [appCountries, setAppCountries] = useState<AppCountry[]>(COUNTRIES.map(c => ({ name: c, universities: [] })));
+  const [configuredLeadSources, setConfiguredLeadSources] = useState<string[]>([]);
   const [enrolling, setEnrolling] = useState(false);
   const [enrolled, setEnrolled] = useState(false);
 
@@ -70,10 +73,18 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const [showFdStatusDropdown, setShowFdStatusDropdown] = useState(false);
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const fetchLead = useCallback(async () => {
-    setLoading(true);
-    const res = await fetch(`${apiLeadsBase}/${id}`);
+  const fetchLead = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
+    const res = await fetch(`${apiLeadsBase}/${id}?_=${Date.now()}`, {
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { Pragma: "no-cache" },
+    });
     const data = await res.json();
+    if (!res.ok || data?.error) {
+      if (!opts?.silent) setLoading(false);
+      return;
+    }
     setLead(data);
     if (data.convertedToStudent) {
       const originQ = isEnquiriesRoute ? `enquiryId=${encodeURIComponent(id)}` : `leadId=${encodeURIComponent(id)}`;
@@ -107,11 +118,19 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     void fetchLead();
   }, [fetchLead]);
 
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void fetchLead({ silent: true });
+    }, 25000);
+    return () => window.clearInterval(interval);
+  }, [fetchLead]);
+
   const loadLeadPageSettings = useCallback(() => {
     fetch("/api/settings/app", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => {
         if (d?.error) return;
+        if (Array.isArray(d?.leadSources)) setConfiguredLeadSources(d.leadSources);
         if (d?.leadStandings?.length) setAppStandings(d.leadStandings);
         if (d?.countries?.length) {
           setAppCountries(
@@ -158,12 +177,20 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   }, [loadLeadPageSettings]);
 
   useEffect(() => {
+    return subscribeAppSettingsChanged(() => {
+      loadLeadPageSettings();
+    });
+  }, [loadLeadPageSettings]);
+
+  useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState === "visible") loadLeadPageSettings();
+      if (document.visibilityState !== "visible") return;
+      loadLeadPageSettings();
+      void fetchLead();
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [loadLeadPageSettings]);
+  }, [loadLeadPageSettings, fetchLead]);
 
   // Auto-scroll to notes and focus textarea when navigating with #notes hash
   useEffect(() => {
@@ -233,14 +260,20 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const saveLeadCountries = async () => {
     const valid = leadCountries.filter((e) => e.country.trim());
     setSavingCountries(true);
-    await fetch(`${apiLeadsBase}/${id}`, {
+    const res = await fetch(`${apiLeadsBase}/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ interestedCountries: valid }),
     });
     setSavingCountries(false);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert((data as { error?: string })?.error || "Failed to save countries. Please try again.");
+      return;
+    }
     setCountriesSaved(true);
     setTimeout(() => setCountriesSaved(false), 2500);
+    await fetchLead({ silent: true });
   };
 
   // ── Lead country list helpers ──
@@ -494,7 +527,9 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
             <Field label="Branch" value={branch?.name} />
             <div>
               <p className="text-xs text-gray-400 mb-0.5">Source</p>
-              <p className="text-sm font-semibold text-gray-800 capitalize">{lead.source?.replace(/_/g, " ")}</p>
+              <p className="text-sm font-semibold text-gray-800">
+                {leadSourceLabelFromList(configuredLeadSources, lead.source) || "—"}
+              </p>
               {(lead as unknown as { senderName?: string }).senderName && (
                 <p className="text-[11px] text-blue-600 font-medium mt-0.5 flex items-center gap-1">
                   <span className="opacity-60">↗</span> {(lead as unknown as { senderName: string }).senderName}
@@ -845,7 +880,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                           {isCurrent && <span className="text-[9px] font-bold bg-gray-900 text-white px-1.5 py-0.5 rounded uppercase tracking-wide">Current</span>}
                         </div>
                         {isSet && (
-                          <span className="text-[10px] text-gray-400 tabular-nums">{formatDate(new Date(dateStr))}</span>
+                          <span className="text-[10px] font-medium text-gray-500 tabular-nums shrink-0">{formatDate(new Date(dateStr))}</span>
                         )}
                       </button>
                     );
@@ -866,23 +901,23 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                 <p className="text-sm text-gray-700 leading-relaxed">{(lead as unknown as { comments: string }).comments}</p>
               </div>
             )}
-            {lead.notes?.length === 0 && !(lead as unknown as { comments?: string }).comments && <p className="text-gray-300 text-sm">No notes yet.</p>}
+            {lead.notes?.length === 0 && !(lead as unknown as { comments?: string }).comments && <p className="text-gray-500 text-sm">No notes yet.</p>}
             {lead.notes?.map((n) => (
               <div key={n._id} className="border-l-2 border-gray-200 pl-4 py-0.5">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className="text-xs font-semibold text-gray-600">{n.addedByName}</span>
-                  <span className="text-xs text-gray-300">·</span>
-                  <span className="text-xs text-gray-400">{getRoleLabel(n.addedByRole)}</span>
-                  <span className="text-xs text-gray-300 ml-auto">{formatDateTime(n.createdAt)}</span>
+                <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                  <span className="text-xs font-semibold text-gray-700">{n.addedByName}</span>
+                  <span className="text-xs text-gray-400">·</span>
+                  <span className="text-xs font-medium text-gray-500">{getRoleLabel(n.addedByRole)}</span>
+                  <span className="text-xs font-medium text-gray-500 ml-auto tabular-nums shrink-0">{formatDateTime(n.createdAt)}</span>
                 </div>
-                <p className="text-sm text-gray-700 leading-relaxed">{n.content}</p>
+                <p className="text-sm text-gray-800 leading-relaxed">{n.content}</p>
               </div>
             ))}
           </div>
           {canNote && (
             <div className="no-print flex gap-2 pt-3 border-t border-gray-100">
               <textarea ref={noteTextareaRef} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Write a follow-up note…" rows={2}
-                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-gray-800 placeholder-gray-300"
+                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-gray-900 placeholder:text-gray-500"
               />
               <button onClick={addNote} disabled={addingNote || !note.trim()} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-200 text-white rounded-lg text-sm font-semibold self-end transition-colors">
                 {addingNote ? "…" : "Add"}

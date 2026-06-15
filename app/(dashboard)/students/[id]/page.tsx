@@ -252,26 +252,42 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     return appLeadStages;
   };
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async (opts?: { silent?: boolean }) => {
     const [studentRes, docsRes] = await Promise.all([
-      fetch(`/api/students/${id}`),
-      fetch(`/api/documents?student=${id}`),
+      fetch(`/api/students/${id}?_=${Date.now()}`, { cache: "no-store", headers: { Pragma: "no-cache" } }),
+      fetch(`/api/documents?student=${id}`, { cache: "no-store" }),
     ]);
     const studentData = await studentRes.json();
     const docsData = await docsRes.json();
-    
+
+    if (!studentRes.ok || studentData?.error) return;
+
     setStudent(studentData);
     setDocs(docsData.documents || []);
-    
+
     if (studentData.countries?.length > 0) {
       setSelectedCountry((current) => current || studentData.countries[0].country);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
-    fetchData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+    void fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible") void fetchData({ silent: true });
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [fetchData]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void fetchData({ silent: true });
+    }, 25000);
+    return () => window.clearInterval(interval);
+  }, [fetchData]);
 
   const loadB2bNames = useCallback(() => {
     fetch("/api/settings/b2b", { cache: "no-store" })
@@ -2065,11 +2081,11 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
               {student.notes?.length === 0 && <p className="text-gray-400 text-sm">No notes yet</p>}
               {student.notes?.map((entry) => (
                 <div key={entry._id} className="bg-gray-50 rounded-lg p-3">
-                  <div className="flex justify-between mb-1">
+                  <div className="flex justify-between gap-3 mb-1">
                     <span className="text-xs font-medium text-gray-700">{entry.addedByName} · {getRoleLabel(entry.addedByRole as never)}</span>
-                    <span className="text-xs text-gray-400">{formatDateTime(entry.createdAt)}</span>
+                    <span className="text-xs font-medium text-gray-500 tabular-nums shrink-0">{formatDateTime(entry.createdAt)}</span>
                   </div>
-                  <p className="text-sm text-gray-700">{entry.content}</p>
+                  <p className="text-sm text-gray-800">{entry.content}</p>
                 </div>
               ))}
             </div>
@@ -2080,7 +2096,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                   onChange={(e) => setNote(e.target.value)}
                   rows={2}
                   placeholder="Add note..."
-                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 />
                 <button onClick={addNote} disabled={!note.trim()} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg text-sm">
                   Add

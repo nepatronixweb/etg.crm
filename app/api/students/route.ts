@@ -10,6 +10,7 @@ import { auth } from "@/lib/auth";
 import { assertOrgPlanLimit } from "@/lib/orgPlanUsage";
 import { tenantBranchScopeForSession } from "@/lib/orgUserScope";
 import { hasModuleAction } from "@/lib/utils";
+import { buildLeadDuplicateQuery, normalizeLeadPhone } from "@/lib/leadDuplicateGuard";
 import { normalizeMatchIdsForAggregate } from "@/lib/mongoAggregateMatch";
 
 export async function GET(req: NextRequest) {
@@ -203,11 +204,29 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      const studentBranch = branch || session.user.branch;
+      const dupQuery = studentBranch && phone ? buildLeadDuplicateQuery(studentBranch, phone) : null;
+      if (dupQuery) {
+        const existing = await Lead.findOne(dupQuery).select("_id name phone status").lean();
+        if (existing) {
+          return NextResponse.json(
+            {
+              error: `A lead with phone ${phone} already exists at this branch (${existing.name}).`,
+              code: "DUPLICATE_LEAD",
+              existingLeadId: String(existing._id),
+              existingLeadName: existing.name,
+            },
+            { status: 409 }
+          );
+        }
+      }
+
       // Create lead first
       const lead = await Lead.create({
         name, phone, email, dateOfBirth, source,
         interestedService, interestedCountry,
-        branch: branch || session.user.branch,
+        branch: studentBranch,
+        phoneNormalized: normalizeLeadPhone(phone),
         status: "warm",
         assignedTo: counsellorId || undefined,
         assignedBy: counsellorId ? session.user.id : undefined,

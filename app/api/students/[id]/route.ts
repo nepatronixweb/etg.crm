@@ -12,6 +12,9 @@ import {
   VISA_PIPELINE_LABEL,
 } from "@/lib/studentVisaLock";
 import { findStudentInTenant } from "@/lib/tenantRecordAccess";
+import { jsonNoCache } from "@/lib/apiNoCache";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -28,7 +31,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
       .populate({ path: "enquiry", select: "statusDates" })
       .lean();
     if (!student) return NextResponse.json({ error: "Student not found" }, { status: 404 });
-    return NextResponse.json(student);
+    return jsonNoCache(student);
   } catch {
     return NextResponse.json({ error: "Failed to fetch student" }, { status: 500 });
   }

@@ -37,6 +37,7 @@ import { fdWorkflowChoicesForPicker } from "@/lib/fdStatusOptions";
 import { useFdStatusOptions } from "@/lib/useFdStatusOptions";
 import { subscribeAppSettingsChanged } from "@/lib/appSettingsSync";
 import { roleCanEditLeadFdStatus } from "@/lib/leadWorkflowStatusRoles";
+import { resolveLeadCountryForDisplay } from "@/lib/leadCountryDisplay";
 
 const DEFAULT_SOURCES: { value: string; label: string }[] = [
   { value: "walk_in", label: "Walk-in" },
@@ -274,6 +275,48 @@ function LeadsPageContent() {
   const fetchLeadsRef = useRef(fetchLeads);
   fetchLeadsRef.current = fetchLeads;
 
+  const applyLeadAppSettings = useCallback((d: Record<string, unknown> & { error?: string }) => {
+    if (d?.error) return;
+    if (Array.isArray(d?.leadSources) && d.leadSources.length) {
+      const normalized = d.leadSources.map((s: string) => ({
+        value: s.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, ""),
+        label: s,
+      }));
+      const merged = [...DEFAULT_SOURCES];
+      for (const src of normalized) {
+        if (!merged.some((m) => m.value === src.value)) merged.push(src);
+      }
+      setAppSources(merged);
+    } else {
+      setAppSources(DEFAULT_SOURCES);
+    }
+    if (Array.isArray(d?.leadStandings) && d.leadStandings.length) setAppStandings(d.leadStandings);
+    if (Array.isArray(d?.countries) && d.countries.length) {
+      setAppCountries(d.countries.map((c: string | { name: string }) => typeof c === "string" ? c : c.name));
+    }
+    if (Array.isArray(d?.leadStages) && d.leadStages.length) {
+      setAppLeadStages(d.leadStages.map((s: { value: string; label: string; group: string }) => {
+        const existing = LEAD_STAGES.find(ls => ls.value === s.value);
+        return { value: s.value, label: s.label, color: existing?.color || "bg-gray-100 text-gray-700" };
+      }));
+    }
+    if (Array.isArray(d?.leadStageGroups) && d.leadStageGroups.length && Array.isArray(d?.leadStages) && d.leadStages.length) {
+      const leadStages = d.leadStages as { value: string; label: string; group: string }[];
+      const groupDots: Record<string, string> = {
+        Application: "bg-amber-400", Offer: "bg-blue-400", GS: "bg-purple-400",
+        COE: "bg-emerald-400", Visa: "bg-teal-400",
+      };
+      setAppStageGroups(d.leadStageGroups.map((g: string) => ({
+        label: g,
+        dot: groupDots[g] || "bg-gray-400",
+        stages: leadStages.filter((s) => s.group === g).map((s) => s.value),
+      })));
+    }
+    if (Array.isArray(d?.telecallerTransferOutcomes) && d.telecallerTransferOutcomes.length > 0) {
+      setTelecallerTransferOutcomes(normalizeTelecallerTransferOutcomes(d.telecallerTransferOutcomes));
+    }
+  }, []);
+
   // After session is ready: load settings, branches, counsellors (API scopes by org)
   useEffect(() => {
     if (sessionStatus !== "authenticated") return;
@@ -292,54 +335,35 @@ function LeadsPageContent() {
             : [],
         ),
       );
-    fetch("/api/settings/app").then((r) => r.json()).then((d) => {
-      if (d?.error) return;
-      // Load dynamic lead config
-      if (d?.leadSources?.length) {
-        const normalized = d.leadSources.map((s: string) => ({
-          value: s.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, ""),
-          label: s,
-        }));
-        const merged = [...DEFAULT_SOURCES];
-        for (const src of normalized) {
-          if (!merged.some((m) => m.value === src.value)) merged.push(src);
-        }
-        setAppSources(merged);
-      } else {
-        setAppSources(DEFAULT_SOURCES);
-      }
-      if (d?.leadStandings?.length) setAppStandings(d.leadStandings);
-      if (d?.countries?.length) {
-        setAppCountries(d.countries.map((c: string | { name: string }) => typeof c === "string" ? c : c.name));
-      }
-      if (d?.leadStages?.length) {
-        setAppLeadStages(d.leadStages.map((s: { value: string; label: string; group: string }) => {
-          const existing = LEAD_STAGES.find(ls => ls.value === s.value);
-          return { value: s.value, label: s.label, color: existing?.color || "bg-gray-100 text-gray-700" };
-        }));
-      }
-      if (d?.leadStageGroups?.length && d?.leadStages?.length) {
-        const groupDots: Record<string, string> = {
-          Application: "bg-amber-400", Offer: "bg-blue-400", GS: "bg-purple-400",
-          COE: "bg-emerald-400", Visa: "bg-teal-400",
-        };
-        setAppStageGroups(d.leadStageGroups.map((g: string) => ({
-          label: g,
-          dot: groupDots[g] || "bg-gray-400",
-          stages: d.leadStages.filter((s: { group: string }) => s.group === g).map((s: { value: string }) => s.value),
-        })));
-      }
-      if (Array.isArray(d?.telecallerTransferOutcomes) && d.telecallerTransferOutcomes.length > 0) {
-        setTelecallerTransferOutcomes(normalizeTelecallerTransferOutcomes(d.telecallerTransferOutcomes));
-      }
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionStatus]);
+    fetch("/api/settings/app")
+      .then((r) => r.json())
+      .then(applyLeadAppSettings);
+  }, [sessionStatus, applyLeadAppSettings]);
 
   useEffect(() => {
-    const bump = () => setFilterFacetSettingsBump((n) => n + 1);
-    return subscribeAppSettingsChanged(bump);
-  }, []);
+    const reload = () => {
+      setFilterFacetSettingsBump((n) => n + 1);
+      fetch("/api/settings/app")
+        .then((r) => r.json())
+        .then(applyLeadAppSettings);
+    };
+    return subscribeAppSettingsChanged(reload);
+  }, [applyLeadAppSettings]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible") fetchLeadsRef.current(currentPage);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [currentPage]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") fetchLeadsRef.current(currentPage);
+    }, 30000);
+    return () => window.clearInterval(interval);
+  }, [currentPage]);
 
   // Refetch leads whenever any filter changes (also fires on initial mount)
   useEffect(() => {
@@ -442,6 +466,7 @@ function LeadsPageContent() {
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [duplicateExistingLeadId, setDuplicateExistingLeadId] = useState<string | null>(null);
   const modalSessionRef = useRef(0);
   /** Visits loaded from DB when edit modal opens — only rows after this index are sent on update. */
   const captureVisitBaselineRef = useRef(0);
@@ -628,6 +653,7 @@ function LeadsPageContent() {
     if (submitting) return;
     setSubmitting(true);
     setSubmitError("");
+    setDuplicateExistingLeadId(null);
     const submitSession = modalSessionRef.current;
 
     const trimmedName = form.name.trim();
@@ -740,6 +766,12 @@ function LeadsPageContent() {
         closeLeadModalInternal(true);
         fetchLeads(nextPage);
       } else {
+        const dup = data as { code?: string; existingLeadId?: string };
+        if (dup?.code === "DUPLICATE_LEAD" && dup.existingLeadId) {
+          setDuplicateExistingLeadId(dup.existingLeadId);
+        } else {
+          setDuplicateExistingLeadId(null);
+        }
         setSubmitError(message || (editingLead ? "Failed to update lead." : "Failed to create lead. Please try again."));
       }
     } catch (error) {
@@ -1544,7 +1576,7 @@ function LeadsPageContent() {
                   ? assignedUser.name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()
                   : null;
                 const leadTag = `${branding.shortCode}-${lead._id.slice(-4).toUpperCase()}`;
-                const countryPart = lead.interestedCountries?.[0]?.country || lead.interestedCountry;
+                const countryPart = resolveLeadCountryForDisplay(lead, filterCountry);
                 return (
                   <React.Fragment key={lead._id}>
                     <tr key={lead._id} className={`hover:bg-gray-50/60 transition-colors align-top ${selectedLeads.has(lead._id) ? "bg-blue-50/40" : ""}`}>
@@ -2774,7 +2806,18 @@ function LeadsPageContent() {
 
               {/* Error */}
               {submitError && (
-                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">{submitError}</p>
+                <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2 space-y-1.5">
+                  <p>{submitError}</p>
+                  {duplicateExistingLeadId && (
+                    <Link
+                      href={`${leadsPathBase}/${duplicateExistingLeadId}`}
+                      className="inline-flex font-semibold text-red-700 underline underline-offset-2 hover:text-red-900"
+                      onClick={() => closeLeadModalInternal(true)}
+                    >
+                      Open existing lead →
+                    </Link>
+                  )}
+                </div>
               )}
 
               {/* Actions */}
