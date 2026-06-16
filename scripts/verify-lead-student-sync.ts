@@ -10,6 +10,10 @@ import {
   normalizeLeadCountryFields,
   syncLeadToLinkedStudent,
 } from "../lib/leadRecordSync";
+import {
+  ensureStudentForConvertedLead,
+  findOrphanedConvertedLeads,
+} from "../lib/ensureStudentFromConversion";
 
 function assertCheck(label: string, ok: boolean, detail: string) {
   console.log(`${ok ? "PASS" : "FAIL"} | ${label}: ${detail}`);
@@ -58,10 +62,18 @@ async function main() {
 
   const studentBefore = await Student.findOne({ lead: converted._id }).lean();
   if (!studentBefore) {
-    console.log("\n(skip live DB — no linked student for converted lead)");
-    await mongoose.disconnect();
-    console.log("\nDone.");
-    return;
+    console.log("\n(orphaned conversion detected — attempting repair)");
+    const repaired = await ensureStudentForConvertedLead(converted);
+    assertCheck(
+      "orphan repair creates student",
+      !!repaired && !!(await Student.findOne({ lead: converted._id }).lean()),
+      repaired ? "student created" : "repair failed"
+    );
+    if (!repaired) {
+      await mongoose.disconnect();
+      console.log("\nDone.");
+      return;
+    }
   }
 
   const leadBefore = await Lead.findById(converted._id).lean();

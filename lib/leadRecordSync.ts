@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import Student from "@/models/Student";
+import { ensureStudentForConvertedLead } from "@/lib/ensureStudentFromConversion";
 
 type CountryRow = { country: string; universityName?: string };
 type StudentCountry = CountryRow & {
@@ -71,7 +72,10 @@ export async function syncLeadToLinkedStudent(lead: LeadSyncSource): Promise<voi
   if (!lead.convertedToStudent) return;
 
   const student = await Student.findOne({ lead: lead._id });
-  if (!student) return;
+  if (!student) {
+    await ensureStudentForConvertedLead(lead);
+    return;
+  }
 
   const set: Record<string, unknown> = {};
 

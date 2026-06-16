@@ -12,6 +12,11 @@ import { tenantBranchScopeForSession } from "@/lib/orgUserScope";
 import { hasModuleAction } from "@/lib/utils";
 import { buildLeadDuplicateQuery, normalizeLeadPhone } from "@/lib/leadDuplicateGuard";
 import { normalizeMatchIdsForAggregate } from "@/lib/mongoAggregateMatch";
+import {
+  ensureStudentForConvertedEnquiry,
+  ensureStudentForConvertedLead,
+} from "@/lib/ensureStudentFromConversion";
+import { findEnquiryInTenant, findLeadInTenant } from "@/lib/tenantRecordAccess";
 
 export async function GET(req: NextRequest) {
   try {
@@ -44,11 +49,20 @@ export async function GET(req: NextRequest) {
       session.user.role !== "super_admin" ? await tenantBranchScopeForSession(session) : null;
 
     if (leadId) {
+      const leadDoc = await findLeadInTenant(session, leadId);
+      if (!leadDoc) {
+        return NextResponse.json({ students: [], total: 0, page: 1, pages: 0 });
+      }
+      await ensureStudentForConvertedLead(leadDoc, { actorUserId: session.user.id });
       baseParts.push({ lead: leadId });
-      if (tenantScope) baseParts.push(tenantScope);
+      // Lead access already tenant-scoped; skip duplicate branch filter so repaired rows are visible.
     } else if (enquiryId) {
+      const enquiryDoc = await findEnquiryInTenant(session, enquiryId);
+      if (!enquiryDoc) {
+        return NextResponse.json({ students: [], total: 0, page: 1, pages: 0 });
+      }
+      await ensureStudentForConvertedEnquiry(enquiryDoc, { actorUserId: session.user.id });
       baseParts.push({ enquiry: enquiryId });
-      if (tenantScope) baseParts.push(tenantScope);
     } else {
       if (session.user.role === "counsellor") baseParts.push({ counsellor: session.user.id });
       else if (tenantScope) baseParts.push(tenantScope);
@@ -109,6 +123,40 @@ export async function GET(req: NextRequest) {
         ];
 
     const skip = (page - 1) * limit;
+
+    // Repair orphaned conversions in tenant so converted leads always appear in Students (all departments).
+    if (!leadId && !enquiryId && page === 1) {
+      const orphanLeadFilter =
+        tenantScope && Object.keys(tenantScope).length > 0
+          ? { convertedToStudent: true, ...tenantScope }
+          : { convertedToStudent: true };
+      const orphanLeads = await Lead.find(orphanLeadFilter).limit(40).lean();
+      for (const orphanLead of orphanLeads) {
+        const hasStudent = await Student.exists({ lead: orphanLead._id });
+        if (!hasStudent) {
+          try {
+            await ensureStudentForConvertedLead(orphanLead, { actorUserId: session.user.id });
+          } catch (repairErr) {
+            console.error("[GET /api/students] orphan lead repair failed:", repairErr);
+          }
+        }
+      }
+      const orphanEnquiryFilter =
+        tenantScope && Object.keys(tenantScope).length > 0
+          ? { convertedToStudent: true, ...tenantScope }
+          : { convertedToStudent: true };
+      const orphanEnquiries = await Enquiry.find(orphanEnquiryFilter).limit(40).lean();
+      for (const orphanEnquiry of orphanEnquiries) {
+        const hasStudent = await Student.exists({ enquiry: orphanEnquiry._id });
+        if (!hasStudent) {
+          try {
+            await ensureStudentForConvertedEnquiry(orphanEnquiry, { actorUserId: session.user.id });
+          } catch (repairErr) {
+            console.error("[GET /api/students] orphan enquiry repair failed:", repairErr);
+          }
+        }
+      }
+    }
 
     const aggBreakdownMatch = normalizeMatchIdsForAggregate(breakdownFilter);
 
@@ -221,7 +269,9 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Create lead first
+      const counsellor = counsellorId || session.user.id;
+
+      // Create lead first (converted flag set only after student exists).
       const lead = await Lead.create({
         name, phone, email, dateOfBirth, source,
         interestedService, interestedCountry,
@@ -231,10 +281,7 @@ export async function POST(req: NextRequest) {
         assignedTo: counsellorId || undefined,
         assignedBy: counsellorId ? session.user.id : undefined,
         notes: comments ? [{ content: comments, addedBy: session.user.id, addedByName: session.user.name, addedByRole: session.user.role }] : [],
-        convertedToStudent: true,
       });
-
-      const counsellor = counsellorId || session.user.id;
 
       const student = await Student.create({
         lead: lead._id,
@@ -244,6 +291,9 @@ export async function POST(req: NextRequest) {
         currentStage: "counsellor",
         countries: [{ country: interestedCountry, status: "counsellor" }],
       });
+
+      lead.convertedToStudent = true;
+      await lead.save();
 
       await User.findByIdAndUpdate(counsellor, { $inc: { currentCount: 1 } });
 
@@ -279,7 +329,18 @@ export async function POST(req: NextRequest) {
       const enquiry = await Enquiry.findById(enquiryId);
       if (!enquiry) return NextResponse.json({ error: "Enquiry not found" }, { status: 404 });
       if (enquiry.convertedToStudent) {
-        return NextResponse.json({ error: "Enquiry already converted" }, { status: 400 });
+        const existing = await Student.findOne({ enquiry: enquiryId }).lean();
+        if (existing) {
+          return NextResponse.json({ message: "Student already exists", student: existing });
+        }
+        const repaired = await ensureStudentForConvertedEnquiry(enquiry, { actorUserId: session.user.id });
+        if (repaired) {
+          return NextResponse.json({ message: "Student repaired from enquiry conversion", student: repaired });
+        }
+        return NextResponse.json(
+          { error: "Enquiry marked converted but student record is missing. Assign a counsellor and branch, then retry." },
+          { status: 400 }
+        );
       }
 
       const counsellor = enquiry.assignedTo || session.user.id;
@@ -346,7 +407,20 @@ export async function POST(req: NextRequest) {
 
     const lead = await Lead.findById(leadId);
     if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
-    if (lead.convertedToStudent) return NextResponse.json({ error: "Lead already converted" }, { status: 400 });
+    if (lead.convertedToStudent) {
+      const existing = await Student.findOne({ lead: leadId }).lean();
+      if (existing) {
+        return NextResponse.json({ message: "Student already exists", student: existing });
+      }
+      const repaired = await ensureStudentForConvertedLead(lead, { actorUserId: session.user.id });
+      if (repaired) {
+        return NextResponse.json({ message: "Student repaired from lead conversion", student: repaired });
+      }
+      return NextResponse.json(
+        { error: "Lead marked converted but student record is missing. Assign a counsellor and branch, then retry." },
+        { status: 400 }
+      );
+    }
 
     const counsellor = lead.assignedTo || session.user.id;
 
@@ -415,7 +489,16 @@ export async function DELETE(req: NextRequest) {
     await connectDB();
     const { ids } = await req.json();
     if (!Array.isArray(ids) || ids.length === 0) return NextResponse.json({ error: "No IDs provided" }, { status: 400 });
+    const students = await Student.find({ _id: { $in: ids } }).select("lead enquiry name").lean();
     await Student.deleteMany({ _id: { $in: ids } });
+    const leadIds = students.map((s) => s.lead).filter(Boolean);
+    const enquiryIds = students.map((s) => s.enquiry).filter(Boolean);
+    if (leadIds.length > 0) {
+      await Lead.updateMany({ _id: { $in: leadIds } }, { $set: { convertedToStudent: false } });
+    }
+    if (enquiryIds.length > 0) {
+      await Enquiry.updateMany({ _id: { $in: enquiryIds } }, { $set: { convertedToStudent: false } });
+    }
     return NextResponse.json({ message: `Deleted ${ids.length} students` });
   } catch {
     return NextResponse.json({ error: "Failed to delete students" }, { status: 500 });

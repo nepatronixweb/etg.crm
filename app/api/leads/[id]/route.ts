@@ -9,6 +9,7 @@ import { deleteEnquiryByLinkedLead, upsertEnquiryFromLead } from "@/lib/leadEnqu
 import { findLeadInTenant } from "@/lib/tenantRecordAccess";
 import { buildLeadDuplicateQuery, normalizeLeadPhone } from "@/lib/leadDuplicateGuard";
 import { normalizeLeadCountryFields, syncLeadToLinkedStudent } from "@/lib/leadRecordSync";
+import { ensureStudentForConvertedLead } from "@/lib/ensureStudentFromConversion";
 import { jsonNoCache } from "@/lib/apiNoCache";
 
 export const dynamic = "force-dynamic";
@@ -48,6 +49,13 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
       .populate("assignedTo", "name email role")
       .populate("assignedBy", "name");
     if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    if (lead.convertedToStudent) {
+      try {
+        await ensureStudentForConvertedLead(lead, { actorUserId: session.user.id });
+      } catch (repairErr) {
+        console.error("Lead→Student conversion repair failed:", repairErr);
+      }
+    }
     return jsonNoCache(lead);
   } catch {
     return NextResponse.json({ error: "Failed to fetch lead" }, { status: 500 });
@@ -126,6 +134,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     // Use $set to only update provided fields - prevents wiping status/stage/remarks
     // when the edit form doesn't include them
     const setFields = { ...body };
+    // Conversion is only via POST /api/students — never allow direct flag toggling.
+    delete setFields.convertedToStudent;
     normalizeLeadCountryFields(setFields);
     // Remove empty ObjectId refs so Mongoose doesn't reject them
     if (!setFields.assignedTo) delete setFields.assignedTo;

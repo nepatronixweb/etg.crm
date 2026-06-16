@@ -403,8 +403,11 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
             <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold capitalize ${getStatusColor(lead.standing)}`}>
               {lead.standing?.replace("_", " ")}
             </span>
-            {lead.convertedToStudent && (
+            {lead.convertedToStudent && studentId && (
               <span className="bg-emerald-100 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full text-xs font-semibold">✓ Converted to Student</span>
+            )}
+            {lead.convertedToStudent && !studentId && (
+              <span className="bg-amber-100 text-amber-800 border border-amber-200 px-2.5 py-0.5 rounded-full text-xs font-semibold">Repairing student record…</span>
             )}
           </div>
           <p className="text-gray-400 text-xs mt-0.5">{isEnquiriesRoute ? "Enquiry details" : "Lead details"}</p>

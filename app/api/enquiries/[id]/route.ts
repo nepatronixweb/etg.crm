@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { createNotifications, getSuperAdminIds } from "@/lib/notifications";
 import { LEAD_PATCH_FD_STATUS_AND_STAGE_ROLES } from "@/lib/leadWorkflowStatusRoles";
 import { getEnquiryForSessionAccess } from "@/lib/tenantRecordAccess";
+import { ensureStudentForConvertedEnquiry } from "@/lib/ensureStudentFromConversion";
 import { jsonNoCache } from "@/lib/apiNoCache";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,14 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
       .populate("branch", "name location")
       .populate("assignedTo", "name email role")
       .populate("assignedBy", "name");
+    if (!enquiry) return NextResponse.json({ error: "Enquiry not found" }, { status: 404 });
+    if (enquiry.convertedToStudent) {
+      try {
+        await ensureStudentForConvertedEnquiry(enquiry, { actorUserId: session.user.id });
+      } catch (repairErr) {
+        console.error("Enquiry→Student conversion repair failed:", repairErr);
+      }
+    }
     return jsonNoCache(enquiry);
   } catch {
     return NextResponse.json({ error: "Failed to fetch enquiry" }, { status: 500 });
@@ -44,6 +53,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const existingAssigned = access.assignedTo?.toString();
     const body = await req.json();
     const setFields = { ...body };
+    delete setFields.convertedToStudent;
     if (!setFields.assignedTo) delete setFields.assignedTo;
     if (!setFields.branch) delete setFields.branch;
 

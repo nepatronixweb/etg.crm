@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import Student from "@/models/Student";
+import Lead from "@/models/Lead";
+import Enquiry from "@/models/Enquiry";
 import User from "@/models/User";
 import ActivityLog from "@/models/ActivityLog";
 import Branch from "@/models/Branch";
@@ -491,6 +493,12 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
     await connectDB();
     const student = await Student.findByIdAndDelete(id);
     if (!student) return NextResponse.json({ error: "Student not found" }, { status: 404 });
+    if (student.lead) {
+      await Lead.findByIdAndUpdate(student.lead, { $set: { convertedToStudent: false } });
+    }
+    if (student.enquiry) {
+      await Enquiry.findByIdAndUpdate(student.enquiry, { $set: { convertedToStudent: false } });
+    }
     await ActivityLog.create({
       user: session.user.id,
       userName: session.user.name,
