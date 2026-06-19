@@ -98,20 +98,22 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
         }
       }
     }
-    if (Array.isArray(data.interestedCountries) && data.interestedCountries.length > 0) {
-      setLeadCountries(data.interestedCountries.map((e: CountryEntry) => ({ country: e.country, universityName: e.universityName || "" })));
-      setLcSearch(data.interestedCountries.map(() => ""));
-      setLcUniSearch(data.interestedCountries.map(() => ""));
-    } else if (data.interestedCountry) {
-      setLeadCountries([{ country: data.interestedCountry, universityName: "" }]);
-      setLcSearch([""]);
-      setLcUniSearch([""]);
-    } else {
-      setLeadCountries([{ country: "", universityName: "" }]);
-      setLcSearch([""]);
-      setLcUniSearch([""]);
+    if (!opts?.silent) {
+      if (Array.isArray(data.interestedCountries) && data.interestedCountries.length > 0) {
+        setLeadCountries(data.interestedCountries.map((e: CountryEntry) => ({ country: e.country, universityName: e.universityName || "" })));
+        setLcSearch(data.interestedCountries.map(() => ""));
+        setLcUniSearch(data.interestedCountries.map(() => ""));
+      } else if (data.interestedCountry) {
+        setLeadCountries([{ country: data.interestedCountry, universityName: "" }]);
+        setLcSearch([""]);
+        setLcUniSearch([""]);
+      } else {
+        setLeadCountries([{ country: "", universityName: "" }]);
+        setLcSearch([""]);
+        setLcUniSearch([""]);
+      }
     }
-    setLoading(false);
+    if (!opts?.silent) setLoading(false);
   }, [id, apiLeadsBase, isEnquiriesRoute]);
 
   useEffect(() => {
@@ -186,7 +188,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     const onVis = () => {
       if (document.visibilityState !== "visible") return;
       loadLeadPageSettings();
-      void fetchLead();
+      void fetchLead({ silent: true });
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);

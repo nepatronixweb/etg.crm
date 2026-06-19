@@ -196,6 +196,11 @@ function LeadsPageContent() {
   const searchRef = useRef(search);
   searchRef.current = search;
 
+  const currentPageRef = useRef(currentPage);
+  currentPageRef.current = currentPage;
+
+  const fetchSeqRef = useRef(0);
+
   const appendLeadFilterParams = useCallback(
     (params: URLSearchParams, searchValue: string) => {
       const q = searchValue.trim();
@@ -238,23 +243,43 @@ function LeadsPageContent() {
     ]
   );
 
-  const fetchLeads = useCallback(async (page = 1) => {
-    setLoading(true);
-    const params = new URLSearchParams();
-    params.set("page", page.toString());
-    params.set("limit", "50");
-    appendLeadFilterParams(params, searchRef.current);
-    const res = await fetch(`${apiLeadsBase}?${params}`, { cache: "no-store" });
-    const data = await res.json();
-    if (data && data.leads) {
-      setLeads(data.leads);
-      setTotalPages(data.pages ?? 1);
-      setTotalLeads(data.total ?? 0);
-      setCurrentPage(page);
-    } else {
-      setLeads(Array.isArray(data) ? data : []);
+  const fetchLeads = useCallback(async (page = 1, opts?: { quiet?: boolean }) => {
+    const quiet = opts?.quiet === true;
+    const seq = ++fetchSeqRef.current;
+    try {
+      if (!quiet) setLoading(true);
+      const params = new URLSearchParams();
+      params.set("page", page.toString());
+      params.set("limit", "50");
+      appendLeadFilterParams(params, searchRef.current);
+      const res = await fetch(`${apiLeadsBase}?${params}`, { cache: "no-store" });
+      const data = await res.json();
+      if (seq !== fetchSeqRef.current) return;
+      if (!res.ok || data?.error) {
+        if (!quiet) {
+          setLeads([]);
+          setTotalPages(1);
+          setTotalLeads(0);
+        }
+        return;
+      }
+      if (data && data.leads) {
+        setLeads(data.leads);
+        setTotalPages(data.pages ?? 1);
+        setTotalLeads(data.total ?? 0);
+        setCurrentPage(page);
+      } else {
+        setLeads(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      if (!quiet && seq === fetchSeqRef.current) {
+        setLeads([]);
+        setTotalPages(1);
+        setTotalLeads(0);
+      }
+    } finally {
+      if (!quiet && seq === fetchSeqRef.current) setLoading(false);
     }
-    setLoading(false);
   }, [
     filterStatus,
     filterCountry,
@@ -352,18 +377,22 @@ function LeadsPageContent() {
 
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState === "visible") fetchLeadsRef.current(currentPage);
+      if (document.visibilityState === "visible") {
+        fetchLeadsRef.current(currentPageRef.current, { quiet: true });
+      }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [currentPage]);
+  }, []);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") fetchLeadsRef.current(currentPage);
+      if (document.visibilityState === "visible") {
+        fetchLeadsRef.current(currentPageRef.current, { quiet: true });
+      }
     }, 30000);
     return () => window.clearInterval(interval);
-  }, [currentPage]);
+  }, []);
 
   // Refetch leads whenever any filter changes (also fires on initial mount)
   useEffect(() => {
@@ -421,10 +450,10 @@ function LeadsPageContent() {
         skipSearchEffectOnMount.current = false;
         return;
       }
-      fetchLeadsRef.current(1);
+      fetchLeadsRef.current(1, { quiet: true });
       return;
     }
-    const t = setTimeout(() => fetchLeadsRef.current(1), 320);
+    const t = setTimeout(() => fetchLeadsRef.current(1, { quiet: true }), 320);
     return () => clearTimeout(t);
   }, [search]);
 
@@ -952,7 +981,7 @@ function LeadsPageContent() {
     if (!confirm(`Delete ${selectedLeads.size} selected lead(s)? This cannot be undone.`)) return;
     setBulkDeleting(true);
     const res = await fetch(apiLeadsBase, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: Array.from(selectedLeads) }) });
-    if (res.ok) { setSelectedLeads(new Set()); fetchLeads(1); }
+    if (res.ok) { setSelectedLeads(new Set()); fetchLeads(1, { quiet: true }); }
     setBulkDeleting(false);
   };
 
@@ -1054,7 +1083,7 @@ function LeadsPageContent() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: newStatus }),
     });
-    if (!res.ok) fetchLeads(currentPage);
+    if (!res.ok) fetchLeads(currentPage, { quiet: true });
   };
 
   const submitTelecallerTransferToCounsellor = async () => {
@@ -1088,7 +1117,7 @@ function LeadsPageContent() {
         assignedBy,
       }),
     });
-    if (!res.ok) fetchLeads(currentPage);
+    if (!res.ok) fetchLeads(currentPage, { quiet: true });
   };
 
   const applyTelecallerFreshTransfer = async (leadId: string): Promise<boolean> => {
@@ -1134,7 +1163,7 @@ function LeadsPageContent() {
         delete n[leadId];
         return n;
       });
-      await fetchLeads(currentPage);
+      await fetchLeads(currentPage, { quiet: true });
       return true;
     }
     return false;
@@ -1850,7 +1879,7 @@ function LeadsPageContent() {
                                       setMenuOpenId(null);
                                       if (!confirm(`Delete lead "${lead.name}"? This cannot be undone.`)) return;
                                       const res = await fetch(`${apiLeadsBase}/${lead._id}`, { method: "DELETE" });
-                                      if (res.ok) fetchLeads();
+                                      if (res.ok) fetchLeads(currentPage, { quiet: true });
                                     }}
                                     className="block w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 font-medium"
                                   >Delete Lead</button>
